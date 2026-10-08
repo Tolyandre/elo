@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import type { Base58ID } from "@/lib/id";
@@ -10,11 +10,11 @@ import { useMe } from "../../meContext";
 import { useTenantScope } from "../../tenantScopeContext";
 import { TenantChooser } from "@/components/tenant-chooser";
 import { useOffline } from "../../offline/OfflineContext";
-import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise } from "../../api";
+import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise, matchSettled } from "../../api";
 import { MarketCard } from "@/components/market-card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Edit2, Trash2, ClipboardEdit } from "lucide-react";
+import { AlertCircle, Edit2, Trash2, ClipboardEdit, Info } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { PageContainer } from "@/components/page-container";
@@ -47,6 +47,7 @@ function MatchViewPageWrapped() {
   const searchParams = useSearchParams();
   const id = toBase58ID(searchParams.get("id") ?? "");
   const { pendingMatches, ready } = useOffline();
+  const { tenantId } = useTenantScope();
 
   if (!id) return <NotFound />;
   // Before the store hydrates we can't tell a pending match from a saved one, so
@@ -59,7 +60,10 @@ function MatchViewPageWrapped() {
     );
   }
   if (pendingMatches.some((m) => m.clientId === id)) return <PendingMatchView clientId={id} />;
-  return <SavedMatchView matchId={id} />;
+  // The detail read is tenant-scoped (ADR-36): keying the view on the tenant
+  // remounts it on a switch, so the settlement columns and the membership note
+  // always describe the community in force — nothing cross-tenant survives.
+  return <SavedMatchView key={tenantId ?? "tenantless"} matchId={id} />;
 }
 
 function NotFound() {
@@ -106,36 +110,52 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   const { roundToInteger, setRoundToInteger } = useMe();
   // The rating columns come from the current tenant's main arena (ADR-36);
   // the matches context is tenant-scoped the same way, so both sources agree.
-  const { ready: scopeReady, tenantId } = useTenantScope();
+  // The view is keyed on the tenant (MatchViewPageWrapped), so a switch starts
+  // here from scratch — the settlement columns are never reused across
+  // communities.
+  const { ready: scopeReady, tenantId, tenant } = useTenantScope();
   const [matchFromApi, setMatchFromApi] = useState<Match | null>(null);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = React.useRef(false);
   const [relatedMarkets, setRelatedMarkets] = useState<Market[]>([]);
 
   const matchFromContext = matches.find((m) => m.id === matchId) ?? null;
 
   // Fetch from API only once the context is done loading (it waits for the
-  // tenant scope), the match is still not found in it, and the tenant is
-  // resolved — the detail read is tenant-required (ADR-36 phase 5)
+  // tenant scope and refetches on a switch), the match is still not found in
+  // it, and the tenant is resolved — the detail read is tenant-required
+  // (ADR-36 phase 5). The context covers matches on its fetched pages; the
+  // detail fills in for everything beyond them (deep links, older matches).
   useEffect(() => {
-    if (matchFromContext || fetchedRef.current || contextLoading || !tenantId) return;
-    fetchedRef.current = true;
+    if (matchFromContext || contextLoading || !tenantId) return;
+    let cancelled = false;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading/error before the async fetch (same pattern as MatchesContext) */
     setFetchLoading(true);
+    setError(null);
     getMatchByIdPromise(matchId, tenantId)
-      .then(setMatchFromApi)
+      .then((m) => {
+        if (!cancelled) setMatchFromApi(m);
+      })
       .catch((e) => setError(e.message ?? "Неизвестная ошибка"))
-      .finally(() => setFetchLoading(false));
+      .finally(() => {
+        if (!cancelled) setFetchLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [matchId, matchFromContext, contextLoading, tenantId]);
-
-  const match = matchFromApi ?? matchFromContext;
-  const loading = (contextLoading && !matchFromContext) || fetchLoading;
 
   useEffect(() => {
     getMarketsByMatchIdPromise(matchId)
       .then((data) => setRelatedMarkets(data ?? []))
       .catch(() => {});
   }, [matchId]);
+
+  const match = matchFromApi ?? matchFromContext;
+  // The context data is only trustworthy once it has settled for the current
+  // tenant: mid-refetch it still holds the previous community's settlement
+  // columns, so the view waits it out instead of flashing foreign ratings.
+  const loading = contextLoading || fetchLoading;
 
   // The detail read and the rating columns are tenant-scoped: with no
   // community chosen the chooser substitutes the content — the page never
@@ -166,7 +186,9 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
     );
   }
 
-  if (error) {
+  // A failed detail read is fatal only while the context cannot stand in for
+  // the match — the feed may still deliver it after the network came back.
+  if (error && !match) {
     return (
       <PageContainer width="narrow">
         <Alert variant="destructive">
@@ -179,11 +201,24 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
 
   if (!match) return <NotFound />;
 
+  // A competitive match the current community's main arena does not admit
+  // (its openness rule, evaluated at the match date) has no settlement there:
+  // the rating columns are null and the card hides them instead of showing
+  // zeros that would suggest a played-out rating change.
+  const settled = matchSettled(match);
+
   return (
     <PageContainer width="narrow">
       <BackButton href="/?tab=feed" />
 
       <PageHeader title="Просмотр партии" action={<EditAction id={match.id} tenantId={tenantId} viaCalculator={!!match.calculator_kind} />} />
+
+      {match.mode !== "coop" && !settled && tenant && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>Партия не относится к сообществу «{tenant.name}»</AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardContent>

@@ -2042,12 +2042,17 @@ type MatchFilter struct {
 	TagIds   []Base58ID `json:"tag_ids"`
 }
 
-// MatchPlayer Per-player data within a match (keyed by player_id in the score map)
+// MatchPlayer Per-player data within a match (keyed by player_id in the score map). The settlement columns are scoped to the ?tenant='s main arena (ADR-36) and are null when the match did not settle there — its openness rule does not admit the match, so it has no rating meaning for that community. A settled match always carries all three.
 type MatchPlayer struct {
-	RatingAfter  float64 `json:"rating_after"`
-	RatingEarned float64 `json:"rating_earned"`
-	RatingStaked float64 `json:"rating_staked"`
-	Score        float64 `json:"score"`
+	// RatingAfter The player's rating right after the match in the queried arena; null when the match did not settle there.
+	RatingAfter *float64 `json:"rating_after"`
+
+	// RatingEarned The rating the player earned; null when the match did not settle in the queried arena.
+	RatingEarned *float64 `json:"rating_earned"`
+
+	// RatingStaked The rating the player put at stake; null when the match did not settle in the queried arena.
+	RatingStaked *float64 `json:"rating_staked"`
+	Score        float64  `json:"score"`
 }
 
 // MatchTournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, by the organizer's attach, or by an explicit edit-time link change (skip_tournament_link on PUT); association-breaking edits (game/roster) are still rejected. The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.

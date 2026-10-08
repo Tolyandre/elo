@@ -607,15 +607,11 @@ func (s *StrictServer) feedMatches(ctx context.Context, arenaID id.ID, ids []id.
 			}
 			order = append(order, r.MatchID)
 		}
-		var ratingAfter float64
-		if v, ok := r.RatingAfter.(float64); ok {
-			ratingAfter = v
-		}
 		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
 			Score:        r.Score,
-			RatingStaked: r.RatingStaked.Float64,
-			RatingEarned: r.RatingEarned.Float64,
-			RatingAfter:  ratingAfter,
+			RatingStaked: float8Ptr(r.RatingStaked),
+			RatingEarned: float8Ptr(r.RatingEarned),
+			RatingAfter:  anyFloatPtr(r.RatingAfter),
 		}
 	}
 

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { useMe } from "@/app/meContext";
-import { Match } from "@/app/api";
+import { Match, matchSettled } from "@/app/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GameImage } from "@/components/game-image";
@@ -35,18 +35,25 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     [games, match.game_id],
   );
 
+  // The settlement columns are scoped to the read's tenant arena and are null
+  // when the match did not settle there (ADR-36) — the card hides the rating
+  // widgets instead of showing fake zeros for such a match.
+  const settled = matchSettled(match);
+
   const { players, ranks, totalEarn, totalPay } = useMemo(() => {
     const players = Object.entries(match.score)
       .map(([playerId, data]) => {
         const ctxPlayer = playerMap.get(playerId);
         const name = ctxPlayer ? playerDisplayName(ctxPlayer) : "Unknown";
+        const ratingStaked = data.ratingStaked ?? 0;
+        const ratingEarned = data.ratingEarned ?? 0;
         return {
           name,
           playerId,
-          ratingStaked: data.ratingStaked,
-          ratingEarned: data.ratingEarned,
+          ratingStaked,
+          ratingEarned,
           score: data.score,
-          ratingChange: data.ratingStaked + data.ratingEarned,
+          ratingChange: ratingStaked + ratingEarned,
           ratingAfter: data.ratingAfter ?? null,
         };
       })
@@ -169,42 +176,46 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
                   {p.playerId === myPlayerId
                     ? <span className="break-words align-middle bg-info/15 rounded px-1">{p.name}</span>
                     : <span className="break-words align-middle">{p.name}</span>}
-                  {p.ratingAfter != null && (
+                  {settled && p.ratingAfter != null && (
                     <span className="text-xs text-muted-foreground align-middle ml-1">{Math.round(p.ratingAfter)}</span>
                   )}
                 </div>
 
-                <div className="relative h-2 bg-muted rounded overflow-hidden">
-                  {/* Earned Elo indicator */}
-                  <div
-                    className="absolute top-0 h-1 bg-success"
-                    style={{ width: `${(p.ratingEarned / totalEarn) * 100}%` }}
-                  />
-                  {/* Staked rating indicator */}
-                  <div
-                    className="absolute bottom-0 h-1 bg-destructive"
-                    style={{ width: `${(Math.abs(p.ratingStaked) / Math.abs(totalPay)) * 100}%` }}
-                  />
-                </div>
+                {settled && (
+                  <div className="relative h-2 bg-muted rounded overflow-hidden">
+                    {/* Earned Elo indicator */}
+                    <div
+                      className="absolute top-0 h-1 bg-success"
+                      style={{ width: `${(p.ratingEarned / totalEarn) * 100}%` }}
+                    />
+                    {/* Staked rating indicator */}
+                    <div
+                      className="absolute bottom-0 h-1 bg-destructive"
+                      style={{ width: `${(Math.abs(p.ratingStaked) / Math.abs(totalPay)) * 100}%` }}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="text-center text-2xl font-semibold w-12 flex-shrink-0">
                 {p.score}
               </div>
 
-              <div className="text-right w-16 flex-shrink-0">
-                <div
-                  className={`font-semibold text-sm ${
-                    p.ratingChange > 0 ? "text-success" : p.ratingChange < 0 ? "text-destructive" : "text-muted-foreground"
-                  }`}
-                >
-                  {p.ratingChange >= 0 ? "+" : ""}
-                  {p.ratingChange.toFixed(roundToInteger ? 0 : 1)}
+              {settled && (
+                <div className="text-right w-16 flex-shrink-0">
+                  <div
+                    className={`font-semibold text-sm ${
+                      p.ratingChange > 0 ? "text-success" : p.ratingChange < 0 ? "text-destructive" : "text-muted-foreground"
+                    }`}
+                  >
+                    {p.ratingChange >= 0 ? "+" : ""}
+                    {p.ratingChange.toFixed(roundToInteger ? 0 : 1)}
+                  </div>
+                  <div className="text-xs text-muted-foreground whitespace-nowrap">
+                    ({p.ratingStaked.toFixed(roundToInteger ? 0 : 1)} + {p.ratingEarned.toFixed(roundToInteger ? 0 : 1)})
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground whitespace-nowrap">
-                  ({p.ratingStaked.toFixed(roundToInteger ? 0 : 1)} + {p.ratingEarned.toFixed(roundToInteger ? 0 : 1)})
-                </div>
-              </div>
+              )}
             </li>
           ))}
         </ul>

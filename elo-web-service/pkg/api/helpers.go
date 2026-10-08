@@ -167,10 +167,13 @@ func currentActorID(ctx context.Context) id.ID {
 // ---------------------------------------------------------------------------
 
 type matchPlayerJson struct {
-	RatingStaked float64 `json:"rating_staked"`
-	RatingEarned float64 `json:"rating_earned"`
-	Score        float64 `json:"score"`
-	RatingAfter  float64 `json:"rating_after"`
+	// The settlement columns are nil when the match did not settle in the
+	// display arena — the arena's openness rule does not admit it (ADR-36);
+	// the wire form is null, not zero.
+	RatingStaked *float64 `json:"rating_staked"`
+	RatingEarned *float64 `json:"rating_earned"`
+	Score        float64  `json:"score"`
+	RatingAfter  *float64 `json:"rating_after"`
 }
 
 type matchJson struct {
@@ -408,6 +411,16 @@ func float8Ptr(v pgtype.Float8) *float64 {
 		return nil
 	}
 	f := v.Float64
+	return &f
+}
+
+// anyFloatPtr narrows a nullable float column scanned into interface{} (the
+// sqlc CASE trick); any non-float64 value — nil included — reads as absent.
+func anyFloatPtr(v interface{}) *float64 {
+	f, ok := v.(float64)
+	if !ok {
+		return nil
+	}
 	return &f
 }
 

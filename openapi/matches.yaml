@@ -490,20 +490,31 @@ MatchTournament:
 
 MatchPlayer:
   type: object
-  description: Per-player data within a match (keyed by player_id in the score map)
+  description: >-
+    Per-player data within a match (keyed by player_id in the score map). The
+    settlement columns are scoped to the ?tenant='s main arena (ADR-36) and are
+    null when the match did not settle there — its openness rule does not admit
+    the match, so it has no rating meaning for that community. A settled match
+    always carries all three.
   properties:
     rating_staked:
       type: number
       format: double
+      nullable: true
+      description: The rating the player put at stake; null when the match did not settle in the queried arena.
     rating_earned:
       type: number
       format: double
+      nullable: true
+      description: The rating the player earned; null when the match did not settle in the queried arena.
     score:
       type: number
       format: double
     rating_after:
       type: number
       format: double
+      nullable: true
+      description: The player's rating right after the match in the queried arena; null when the match did not settle there.
   required: [rating_staked, rating_earned, score, rating_after]
 
 Match:

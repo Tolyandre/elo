@@ -108,15 +108,11 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 			}
 			order = append(order, r.MatchID)
 		}
-		var ratingAfter float64
-		if v, ok := r.RatingAfter.(float64); ok {
-			ratingAfter = v
-		}
 		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
 			Score:        r.Score,
-			RatingStaked: r.RatingStaked.Float64,
-			RatingEarned: r.RatingEarned.Float64,
-			RatingAfter:  ratingAfter,
+			RatingStaked: float8Ptr(r.RatingStaked),
+			RatingEarned: float8Ptr(r.RatingEarned),
+			RatingAfter:  anyFloatPtr(r.RatingAfter),
 		}
 	}
 
@@ -351,15 +347,11 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 			}
 			order = append(order, r.MatchID)
 		}
-		var ratingAfter float64
-		if v, ok := r.RatingAfter.(float64); ok {
-			ratingAfter = v
-		}
 		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
 			Score:        r.Score,
-			RatingStaked: r.RatingStaked.Float64,
-			RatingEarned: r.RatingEarned.Float64,
-			RatingAfter:  ratingAfter,
+			RatingStaked: float8Ptr(r.RatingStaked),
+			RatingEarned: float8Ptr(r.RatingEarned),
+			RatingAfter:  anyFloatPtr(r.RatingAfter),
 		}
 	}
 

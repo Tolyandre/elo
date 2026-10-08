@@ -1572,16 +1572,25 @@ export interface components {
             league: string | null;
             rank: number | null;
         };
-        /** @description Per-player data within a match (keyed by player_id in the score map) */
+        /** @description Per-player data within a match (keyed by player_id in the score map). The settlement columns are scoped to the ?tenant='s main arena (ADR-36) and are null when the match did not settle there — its openness rule does not admit the match, so it has no rating meaning for that community. A settled match always carries all three. */
         MatchPlayer: {
-            /** Format: double */
-            rating_staked: number;
-            /** Format: double */
-            rating_earned: number;
+            /**
+             * Format: double
+             * @description The rating the player put at stake; null when the match did not settle in the queried arena.
+             */
+            rating_staked: number | null;
+            /**
+             * Format: double
+             * @description The rating the player earned; null when the match did not settle in the queried arena.
+             */
+            rating_earned: number | null;
             /** Format: double */
             score: number;
-            /** Format: double */
-            rating_after: number;
+            /**
+             * Format: double
+             * @description The player's rating right after the match in the queried arena; null when the match did not settle there.
+             */
+            rating_after: number | null;
         };
         /** @description A camp arena (ADR-27) a match belongs to */
         MatchCamp: {

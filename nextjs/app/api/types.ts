@@ -70,13 +70,24 @@ export type BracketSeat = components["schemas"]["BracketSeat"];
 
 export type Period = keyof Player["rank"];
 
-// score fields are camelCased; date is a Date object
+// score fields are camelCased; date is a Date object. The settlement columns
+// are null when the match did not settle in the queried tenant's main arena
+// (ADR-36) — its openness rule does not admit the match, so it has no rating
+// meaning for that community; zeros must never be shown for it.
 export type PlayerScore = {
-    ratingStaked: number;
-    ratingEarned: number;
+    ratingStaked: number | null;
+    ratingEarned: number | null;
     score: number;
     ratingAfter?: number | null;
 };
+
+/**
+ * Whether the match settled (carries rating columns) in the arena the read was
+ * scoped to. Coop matches never settle (ADR-33) and report false the same way.
+ */
+export function matchSettled(m: Match): boolean {
+    return Object.values(m.score).some((s) => s.ratingStaked !== null && s.ratingEarned !== null);
+}
 
 export type MatchCamp = components["schemas"]["MatchCamp"];
 export type MatchTournament = components["schemas"]["MatchTournament"];

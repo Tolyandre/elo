@@ -1187,13 +1187,43 @@ func TestTenants_MatchDisplayArena(t *testing.T) {
 	}
 	earned := 0.0
 	for pid, p := range tenantMatch.Score {
-		if p.RatingAfter == 0 {
-			t.Fatalf("player %s has zero rating_after in the tenant scope", pid)
+		if p.RatingAfter == nil {
+			t.Fatalf("player %s has null rating_after in the tenant scope", pid)
 		}
-		earned += p.RatingEarned
+		earned += *p.RatingEarned
 	}
 	if earned == 0 {
 		t.Fatalf("tenant match shows no rating changes: %+v", tenantMatch.Score)
+	}
+
+	// A community the match does not relate to: its main arena's openness
+	// rule (members_only, no participants are members) does not admit the
+	// match, so both reads scope to no settlement at all — null columns, not
+	// zeros (the view page tells the match apart and hides the ratings).
+	otherTenantID, _, _ := createTenant(t, router, token, "Сторонняя", "members_only", "open")
+	otherQuery := "?tenant=" + otherTenantID.String()
+	otherMatch := decodeMatch("/matches/" + url.PathEscape(matchID) + otherQuery)
+	if len(otherMatch.Score) != 2 {
+		t.Fatalf("other-tenant match score holds %d players, want 2", len(otherMatch.Score))
+	}
+	for pid, p := range otherMatch.Score {
+		if p.RatingStaked != nil || p.RatingEarned != nil || p.RatingAfter != nil {
+			t.Fatalf("player %s carries settlements in a tenant the match does not relate to: %+v", pid, p)
+		}
+		if p.Score == 0 {
+			t.Fatalf("player %s lost the raw score in the other-tenant scope: %+v", pid, p)
+		}
+	}
+	otherList := decodeMatchesPage(t, router, "/matches"+otherQuery+"&player_id="+short(member))
+	for _, m := range otherList.Data {
+		if m.Id != matchID {
+			continue
+		}
+		for pid, p := range m.Score {
+			if p.RatingStaked != nil || p.RatingEarned != nil || p.RatingAfter != nil {
+				t.Fatalf("list row player %s carries settlements in the other tenant: %+v", pid, p)
+			}
+		}
 	}
 
 	// Since phase 5 the ?tenant= parameter is required: both reads without it
@@ -1214,14 +1244,17 @@ func TestTenants_MatchDisplayArena(t *testing.T) {
 	}
 }
 
-// matchJSON is the wire shape the display-arena assertions touch.
+// matchJSON is the wire shape the display-arena assertions touch. The
+// settlement columns are pointers: null on the wire means the match did not
+// settle in the queried arena (ADR-36) — a zero would be indistinguishable
+// from a played-out settlement.
 type matchJSON struct {
 	Id    string `json:"id"`
 	Score map[string]struct {
-		Score        float64 `json:"score"`
-		RatingStaked float64 `json:"rating_staked"`
-		RatingEarned float64 `json:"rating_earned"`
-		RatingAfter  float64 `json:"rating_after"`
+		Score        float64  `json:"score"`
+		RatingStaked *float64 `json:"rating_staked"`
+		RatingEarned *float64 `json:"rating_earned"`
+		RatingAfter  *float64 `json:"rating_after"`
 	} `json:"score"`
 }
 

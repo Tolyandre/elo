@@ -218,7 +218,9 @@ it widens to every match — the feed is never narrower than the rating. A
 tournament match therefore appears in the tenant feed even
 when it does not count into the main arena rating; a tournament's own arena
 keeps counting all tournament matches regardless of openness. Match payloads
-carry settlement columns from the tenant's main arena. Clubs carry no
+carry settlement columns from the tenant's main arena — null when the match
+did not settle there (the openness rule keeps it out of the rating): clients
+show no rating values for such a match, never zeros. Clubs carry no
 feed — the community, not the club, is the feed's identity.
 
 ### Tenant lifecycle
