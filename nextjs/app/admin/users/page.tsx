@@ -21,6 +21,7 @@ import { BackButton } from "@/components/back-button";
 import { PageContainer } from "@/components/page-container";
 import { LoadingRows } from "@/components/loading-rows";
 import { EmptyState } from "@/components/empty-state";
+import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 
 export default function AdminUsersPage() {
   const { id: currentUserId } = useMe();
@@ -66,45 +67,47 @@ export default function AdminUsersPage() {
       <PageHeader title="Управление пользователями" />
       <BackButton href="/admin" />
 
-      {loading && <LoadingRows />}
+      <AdminPageTabs entityType="user" mainLabel="Пользователи">
+        {loading && <LoadingRows />}
 
-      {error && (
-        <p className="text-sm text-destructive mb-4">{error}</p>
-      )}
+        {error && (
+          <p className="text-sm text-destructive mb-4">{error}</p>
+        )}
 
-      {toggleError && (
-        <p className="text-sm text-destructive mb-4">{toggleError}</p>
-      )}
+        {toggleError && (
+          <p className="text-sm text-destructive mb-4">{toggleError}</p>
+        )}
 
-      {!loading && users && users.length === 0 && <EmptyState title="Нет пользователей" />}
+        {!loading && users && users.length === 0 && <EmptyState title="Нет пользователей" />}
 
-      {!loading && users && users.length > 0 && (
-        <div className="space-y-1">
-          {users.map((u) => (
-            <div key={u.id} className="flex items-center justify-between py-3 border-b last:border-0">
-              <Label htmlFor={`switch-${u.id}`} className="text-sm font-normal cursor-pointer">
-                {u.name}
-                {u.player_id && playerNameById.get(u.player_id) && (
-                  <span className="block text-xs text-muted-foreground">
-                    игрок: {playerNameById.get(u.player_id)}
-                  </span>
-                )}
-              </Label>
-              <div className="flex items-center gap-2">
-                {savingIds[u.id] && (
-                  <span className="text-xs text-muted-foreground">Сохранение...</span>
-                )}
-                <Switch
-                  id={`switch-${u.id}`}
-                  checked={u.can_edit}
-                  disabled={!!savingIds[u.id]}
-                  onCheckedChange={(checked) => handleToggle(u, checked)}
-                />
+        {!loading && users && users.length > 0 && (
+          <div className="space-y-1">
+            {users.map((u) => (
+              <div key={u.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                <Label htmlFor={`switch-${u.id}`} className="text-sm font-normal cursor-pointer">
+                  {u.name}
+                  {u.player_id && playerNameById.get(u.player_id) && (
+                    <span className="block text-xs text-muted-foreground">
+                      игрок: {playerNameById.get(u.player_id)}
+                    </span>
+                  )}
+                </Label>
+                <div className="flex items-center gap-2">
+                  {savingIds[u.id] && (
+                    <span className="text-xs text-muted-foreground">Сохранение...</span>
+                  )}
+                  <Switch
+                    id={`switch-${u.id}`}
+                    checked={u.can_edit}
+                    disabled={!!savingIds[u.id]}
+                    onCheckedChange={(checked) => handleToggle(u, checked)}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </AdminPageTabs>
 
       <Dialog open={!!selfRevokeTarget} onOpenChange={(open) => { if (!open) setSelfRevokeTarget(null); }}>
         <DialogContent>

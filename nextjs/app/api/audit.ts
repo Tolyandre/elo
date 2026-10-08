@@ -4,7 +4,7 @@ import { client, unwrap } from "./client";
 import type { components } from "../api-types.gen";
 import type { Base58ID } from "@/lib/id";
 
-export type AuditEntityType = "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament" | "tenant";
+export type AuditEntityType = "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament" | "tenant" | "user";
 export type AuditAction = "created" | "updated" | "renamed" | "deleted";
 
 /** Details narrowed into a discriminated union by action/entity_type. */
@@ -13,6 +13,8 @@ export type AuditEntryDetails =
     | { kind: "rename"; oldName: string; newName: string }
     | { kind: "match-update"; changes: components["schemas"]["AuditMatchUpdateDetails"] }
     | { kind: "tenant-update"; changes: components["schemas"]["AuditTenantUpdateDetails"] }
+    | { kind: "user-update"; changes: components["schemas"]["AuditUserUpdateDetails"] }
+    | { kind: "club-update"; changes: components["schemas"]["AuditClubUpdateDetails"] }
     | { kind: "arena-camp-config"; changes: components["schemas"]["AuditArenaCampConfigDetails"] }
     | { kind: "camp-link"; op: string; matchId: string }
     | { kind: "tournament-config"; changes: components["schemas"]["AuditTournamentConfigDetails"] }
@@ -47,6 +49,10 @@ function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
             details = { kind: "match-update", changes: e.details };
         } else if (e.action === "updated" && "leagues_changed" in e.details) {
             details = { kind: "tenant-update", changes: e.details };
+        } else if (e.action === "updated" && "allow_editing" in e.details) {
+            details = { kind: "user-update", changes: e.details };
+        } else if (e.action === "updated" && "players_changed" in e.details) {
+            details = { kind: "club-update", changes: e.details };
         } else if ("origin_kind" in e.details) {
             details = { kind: "slot-link", changes: e.details as components["schemas"]["AuditSlotLinkDetails"] };
         } else if ("before_player_ids" in e.details || "after_player_ids" in e.details) {

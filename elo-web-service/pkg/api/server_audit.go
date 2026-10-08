@@ -198,6 +198,22 @@ func auditDetailsFromStored(kind string, raw json.RawMessage) (*AuditEntry_Detai
 		if err := details.FromAuditTenantUpdateDetails(v); err != nil {
 			return nil, err
 		}
+	case audit.KindUserUpdate:
+		var v AuditAuditUserUpdateDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditAuditUserUpdateDetails(v); err != nil {
+			return nil, err
+		}
+	case audit.KindClubUpdate:
+		var v AuditAuditClubUpdateDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditAuditClubUpdateDetails(v); err != nil {
+			return nil, err
+		}
 	case audit.KindArenaCampConf:
 		var v audit.ArenaCampConfigDetails
 		if err := json.Unmarshal(shortened, &v); err != nil {

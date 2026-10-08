@@ -18,7 +18,7 @@ AuditCollection:
           type: array
           items:
             type: string
-            enum: [match, game, player, club, tag, arena, tournament, tenant]
+            enum: [match, game, player, club, tag, arena, tournament, tenant, user]
         description: Filter by entity type(s); repeated for several types
       - name: entity_id
         in: query
@@ -73,7 +73,7 @@ AuditEntry:
       description: Display name of the acting user at read time; null for system events.
     entity_type:
       type: string
-      enum: [match, game, player, club, tag, arena, tournament, tenant]
+      enum: [match, game, player, club, tag, arena, tournament, tenant, user]
     entity_id:
       $ref: './common.yaml#/Base58ID'
     action:
@@ -85,7 +85,9 @@ AuditEntry:
         created). Narrow by action: entity → AuditEntityDetails (created/deleted
         of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated →
         AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant
-        settings/composition); arena → AuditArenaCampConfigDetails
+        settings/composition) or AuditUserUpdateDetails (edit-permission toggle)
+        or AuditClubUpdateDetails (club icon/membership, ADR-36);
+        arena → AuditArenaCampConfigDetails
         (camp config) or AuditCampLinkDetails (match attach/detach);
         tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails /
         AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails /
@@ -95,6 +97,8 @@ AuditEntry:
         - $ref: '#/AuditRenameDetails'
         - $ref: '#/AuditMatchUpdateDetails'
         - $ref: '#/AuditTenantUpdateDetails'
+        - $ref: '#/AuditUserUpdateDetails'
+        - $ref: '#/AuditClubUpdateDetails'
         - $ref: '#/AuditArenaCampConfigDetails'
         - $ref: '#/AuditCampLinkDetails'
         - $ref: '#/AuditTournamentConfigDetails'
@@ -242,6 +246,63 @@ AuditTenantUpdateDetails:
           items:
             $ref: './common.yaml#/Base58ID'
         removed_club_ids:
+          type: array
+          items:
+            $ref: './common.yaml#/Base58ID'
+
+AuditUserUpdateDetails:
+  type: object
+  description: >-
+    The edit-permission change behind one user update (the /admin/users page's
+    only write). A no-op update produces no user-update row.
+  required: [schema_version, allow_editing]
+  properties:
+    schema_version:
+      type: integer
+    allow_editing:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: boolean
+        to:
+          type: boolean
+
+AuditClubUpdateDetails:
+  type: object
+  description: >-
+    What changed in one club update: the icon key or the membership (one
+    add/remove per event — membership is changed stint-by-stint, not as a
+    composition PUT). Untouched fields stay null/false; a no-op change
+    produces no club-update row.
+  required: [schema_version, players_changed]
+  properties:
+    schema_version:
+      type: integer
+    players_changed:
+      type: boolean
+    icon:
+      type: object
+      nullable: true
+      required: [from, to]
+      description: Icon key change; a null side means "no icon" there.
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+    players:
+      type: object
+      nullable: true
+      required: [added_player_ids, removed_player_ids]
+      properties:
+        added_player_ids:
+          type: array
+          items:
+            $ref: './common.yaml#/Base58ID'
+        removed_player_ids:
           type: array
           items:
             $ref: './common.yaml#/Base58ID'

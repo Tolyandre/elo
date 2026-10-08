@@ -14,6 +14,7 @@ const ENTITY_NOUN: Record<AuditEntityType, string> = {
     arena: "арену",
     tournament: "турнир",
     tenant: "сообщество",
+    user: "пользователя",
 };
 
 /** One row of the expanded match-edit diff. */
@@ -91,7 +92,8 @@ export function auditIsExpandable(entry: AuditEntry): boolean {
     return (
         entry.action === "renamed" ||
         (entry.action === "updated" && entry.entity_type === "match") ||
-        (entry.action === "updated" && entry.entity_type === "tenant")
+        (entry.action === "updated" && entry.entity_type === "tenant") ||
+        (entry.action === "updated" && entry.entity_type === "user")
     );
 }
 

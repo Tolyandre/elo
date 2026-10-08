@@ -30,6 +30,11 @@ describe("auditSummary", () => {
         expect(auditSummary(entry({ entity_type: "match", action: "updated" }))).toBe("изменил партию");
     });
 
+    it("user permission updates read 'изменил пользователя' and expand to the diff", () => {
+        expect(auditSummary(entry({ entity_type: "user", action: "updated" }))).toBe("изменил пользователя");
+        expect(auditIsExpandable(entry({ entity_type: "user", action: "updated" }))).toBe(true);
+    });
+
     it("renames keep the old→new pair for the expanded section", () => {
         const e = entry({ action: "renamed", details: { kind: "rename", oldName: "Было", newName: "Стало" } });
         expect(auditSummary(e)).toBe("переименовал игру");

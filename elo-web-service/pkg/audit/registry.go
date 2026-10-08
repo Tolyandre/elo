@@ -30,6 +30,8 @@ const (
 	KindRename           = "rename"            // renamed game, player, or club
 	KindMatchUpdate      = "match-update"      // edited match
 	KindTenantUpdate     = "tenant-update"     // tenant settings / composition update (ADR-36)
+	KindUserUpdate       = "user-update"       // edit-permission toggle on a user (/admin/users)
+	KindClubUpdate       = "club-update"       // club icon / membership change (ADR-36)
 	KindArenaCampConf    = "arena-camp-config" // camp arena create/update/delete (ADR-27)
 	KindCampLink         = "camp-link"         // match attached to / detached from a camp (ADR-27)
 	KindTournamentConfig = "tournament-config" // tournament create / config update (ADR-26)
@@ -51,6 +53,7 @@ const (
 	EntityArena      = "arena"
 	EntityTournament = "tournament"
 	EntityTenant     = "tenant"
+	EntityUser       = "user"
 )
 
 // Audited actions, stored in audit_log.action. Kept in sync with the DB CHECK

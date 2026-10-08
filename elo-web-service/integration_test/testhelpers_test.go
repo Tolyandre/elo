@@ -268,6 +268,9 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.PUT("/tenants/:id/clubs", o.DeserializeUser(), a.RequireEditor(), strictWrapper.SetTenantClubs)
 	r.GET("/tenants/:id/feed", strictWrapper.ListTenantFeed)
 	r.GET("/audit", strictWrapper.ListAuditEvents)
+	// Users (admin page): the edit-permission toggle and its audit trail.
+	r.GET("/users", strictWrapper.ListUsers)
+	r.PATCH("/users/:userId", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchUser)
 	// Tournaments (ADR-26): public reads, editor-gated organization, the
 	// self-registration behind the linked-player gate. Creation is
 	// tenant-scoped (ADR-36).

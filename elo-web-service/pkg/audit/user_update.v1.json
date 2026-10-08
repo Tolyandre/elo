@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/user-update.v1.json",
+  "title": "Audit user-update details (v1)",
+  "description": "The edit-permission change behind one user update (the /admin/users page's only write). A no-op update produces no user-update row.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "allow_editing"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "allow_editing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "boolean" },
+        "to": { "type": "boolean" }
+      }
+    }
+  }
+}

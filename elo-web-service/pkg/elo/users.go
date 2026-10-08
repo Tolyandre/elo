@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -16,7 +17,11 @@ type IUserService interface {
 	GetUserByID(ctx context.Context, userID id.ID) (*db.User, error)
 	CreateOrUpdateGoogleUser(ctx context.Context, googleOauthUserId string, googleOauthUserName string) (id.ID, error)
 	ListUsers(ctx context.Context) ([]db.User, error)
-	AllowEditing(ctx context.Context, userID id.ID, allow bool) error
+	// AllowEditing grants/revokes the edit permission and records the change
+	// in the audit log for the actor (ADR-14); a zero actor records a NULL
+	// actor. A no-op (the permission already has the requested value) writes
+	// nothing.
+	AllowEditing(ctx context.Context, actor, userID id.ID, allow bool) error
 	SetUserPlayer(ctx context.Context, userID id.ID, playerID *id.ID) error
 	// ListUserIDsByPlayerIDs resolves the controlling user of each linked
 	// player; used to route per-user SSE events.
@@ -106,10 +111,23 @@ func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthU
 	})
 }
 
-func (s *UserService) AllowEditing(ctx context.Context, userID id.ID, allow bool) error {
-	return s.Queries.UpdateUserAllowEditing(ctx, db.UpdateUserAllowEditingParams{
-		ID:           userID,
-		AllowEditing: allow,
+func (s *UserService) AllowEditing(ctx context.Context, actor, userID id.ID, allow bool) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		old, err := q.GetUser(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if old.AllowEditing == allow {
+			return nil
+		}
+		if err := q.UpdateUserAllowEditing(ctx, db.UpdateUserAllowEditingParams{
+			ID:           userID,
+			AllowEditing: allow,
+		}); err != nil {
+			return err
+		}
+		return recordAuditEvent(ctx, q, actor, audit.EntityUser, audit.ActionUpdated, userID,
+			audit.KindUserUpdate, audit.NewUserUpdateDetails(old.AllowEditing, allow))
 	})
 }
 

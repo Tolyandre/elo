@@ -28,7 +28,7 @@ func (s *StrictServer) ListUsers(ctx context.Context, _ ListUsersRequestObject) 
 }
 
 func (s *StrictServer) PatchUser(ctx context.Context, request PatchUserRequestObject) (PatchUserResponseObject, error) {
-	if err := s.api.UserService.AllowEditing(ctx, parseIDParam(request.UserId), request.Body.CanEdit); err != nil {
+	if err := s.api.UserService.AllowEditing(ctx, currentActorID(ctx), parseIDParam(request.UserId), request.Body.CanEdit); err != nil {
 		return nil, err
 	}
 

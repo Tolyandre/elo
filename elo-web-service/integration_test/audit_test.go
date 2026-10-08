@@ -451,3 +451,152 @@ func TestAuditTenantSettings(t *testing.T) {
 	}
 	_ = clubA
 }
+
+// TestAuditUserPermissionToggle covers the /admin/users audit flow: granting
+// and revoking the edit permission each leave one user-update event with the
+// before → after pair, the target user as entity and the acting admin as
+// actor; a no-op PATCH (same value) leaves no event.
+func TestAuditUserPermissionToggle(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	router := setupRouter(pool)
+	admin, _ := createTestUserWithID(t, pool, true)
+	_, targetID := createTestUserWithID(t, pool, false)
+
+	if w := doJSON(t, router, http.MethodPatch, "/users/"+targetID, admin, `{"can_edit": true}`); w.Code != http.StatusOK {
+		t.Fatalf("grant: %d %s", w.Code, w.Body.String())
+	}
+	// No-op: same value again — nothing to audit.
+	if w := doJSON(t, router, http.MethodPatch, "/users/"+targetID, admin, `{"can_edit": true}`); w.Code != http.StatusOK {
+		t.Fatalf("no-op grant: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPatch, "/users/"+targetID, admin, `{"can_edit": false}`); w.Code != http.StatusOK {
+		t.Fatalf("revoke: %d %s", w.Code, w.Body.String())
+	}
+
+	page := listAudit(t, router, "?entity_type=user")
+	if len(page.Data) != 2 {
+		t.Fatalf("expected 2 user events (granted, revoked), got %d: %+v", len(page.Data), page.Data)
+	}
+	wantEntity := short(idpkg.ID(targetID))
+	for i, e := range page.Data {
+		if e.Action != "updated" || e.EntityID != wantEntity || e.ActorName == "" {
+			t.Fatalf("event %d = {action:%s entity:%s actor:%q}, want updated on %s by the admin", i, e.Action, e.EntityID, e.ActorName, wantEntity)
+		}
+	}
+
+	var detailsOf = func(i int) struct {
+		AllowEditing struct {
+			From bool `json:"from"`
+			To   bool `json:"to"`
+		} `json:"allow_editing"`
+	} {
+		var d struct {
+			AllowEditing struct {
+				From bool `json:"from"`
+				To   bool `json:"to"`
+			} `json:"allow_editing"`
+		}
+		if err := json.Unmarshal(page.Data[i].Details, &d); err != nil {
+			t.Fatalf("details %d: %v (%s)", i, err, page.Data[i].Details)
+		}
+		return d
+	}
+	// Latest first: the revoke precedes the grant.
+	if got := detailsOf(0); !got.AllowEditing.From || got.AllowEditing.To {
+		t.Fatalf("revoke diff = %+v, want true → false", got.AllowEditing)
+	}
+	if got := detailsOf(1); got.AllowEditing.From || !got.AllowEditing.To {
+		t.Fatalf("grant diff = %+v, want false → true", got.AllowEditing)
+	}
+}
+
+// TestAuditClubMembershipAndIcon covers the club admin page's new audit flow:
+// an icon set and each membership add/remove leave one club-update event —
+// icon diffs carry the before → after key, membership diffs the player id —
+// while no-ops (same icon, stint already open, closing an absent stint)
+// leave nothing.
+func TestAuditClubMembershipAndIcon(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	router := setupRouter(pool)
+	admin, _ := createTestUserWithID(t, pool, true)
+
+	clubID := string(newID(t))
+	if w := doJSON(t, router, http.MethodPost, "/clubs", admin, `{"id":"`+clubID+`","name":"Аудит-клуб"}`); w.Code != http.StatusOK {
+		t.Fatalf("create club: %d %s", w.Code, w.Body.String())
+	}
+	player := createTestPlayer(t, pool, "Участник")
+
+	if w := doJSON(t, router, http.MethodPatch, "/clubs/"+clubID, admin, `{"icon": "blue-figure"}`); w.Code != http.StatusOK {
+		t.Fatalf("set icon: %d %s", w.Code, w.Body.String())
+	}
+	// Same icon again: a no-op, no second icon event.
+	if w := doJSON(t, router, http.MethodPatch, "/clubs/"+clubID, admin, `{"icon": "blue-figure"}`); w.Code != http.StatusOK {
+		t.Fatalf("re-set icon: %d %s", w.Code, w.Body.String())
+	}
+
+	if w := doJSON(t, router, http.MethodPost, "/clubs/"+clubID+"/members", admin, `{"player_id": "` + player.String() + `"}`); w.Code != http.StatusOK {
+		t.Fatalf("add member: %d %s", w.Code, w.Body.String())
+	}
+	// Re-add while the stint is open: no-op, no second membership event.
+	if w := doJSON(t, router, http.MethodPost, "/clubs/"+clubID+"/members", admin, `{"player_id": "` + player.String() + `"}`); w.Code != http.StatusOK {
+		t.Fatalf("re-add member: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodDelete, "/clubs/"+clubID+"/members/"+player.String(), admin, ""); w.Code != http.StatusOK {
+		t.Fatalf("remove member: %d %s", w.Code, w.Body.String())
+	}
+	// Closing an already-closed stint: no-op, no event.
+	if w := doJSON(t, router, http.MethodDelete, "/clubs/"+clubID+"/members/"+player.String(), admin, ""); w.Code != http.StatusOK {
+		t.Fatalf("re-remove member: %d %s", w.Code, w.Body.String())
+	}
+
+	page := listAudit(t, router, "?entity_type=club")
+	// The create closes the feed; between it and the newest event exactly the
+	// icon set, the join and the leave.
+	if len(page.Data) != 4 {
+		t.Fatalf("expected 4 club events (created, icon, joined, left), got %d: %+v", len(page.Data), page.Data)
+	}
+	if page.Data[0].Action != "updated" || page.Data[1].Action != "updated" || page.Data[2].Action != "updated" || page.Data[3].Action != "created" {
+		t.Fatalf("actions = [%s, %s, %s, %s], want [updated, updated, updated, created]",
+			page.Data[0].Action, page.Data[1].Action, page.Data[2].Action, page.Data[3].Action)
+	}
+	if page.Data[0].ActorName != page.Data[1].ActorName || page.Data[0].ActorName == "" {
+		t.Fatalf("actors = [%q, %q], want the admin on the new events", page.Data[0].ActorName, page.Data[1].ActorName)
+	}
+
+	var iconDoc struct {
+		Icon *struct {
+			From *string `json:"from"`
+			To   *string `json:"to"`
+		} `json:"icon"`
+	}
+	if err := json.Unmarshal(page.Data[2].Details, &iconDoc); err != nil {
+		t.Fatalf("icon details: %v (%s)", err, page.Data[2].Details)
+	}
+	if iconDoc.Icon == nil || iconDoc.Icon.From != nil || iconDoc.Icon.To == nil || *iconDoc.Icon.To != "blue-figure" {
+		t.Fatalf("icon diff = %+v, want null → blue-figure", iconDoc.Icon)
+	}
+
+	var joinDoc, leaveDoc struct {
+		Players *struct {
+			AddedPlayerIDs   []string `json:"added_player_ids"`
+			RemovedPlayerIDs []string `json:"removed_player_ids"`
+		} `json:"players"`
+	}
+	if err := json.Unmarshal(page.Data[1].Details, &joinDoc); err != nil {
+		t.Fatalf("join details: %v (%s)", err, page.Data[1].Details)
+	}
+	if err := json.Unmarshal(page.Data[0].Details, &leaveDoc); err != nil {
+		t.Fatalf("leave details: %v (%s)", err, page.Data[0].Details)
+	}
+	wantPlayer := short(player)
+	if joinDoc.Players == nil || len(joinDoc.Players.AddedPlayerIDs) != 1 || joinDoc.Players.AddedPlayerIDs[0] != wantPlayer {
+		t.Fatalf("join diff = %+v, want [%s] added", joinDoc.Players, wantPlayer)
+	}
+	if leaveDoc.Players == nil || len(leaveDoc.Players.RemovedPlayerIDs) != 1 || leaveDoc.Players.RemovedPlayerIDs[0] != wantPlayer {
+		t.Fatalf("leave diff = %+v, want [%s] removed", leaveDoc.Players, wantPlayer)
+	}
+}

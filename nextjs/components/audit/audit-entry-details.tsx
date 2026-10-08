@@ -8,6 +8,7 @@ import { useClubs } from "@/app/clubsContext";
 import { MEMBERSHIP_MODE_LABELS, TOURNAMENTS_OPENNESS_LABELS } from "@/app/admin/tenants/labels";
 import { matchUpdateRows, tenantUpdateRows, formatScore } from "@/lib/audit-display";
 import { TenantIcon } from "@/components/tenant-icon";
+import { clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
 import { formatDateTime } from "@/lib/datetime";
 
 /**
@@ -31,7 +32,75 @@ export function AuditEntryDetailsView({ entry }: { entry: AuditEntry }) {
     if (entry.details?.kind === "tenant-update") {
         return <TenantUpdateDetails changes={entry.details.changes} />;
     }
+    if (entry.details?.kind === "user-update") {
+        return <UserUpdateDetails changes={entry.details.changes} />;
+    }
+    if (entry.details?.kind === "club-update") {
+        return <ClubUpdateDetails changes={entry.details.changes} />;
+    }
     return null;
+}
+
+function ClubUpdateDetails({ changes }: { changes: components["schemas"]["AuditClubUpdateDetails"] }) {
+    const { playerMap, playerDisplayName } = usePlayers();
+
+    return (
+        <dl className="space-y-1.5 text-sm">
+            {changes.icon && (
+                <div className="flex flex-wrap gap-x-2 items-center">
+                    <dt className="text-muted-foreground">Иконка:</dt>
+                    <dd className="inline-flex items-center gap-1.5">
+                        <ClubIconByKey icon={changes.icon.from} />
+                        {changes.icon.from ? "иконка" : "нет"}
+                        {" → "}
+                        <ClubIconByKey icon={changes.icon.to} />
+                        {changes.icon.to ? "иконка" : "нет"}
+                    </dd>
+                </div>
+            )}
+            {changes.players && (
+                <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-muted-foreground">Состав:</dt>
+                    <dd>
+                        {[
+                            ...changes.players.added_player_ids.map((id) => `+${playerName(id)}`),
+                            ...changes.players.removed_player_ids.map((id) => `−${playerName(id)}`),
+                        ].join(", ")}
+                    </dd>
+                </div>
+            )}
+        </dl>
+    );
+
+    function playerName(id: string): string {
+        const player = playerMap.get(id);
+        return player ? playerDisplayName(player) : "—";
+    }
+}
+
+// The audit row stores an icon key, not a club object — render the built-in
+// SVG straight from the key (nothing when there was no icon).
+function ClubIconByKey({ icon }: { icon: string | null }) {
+    if (!icon || !isValidClubIcon(icon)) return <span className="text-muted-foreground">нет</span>;
+    return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={clubIconSrc(icon)} alt="" aria-hidden className="inline-block h-4 w-4 shrink-0 align-text-bottom" />
+    );
+}
+
+function UserUpdateDetails({ changes }: { changes: components["schemas"]["AuditUserUpdateDetails"] }) {
+    return (
+        <dl className="space-y-1.5 text-sm">
+            <div className="flex flex-wrap gap-x-2">
+                <dt className="text-muted-foreground">Право на редактирование:</dt>
+                <dd>
+                    {changes.allow_editing.from ? "включено" : "выключено"}
+                    {" → "}
+                    {changes.allow_editing.to ? "включено" : "выключено"}
+                </dd>
+            </div>
+        </dl>
+    );
 }
 
 function TenantUpdateDetails({ changes }: { changes: components["schemas"]["AuditTenantUpdateDetails"] }) {

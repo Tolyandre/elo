@@ -17,6 +17,8 @@ func init() {
 	reg.Register(KindRename, 1, "rename.v1.json")
 	reg.Register(KindMatchUpdate, 1, "match_update.v1.json")
 	reg.Register(KindTenantUpdate, 1, "tenant_update.v1.json")
+	reg.Register(KindUserUpdate, 1, "user_update.v1.json")
+	reg.Register(KindClubUpdate, 1, "club_update.v1.json")
 	reg.Register(KindArenaCampConf, 1, "arena_camp_config.v1.json")
 	reg.Register(KindCampLink, 1, "camp_link.v1.json")
 	reg.Register(KindTournamentConfig, 1, "tournament_config.v1.json")
@@ -131,6 +133,12 @@ type NumberChange struct {
 	To   float64 `json:"to"`
 }
 
+// BoolChange is one before → after pair of a boolean field.
+type BoolChange struct {
+	From bool `json:"from"`
+	To   bool `json:"to"`
+}
+
 // TenantClubsChange is one club-composition replacement: the ids added and
 // removed by the update.
 type TenantClubsChange struct {
@@ -161,6 +169,59 @@ func NewTenantUpdateDetails() TenantUpdateDetails {
 func (d TenantUpdateDetails) IsEmpty() bool {
 	return d.ArenaMembershipMode == nil && d.TournamentsOpenness == nil &&
 		d.StartingRating == nil && !d.LeaguesChanged && d.Icon == nil && d.Clubs == nil
+}
+
+// ---------------------------------------------------------------------------
+// Users: administration actions on /admin/users. The entity_id of the row is
+// the target user.
+// ---------------------------------------------------------------------------
+
+// UserUpdateDetails records the edit-permission change behind one user update
+// (the page's only write). A no-op update produces no row.
+type UserUpdateDetails struct {
+	SchemaVersion int         `json:"schema_version"`
+	AllowEditing  *BoolChange `json:"allow_editing"`
+}
+
+// NewUserUpdateDetails builds v1 user-update details.
+func NewUserUpdateDetails(from, to bool) UserUpdateDetails {
+	return UserUpdateDetails{SchemaVersion: 1, AllowEditing: &BoolChange{From: from, To: to}}
+}
+
+// ---------------------------------------------------------------------------
+// Clubs (ADR-36): icon and membership changes. The entity_id of the row is
+// the club; membership events name players inside the details document.
+// ---------------------------------------------------------------------------
+
+// ClubPlayersChange is one membership change on a club: the player ids added
+// and removed by it (an add/remove event carries exactly one id on its side).
+type ClubPlayersChange struct {
+	AddedPlayerIDs   []string `json:"added_player_ids"`
+	RemovedPlayerIDs []string `json:"removed_player_ids"`
+}
+
+// ClubUpdateDetails describes one club icon or membership change. Fields the
+// change did not touch stay nil/false; a no-op change produces no row.
+type ClubUpdateDetails struct {
+	SchemaVersion  int                `json:"schema_version"`
+	PlayersChanged bool               `json:"players_changed"`
+	Icon           *ValueChange       `json:"icon"`
+	Players        *ClubPlayersChange `json:"players"`
+}
+
+// NewClubIconChange builds the details of a club icon set/clear; a nil side
+// means "no icon" there.
+func NewClubIconChange(from, to *string) ClubUpdateDetails {
+	return ClubUpdateDetails{SchemaVersion: 1, Icon: &ValueChange{From: from, To: to}}
+}
+
+// NewClubMemberChange builds the details of a membership add or remove.
+func NewClubMemberChange(added, removed []string) ClubUpdateDetails {
+	return ClubUpdateDetails{
+		SchemaVersion:  1,
+		PlayersChanged: true,
+		Players:        &ClubPlayersChange{AddedPlayerIDs: added, RemovedPlayerIDs: removed},
+	}
 }
 
 // ---------------------------------------------------------------------------
