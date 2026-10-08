@@ -597,6 +597,12 @@ type Querier interface {
 	// tenant_arena_contains_match, probes match_scores itself and lives in
 	// migration 069).
 	TenantContainsPlayers(ctx context.Context, arg TenantContainsPlayersParams) (bool, error)
+	// Whether ANY of the players currently has an active stint in any club of
+	// the tenant (ADR-36) — the tenant-feed membership predicate: a match lands
+	// in the tenant's feed iff at least one participant is a current member.
+	// The match update path rejects edits that would drop the last one. A row
+	// comes from tenants, so an unknown tenant is no rows (ErrTenantNotFound).
+	TenantHasActiveMemberAmong(ctx context.Context, arg TenantHasActiveMemberAmongParams) (bool, error)
 	// Uniqueness guard for tenant create/rename (case-insensitive, mirroring
 	// clubs). @exclude_id skips the tenant being updated; NULL on create.
 	TenantNameExists(ctx context.Context, arg TenantNameExistsParams) (bool, error)

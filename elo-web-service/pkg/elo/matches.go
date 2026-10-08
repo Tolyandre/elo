@@ -127,7 +127,7 @@ type CalculatorUpdate struct {
 
 type IMatchService interface {
 	AddMatch(ctx context.Context, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
-	UpdateMatch(ctx context.Context, matchID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error)
+	UpdateMatch(ctx context.Context, tenantID id.ID, matchID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error)
 
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
 	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
@@ -449,10 +449,15 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 // UpdateMatch updates an existing match and recalculates Elo ratings for all affected matches
 // Date cannot be null and cannot change more than 3 days
 //
+// tenantID is the community the edit is submitted under (ADR-36): after the
+// change at least one participant must remain a current member of it — the
+// same predicate the tenant feed applies — or the edit is rejected. An
+// unknown tenant is ErrTenantNotFound.
+//
 // When opts.Calculator is nil the match's calculator columns are left untouched;
 // when it is &CalculatorUpdate{Kind: nil} they are cleared; otherwise they are
 // replaced with the validated document.
-func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error) {
+func (s *MatchService) UpdateMatch(ctx context.Context, tenantID id.ID, matchID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to begin tx: %w", err)
@@ -492,6 +497,26 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 	}
 	if err := validateMatchResult(mode, opts.GameScore, opts.GameWon); err != nil {
 		return db.Match{}, err
+	}
+
+	// ADR-36: the edit must not drop the match out of the tenant's feed — at
+	// least one participant has to remain a current member of the community
+	// the edit is submitted under (the feed predicate: an active stint in any
+	// club of the tenant). Checked inside the write transaction, so a
+	// concurrent membership change cannot slip past it. An unknown tenant is
+	// a 404, a failed check a 400.
+	hasMember, err := q.TenantHasActiveMemberAmong(ctx, db.TenantHasActiveMemberAmongParams{
+		TenantID:  tenantID,
+		PlayerIds: playerIDsOf(playerScores),
+	})
+	if err != nil {
+		if db.IsNoRows(err) {
+			return db.Match{}, ErrTenantNotFound
+		}
+		return db.Match{}, fmt.Errorf("check tenant membership: %w", err)
+	}
+	if !hasMember {
+		return db.Match{}, ErrMatchOutsideTenant
 	}
 
 	// ADR-27 (revised): camp links are editable — editing a match exists to

@@ -150,7 +150,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	editMatch := func(mid string, scores ...string) int {
 		body := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}}`,
 			short(gameID), matchDate(4, 0), strings.Join(scores, ","))
-		return doJSON(t, router, http.MethodPut, "/matches/"+mid, admin, body).Code
+		return doJSON(t, router, http.MethodPut, "/matches/"+mid+"?tenant="+string(blueMenTenantID.Base58()), admin, body).Code
 	}
 	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
 
@@ -185,7 +185,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	// edit goes through.
 	unlink := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
 		short(gameID), matchDate(3, 0), strings.Join([]string{sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0)}, ","))
-	if w := doJSON(t, router, http.MethodPut, "/matches/"+fin, admin, unlink); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+fin+"?tenant="+string(blueMenTenantID.Base58()), admin, unlink); w.Code != http.StatusOK {
 		t.Fatalf("unwind unlink of the final: %d %s", w.Code, w.Body.String())
 	}
 	br = getBracket(t, router, short(tid))
@@ -251,14 +251,14 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	//   player set change → 409;
 	guard := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%q:9, %q:5, %q:1, %q:0}}`,
 		short(gameID), matchDate(4, 0), aSeat(0), aSeat(1), aSeat(2), short(createTestPlayer(t, pool, "Подменный")))
-	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1+"?tenant="+string(blueMenTenantID.Base58()), admin, guard); w.Code != http.StatusConflict {
 		t.Fatalf("player-set change must 409, got %d %s", w.Code, w.Body.String())
 	}
 	//   game change → 409;
 	otherGame := createTestGame(t, pool, "Другая игра")
 	guard = fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}}`,
 		short(otherGame), matchDate(4, 0), strings.Join([]string{sc(aSeat(0), 9), sc(aSeat(1), 5), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
-	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1+"?tenant="+string(blueMenTenantID.Base58()), admin, guard); w.Code != http.StatusConflict {
 		t.Fatalf("game change must 409, got %d", w.Code)
 	}
 	//   score-only edit → allowed (200). The 3/10 reversal puts seat1 clearly
@@ -344,7 +344,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	editMatch := func(mid string, skip string, scores ...string) int {
 		body := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}%s}`,
 			short(gameID), matchDate(4, 0), strings.Join(scores, ","), skip)
-		return doJSON(t, router, http.MethodPut, "/matches/"+mid, admin, body).Code
+		return doJSON(t, router, http.MethodPut, "/matches/"+mid+"?tenant="+string(blueMenTenantID.Base58()), admin, body).Code
 	}
 	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
 

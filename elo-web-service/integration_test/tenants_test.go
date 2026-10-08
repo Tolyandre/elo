@@ -1063,6 +1063,49 @@ func TestTenants_MarketMembersOnly(t *testing.T) {
 	}
 }
 
+// TestMatchUpdate_RequiresTenantMembership pins the edit-side tenant gate
+// (ADR-36): an update submitted under a ?tenant= is rejected when after it
+// none of the participants remains a current member of that tenant — the
+// match would drop out of its feed. Keeping a member passes; an unknown
+// tenant is ErrTenantNotFound.
+func TestMatchUpdate_RequiresTenantMembership(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	token, _ := createTestUserWithID(t, pool, true)
+
+	tenantID, clubID, _ := createTenant(t, router, token, "Правка сообщества", "any_member", "open")
+	tenantMember := createBareTestPlayer(t, pool, "Член сообщества правки")
+	guest := createBareTestPlayer(t, pool, "Гость правки")
+	guest2 := createBareTestPlayer(t, pool, "Ещё гость правки")
+	addClubMember(t, router, token, clubID.String(), tenantMember)
+
+	game := createTestGame(t, pool, "Игра правки")
+	svc := newMatchService(pool)
+
+	created, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{tenantMember: 50, guest: 30, guest2: 20}, time.Now(), newMatchOpts(t))
+	if err != nil {
+		t.Fatalf("AddMatch member+guests: %v", err)
+	}
+
+	// Dropping the only community member — the match would leave the feed.
+	if _, err := svc.UpdateMatch(ctx, tenantID, created.ID, game, map[idpkg.ID]float64{guest: 30, guest2: 20}, created.Date.Time, elo.UpdateMatchOpts{}); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("update dropping the last member: err = %v, want ErrMatchOutsideTenant", err)
+	}
+
+	// Keeping the member goes through (score changes only).
+	if _, err := svc.UpdateMatch(ctx, tenantID, created.ID, game, map[idpkg.ID]float64{tenantMember: 55, guest: 25, guest2: 20}, created.Date.Time, elo.UpdateMatchOpts{}); err != nil {
+		t.Fatalf("update keeping the member: %v", err)
+	}
+
+	// An unknown tenant names no community at all.
+	if _, err := svc.UpdateMatch(ctx, newID(t), created.ID, game, map[idpkg.ID]float64{tenantMember: 60, guest: 25, guest2: 20}, created.Date.Time, elo.UpdateMatchOpts{}); !errors.Is(err, elo.ErrTenantNotFound) {
+		t.Fatalf("unknown tenant: err = %v, want ErrTenantNotFound", err)
+	}
+}
+
 // TestTenants_MatchDisplayArena pins the display arena of the match reads
 // (ADR-36): ?tenant= scopes the per-player settlement columns
 // (rating staked/earned/after) to the tenant's main arena on both
@@ -1244,7 +1287,7 @@ func TestTenants_MarketSettlesIntoTenantArena(t *testing.T) {
 
 	// A match edit re-runs the recalculation: the market unsets from the
 	// tenant arena and re-settles there (still nothing in the global arena).
-	if _, err := matchSvc.UpdateMatch(ctx, match.ID, game, map[idpkg.ID]float64{member: 60, guest: 55}, match.Date.Time, elo.UpdateMatchOpts{ActorUserID: createTestAdmin(t, pool)}); err != nil {
+	if _, err := matchSvc.UpdateMatch(ctx, tenantID, match.ID, game, map[idpkg.ID]float64{member: 60, guest: 55}, match.Date.Time, elo.UpdateMatchOpts{ActorUserID: createTestAdmin(t, pool)}); err != nil {
 		t.Fatalf("UpdateMatch: %v", err)
 	}
 	if got := arenaMarketRows(t, pool, tenantArenaID, market.ID); got != 2 {

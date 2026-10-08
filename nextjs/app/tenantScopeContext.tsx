@@ -24,11 +24,12 @@ const TENANT_STORAGE_KEY = "current-tenant-id";
 
 // The pages whose URL carries the current tenant (deep-linkable surfaces).
 // Everywhere else the tenant lives in localStorage and is re-resolved on
-// navigation. /new is one of them: its forms create under the tenant, so the
-// URL must always name it (a created match/market lands in that tenant's
-// feed — a stale default would be a silent mismatch).
+// navigation. /new and /matches/edit are among them: their forms create and
+// edit under the tenant, so the URL must always name it — a created or
+// edited match lands in that tenant's feed, and a stale default would be a
+// silent mismatch.
 function pageHonorsTenant(pathname: string | null): boolean {
-    return pathname === "/" || (pathname?.startsWith("/players/view") ?? false) || pathname === "/new";
+    return pathname === "/" || (pathname?.startsWith("/players/view") ?? false) || pathname === "/new" || pathname === "/matches/edit";
 }
 
 export type TenantScope = {

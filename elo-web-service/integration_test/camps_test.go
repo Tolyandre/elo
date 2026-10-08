@@ -362,7 +362,7 @@ func TestCamp_MatchEditRelinksCamps(t *testing.T) {
 	aOnly := set(campA.ID)
 
 	// Echoing the stored set is a no-op: the link survives, no new audit row.
-	if _, err := mSvc.UpdateMatch(ctx, matchID, gameID, map[idpkg.ID]float64{p1: 8, p2: 6}, matchTime.Add(time.Minute),
+	if _, err := mSvc.UpdateMatch(ctx, elo.BlueMenTenantID, matchID, gameID, map[idpkg.ID]float64{p1: 8, p2: 6}, matchTime.Add(time.Minute),
 		elo.UpdateMatchOpts{CampArenaIDs: aOnly, ActorUserID: actor}); err != nil {
 		t.Fatalf("edit with the same camp set: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestCamp_MatchEditRelinksCamps(t *testing.T) {
 	// synchronously (its players tab empties), and audits the detach. The
 	// match itself survives as an ordinary match.
 	empty := set()
-	if _, err := mSvc.UpdateMatch(ctx, matchID, gameID, map[idpkg.ID]float64{p1: 8, p2: 6}, matchTime.Add(time.Minute),
+	if _, err := mSvc.UpdateMatch(ctx, elo.BlueMenTenantID, matchID, gameID, map[idpkg.ID]float64{p1: 8, p2: 6}, matchTime.Add(time.Minute),
 		elo.UpdateMatchOpts{CampArenaIDs: empty, ActorUserID: actor}); err != nil {
 		t.Fatalf("detach edit: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestCamp_MatchEditRelinksCamps(t *testing.T) {
 	// Attaching a different camp relinks; both a re-attach of A and a fresh
 	// link to B work in one edit.
 	both := set(campA.ID, campB.ID)
-	if _, err := mSvc.UpdateMatch(ctx, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, matchTime.Add(2*time.Minute),
+	if _, err := mSvc.UpdateMatch(ctx, elo.BlueMenTenantID, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, matchTime.Add(2*time.Minute),
 		elo.UpdateMatchOpts{CampArenaIDs: both, ActorUserID: actor}); err != nil {
 		t.Fatalf("relink edit: %v", err)
 	}
@@ -425,20 +425,20 @@ func TestCamp_MatchEditRelinksCamps(t *testing.T) {
 	}
 
 	// A date moved outside the linked camps without detaching → 409.
-	if _, err := mSvc.UpdateMatch(ctx, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, end.Add(2*time.Hour),
+	if _, err := mSvc.UpdateMatch(ctx, elo.BlueMenTenantID, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, end.Add(2*time.Hour),
 		elo.UpdateMatchOpts{ActorUserID: actor}); !errors.Is(err, elo.ErrMatchOutsideCampWindows) {
 		t.Fatalf("date outside linked windows: got %v, want ErrMatchOutsideCampWindows", err)
 	}
 
 	// An explicit set containing an out-of-window camp → 400.
 	outOfWindow := set(campA.ID, campB.ID)
-	if _, err := mSvc.UpdateMatch(ctx, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, end.Add(2*time.Hour),
+	if _, err := mSvc.UpdateMatch(ctx, elo.BlueMenTenantID, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, end.Add(2*time.Hour),
 		elo.UpdateMatchOpts{CampArenaIDs: outOfWindow, ActorUserID: actor}); !errors.Is(err, elo.ErrCampArenaInvalid) {
 		t.Fatalf("explicit out-of-window camp: got %v, want ErrCampArenaInvalid", err)
 	}
 
 	// Unknown and non-camp ids stay 400.
-	if _, err := mSvc.UpdateMatch(ctx, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, matchTime,
+	if _, err := mSvc.UpdateMatch(ctx, elo.BlueMenTenantID, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, matchTime,
 		elo.UpdateMatchOpts{CampArenaIDs: set(newID(t)), ActorUserID: actor}); !errors.Is(err, elo.ErrCampArenaInvalid) {
 		t.Fatalf("unknown camp id: got %v, want ErrCampArenaInvalid", err)
 	}
@@ -446,7 +446,7 @@ func TestCamp_MatchEditRelinksCamps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("game arena: %v", err)
 	}
-	if _, err := mSvc.UpdateMatch(ctx, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, matchTime,
+	if _, err := mSvc.UpdateMatch(ctx, elo.BlueMenTenantID, matchID, gameID, map[idpkg.ID]float64{p1: 7, p2: 7}, matchTime,
 		elo.UpdateMatchOpts{CampArenaIDs: set(gameArena.ID), ActorUserID: actor}); !errors.Is(err, elo.ErrCampArenaInvalid) {
 		t.Fatalf("non-camp arena id: got %v, want ErrCampArenaInvalid", err)
 	}

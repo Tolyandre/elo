@@ -69,7 +69,7 @@ export async function addMatchPromise(payload: {
     return (await unwrap(client.POST("/matches", { body: payload }))).data;
 }
 
-export async function updateMatchPromise(matchId: Base58ID, payload: {
+export async function updateMatchPromise(matchId: Base58ID, tenant: Base58ID, payload: {
     game_id: Base58ID;
     /** Per-player scores — competitive matches only; coop matches send game_score/game_won + player_ids instead. */
     score?: Record<string, number>;
@@ -86,7 +86,7 @@ export async function updateMatchPromise(matchId: Base58ID, payload: {
     calculator_data?: Record<string, never> | null;
 }) {
     const data = await unwrap(client.PUT("/matches/{id}", {
-        params: { path: { id: matchId } },
+        params: { path: { id: matchId }, query: { tenant } },
         body: payload,
     }));
     return data;

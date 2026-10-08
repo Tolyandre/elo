@@ -444,6 +444,36 @@ func (q *Queries) TenantContainsPlayers(ctx context.Context, arg TenantContainsP
 	return contains, err
 }
 
+const tenantHasActiveMemberAmong = `-- name: TenantHasActiveMemberAmong :one
+SELECT EXISTS (
+    SELECT 1
+    FROM clubs c
+    JOIN player_club_membership pcm ON pcm.club_id = c.id
+    WHERE c.tenant_id = t.id
+      AND pcm.player_id = ANY($1::uuid[])
+      AND pcm.left_at IS NULL
+) AS has_member
+FROM tenants t
+WHERE t.id = $2
+`
+
+type TenantHasActiveMemberAmongParams struct {
+	PlayerIds []id.ID `json:"player_ids"`
+	TenantID  id.ID   `json:"tenant_id"`
+}
+
+// Whether ANY of the players currently has an active stint in any club of
+// the tenant (ADR-36) — the tenant-feed membership predicate: a match lands
+// in the tenant's feed iff at least one participant is a current member.
+// The match update path rejects edits that would drop the last one. A row
+// comes from tenants, so an unknown tenant is no rows (ErrTenantNotFound).
+func (q *Queries) TenantHasActiveMemberAmong(ctx context.Context, arg TenantHasActiveMemberAmongParams) (bool, error) {
+	row := q.db.QueryRow(ctx, tenantHasActiveMemberAmong, arg.PlayerIds, arg.TenantID)
+	var has_member bool
+	err := row.Scan(&has_member)
+	return has_member, err
+}
+
 const tenantNameExists = `-- name: TenantNameExists :one
 SELECT EXISTS(
     SELECT 1 FROM tenants

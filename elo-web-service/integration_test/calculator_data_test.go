@@ -109,7 +109,7 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 	}
 	updatedRaw, _ := json.Marshal(updatedDoc)
 	kind := "iaww"
-	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[idpkg.ID]float64{playerA: 0, playerB: 17}, created.Date.Time, elo.UpdateMatchOpts{
+	if _, err := svc.UpdateMatch(ctx, elo.BlueMenTenantID, created.ID, gameID, map[idpkg.ID]float64{playerA: 0, playerB: 17}, created.Date.Time, elo.UpdateMatchOpts{
 		Calculator: &elo.CalculatorUpdate{Kind: &kind, Version: 2, Data: updatedRaw},
 	}); err != nil {
 		t.Fatalf("UpdateMatch replace: %v", err)
@@ -124,7 +124,7 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 	}
 
 	// Clear.
-	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, created.Date.Time, elo.UpdateMatchOpts{
+	if _, err := svc.UpdateMatch(ctx, elo.BlueMenTenantID, created.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, created.Date.Time, elo.UpdateMatchOpts{
 		Calculator: &elo.CalculatorUpdate{Kind: nil},
 	}); err != nil {
 		t.Fatalf("UpdateMatch clear: %v", err)
@@ -161,7 +161,7 @@ func TestUpdateMatch_LeavesCalculatorUntouchedWhenOptsNil(t *testing.T) {
 		t.Fatalf("AddMatch: %v", err)
 	}
 
-	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 10}, created.Date.Time, elo.UpdateMatchOpts{}); err != nil {
+	if _, err := svc.UpdateMatch(ctx, elo.BlueMenTenantID, created.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 10}, created.Date.Time, elo.UpdateMatchOpts{}); err != nil {
 		t.Fatalf("UpdateMatch: %v", err)
 	}
 	rows, _ := db.New(pool).GetMatchWithPlayers(ctx, db.GetMatchWithPlayersParams{ID: created.ID, ArenaID: elo.BlueMenArenaID})

@@ -177,6 +177,13 @@ func TestAuditMatchCreateAndUpdate(t *testing.T) {
 	if w := doJSON(t, router, http.MethodPost, "/players", alice, `{"id":"`+playerB+`","name":"Игрок Б"}`); w.Code != http.StatusOK {
 		t.Fatalf("create player: %d %s", w.Code, w.Body.String())
 	}
+	// The match edit is tenant-gated (ADR-36): make both players «Синие люди»
+	// members so the update passes the feed-membership check.
+	for _, pid := range []string{playerA, playerB} {
+		if err := addBlueMenStint(context.Background(), pool, idpkg.ID(pid)); err != nil {
+			t.Fatalf("add stint: %v", err)
+		}
+	}
 
 	matchID := string(newID(t))
 	matchDate := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
@@ -200,12 +207,12 @@ func TestAuditMatchCreateAndUpdate(t *testing.T) {
 	// Edit: change A's score and shift the date 30 minutes forward.
 	newDate := time.Now().Add(-30 * time.Minute).UTC().Format(time.RFC3339)
 	updateBody := fmt.Sprintf(`{"game_id":%q,"date":%q,"score":{%q:20,%q:5}}`, gameID, newDate, playerA, playerB)
-	if w := doJSON(t, router, http.MethodPut, "/matches/"+matchID, bob, updateBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+matchID+"?tenant="+string(blueMenTenantID.Base58()), bob, updateBody); w.Code != http.StatusOK {
 		t.Fatalf("update match: %d %s", w.Code, w.Body.String())
 	}
 
 	// Same body again: a no-op edit must not add an audit row.
-	if w := doJSON(t, router, http.MethodPut, "/matches/"+matchID, bob, updateBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+matchID+"?tenant="+string(blueMenTenantID.Base58()), bob, updateBody); w.Code != http.StatusOK {
 		t.Fatalf("no-op update match: %d %s", w.Code, w.Body.String())
 	}
 

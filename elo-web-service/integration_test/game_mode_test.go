@@ -342,7 +342,7 @@ func TestGameMode_MixedGameModeToggle(t *testing.T) {
 	}
 	convBody := coopMatchBody(conv, mixed, []idpkg.ID{playerA, playerB},
 		fmt.Sprintf(`"game_score":12,"game_won":true,"date":%q`, matchDate(0, 5)))
-	if w := doJSON(t, router, http.MethodPut, "/matches/"+conv.String(), editorToken, convBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+conv.String()+"?tenant="+string(blueMenTenantID.Base58()), editorToken, convBody); w.Code != http.StatusOK {
 		t.Fatalf("convert to coop: %d %s", w.Code, w.Body.String())
 	}
 	var settlements int

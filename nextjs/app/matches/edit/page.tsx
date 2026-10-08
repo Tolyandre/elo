@@ -13,7 +13,9 @@ import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { Match, getMatchByIdPromise, updateMatchPromise } from "../../api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, AlertCircleIcon, Loader2 } from "lucide-react";
+import { AlertCircle, AlertCircleIcon, Loader2, Users } from "lucide-react";
+import { ErrorAlert } from "@/components/error-alert";
+import { EmptyState } from "@/components/empty-state";
 import { MatchForm, MatchFormAuthAlerts } from "../MatchForm";
 import { AuthWarning } from "@/components/auth-warning";
 import { Button } from "@/components/ui/button";
@@ -35,7 +37,10 @@ function MatchEditPageWrapped() {
     const { matches, loading: matchesLoading, invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
     const me = useMe();
-    const { tenantId } = useTenantScope();
+    // The edit belongs to a community (ADR-36): reads scope the settlement
+    // columns to its main arena and the update validates that the match
+    // still belongs to its feed — a tenantless edit does not work.
+    const { tenant, tenantId, ready: tenantReady } = useTenantScope();
     const searchParams = useSearchParams();
     const id = toBase58ID(searchParams.get("id") ?? "");
 
@@ -86,6 +91,28 @@ function MatchEditPageWrapped() {
 
     if (!id) return null;
 
+    // Tenantless edits are off (ADR-36): wait for the scope, then either the
+    // chooser's empty state (the scope writes ?tenant= back once resolved)
+    // or an unknown-tenant error.
+    if (!tenant || !tenantId) {
+        return (
+            <PageContainer width="form">
+                <PageHeader title="Редактирование партии" />
+                {!tenantReady ? (
+                    <LoadingRows />
+                ) : tenantId ? (
+                    <ErrorAlert message="Сообщество не найдено — возможно, оно было удалено." />
+                ) : (
+                    <EmptyState icon={Users} title="Выберите сообщество">
+                        <p className="text-sm text-muted-foreground">
+                            Редактирование работает внутри сообщества — переключатель в шапке сайта.
+                        </p>
+                    </EmptyState>
+                )}
+            </PageContainer>
+        );
+    }
+
     // ── Calculator-backed pending match: dispatch to the calculator editor. ───
     // Saves go through updatePendingMatch (carrying the recomputed
     // calculator_data) instead of updateMatchPromise.
@@ -96,7 +123,7 @@ function MatchEditPageWrapped() {
                 kind={kind}
                 storage={(editPending.calculatorData ?? {}) as Record<string, unknown>}
                 readOnly={!me.canEdit}
-                onSaved={() => router.push(`/matches/view?id=${editPending.clientId}`)}
+                onSaved={() => router.push(`/matches/view?id=${editPending.clientId}&tenant=${tenantId}`)}
                 save={(state, adapter) =>
                     updatePendingMatch(editPending.clientId, {
                         gameId: editPending.gameId,
@@ -135,9 +162,9 @@ function MatchEditPageWrapped() {
                 kind={kind}
                 storage={(match.calculator_data ?? {}) as Record<string, unknown>}
                 readOnly={!me.canEdit}
-                onSaved={() => router.push(`/matches/view?id=${match.id}`)}
+                onSaved={() => router.push(`/matches/view?id=${match.id}&tenant=${tenantId}`)}
                 save={async (state, adapter) => {
-                    await updateMatchPromise(match.id, {
+                    await updateMatchPromise(match.id, tenantId, {
                         game_id: match.game_id,
                         score: adapter.scoreFromState(state),
                         // The calculator editor never edits the date: resubmit the raw

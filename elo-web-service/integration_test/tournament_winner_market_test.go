@@ -453,7 +453,7 @@ func TestTournamentWinnerMarket_RevertOnEdit(t *testing.T) {
 	// Tie at the top: no strict cut — the final replays, the tournament goes
 	// back to running and the settled market reopens.
 	matchSvc := newMatchService(pool)
-	if _, err := matchSvc.UpdateMatch(ctx, gf.ID, gameID, map[idpkg.ID]float64{players[0]: 10, players[1]: 10, players[2]: 2, players[3]: 0}, gfDate, elo.UpdateMatchOpts{}); err != nil {
+	if _, err := matchSvc.UpdateMatch(ctx, blueMenTenantID, gf.ID, gameID, map[idpkg.ID]float64{players[0]: 10, players[1]: 10, players[2]: 2, players[3]: 0}, gfDate, elo.UpdateMatchOpts{}); err != nil {
 		t.Fatalf("UpdateMatch (tie): %v", err)
 	}
 	var status string
@@ -522,7 +522,7 @@ func TestTournamentWinnerMarket_RecalcIdempotent(t *testing.T) {
 	// An identical rewrite of the determining match triggers a full recalc
 	// from its date — which unsets the market and must re-settle it inline.
 	matchSvc := newMatchService(pool)
-	if _, err := matchSvc.UpdateMatch(ctx, gf.ID, gameID, map[idpkg.ID]float64{players[0]: 10, players[1]: 6, players[2]: 2, players[3]: 0}, gfDate, elo.UpdateMatchOpts{}); err != nil {
+	if _, err := matchSvc.UpdateMatch(ctx, blueMenTenantID, gf.ID, gameID, map[idpkg.ID]float64{players[0]: 10, players[1]: 6, players[2]: 2, players[3]: 0}, gfDate, elo.UpdateMatchOpts{}); err != nil {
 		t.Fatalf("UpdateMatch (recalc trigger): %v", err)
 	}
 
@@ -616,7 +616,7 @@ func TestTournamentWinnerMarket_RecalcKeepsFinalResolution(t *testing.T) {
 	// from its date — over both winners rounds and the final — and must keep
 	// the resolution identical (same date, same determining match).
 	matchSvc := newMatchService(pool)
-	if _, err := matchSvc.UpdateMatch(ctx, semiA.ID, gameID, semiAScores, semiADate, elo.UpdateMatchOpts{}); err != nil {
+	if _, err := matchSvc.UpdateMatch(ctx, blueMenTenantID, semiA.ID, gameID, semiAScores, semiADate, elo.UpdateMatchOpts{}); err != nil {
 		t.Fatalf("UpdateMatch (recalc over earlier rounds): %v", err)
 	}
 

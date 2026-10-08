@@ -197,7 +197,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	snapshotB := latestRating(t, pool, playerB)
 
 	// 6. Trigger recalculation via UpdateMatch on M1 with identical data
-	_, err = matchSvc.UpdateMatch(ctx, m1.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, t1, elo.UpdateMatchOpts{})
+	_, err = matchSvc.UpdateMatch(ctx, elo.BlueMenTenantID, m1.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, t1, elo.UpdateMatchOpts{})
 	if err != nil {
 		t.Fatalf("UpdateMatch (recalc trigger): %v", err)
 	}

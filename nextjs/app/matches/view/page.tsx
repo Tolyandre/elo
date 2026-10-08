@@ -73,13 +73,17 @@ function NotFound() {
   );
 }
 
-function EditAction({ id, disabled = false, viaCalculator = false }: { id: string; disabled?: boolean; viaCalculator?: boolean }) {
+function EditAction({ id, tenantId, disabled = false, viaCalculator = false }: { id: string; tenantId: Base58ID | null; disabled?: boolean; viaCalculator?: boolean }) {
   // Both calculator-backed and plain matches edit at /matches/edit; the edit
   // page dispatches to the calculator UI or the generic form based on
   // calculator_kind. The icon differs so the user can tell from the list/view
-  // which editor will open.
+  // which editor will open. The edit is tenant-scoped (ADR-36), so the link
+  // names the community explicitly.
   const Icon = viaCalculator ? ClipboardEdit : Edit2;
   const label = viaCalculator ? "Открыть в калькуляторе" : "Редактировать";
+  const href = tenantId
+    ? `/matches/edit?id=${encodeURIComponent(id)}&tenant=${tenantId}`
+    : `/matches/edit?id=${encodeURIComponent(id)}`;
   if (disabled) {
     return (
       <Button variant="outline" disabled aria-label={label}>
@@ -89,7 +93,7 @@ function EditAction({ id, disabled = false, viaCalculator = false }: { id: strin
   }
   return (
     <Button asChild variant="outline">
-      <Link href={`/matches/edit?id=${encodeURIComponent(id)}`} aria-label={label}>
+      <Link href={href} aria-label={label}>
         <Icon className="h-4 w-4" />
       </Link>
     </Button>
@@ -157,7 +161,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
     <PageContainer width="narrow">
       <BackButton href="/?tab=feed" />
 
-      <PageHeader title="Просмотр партии" action={<EditAction id={match.id} viaCalculator={!!match.calculator_kind} />} />
+      <PageHeader title="Просмотр партии" action={<EditAction id={match.id} tenantId={tenantId} viaCalculator={!!match.calculator_kind} />} />
 
       <Card>
         <CardContent>
@@ -191,6 +195,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
 function PendingMatchView({ clientId }: { clientId: Base58ID }) {
   const { pendingMatches, ready, isSyncing, deletePendingMatch } = useOffline();
   const { canEdit } = useMe();
+  const { tenantId } = useTenantScope();
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -225,7 +230,7 @@ function PendingMatchView({ clientId }: { clientId: Base58ID }) {
 
       <PageHeader
         title="Просмотр партии"
-        action={canEdit ? <EditAction id={clientId} disabled={isSyncing} viaCalculator={!!match.calculatorKind} /> : undefined}
+        action={canEdit ? <EditAction id={clientId} tenantId={tenantId} disabled={isSyncing} viaCalculator={!!match.calculatorKind} /> : undefined}
       />
 
       <PendingMatchCard match={match} />

@@ -65,6 +65,9 @@ var (
 	ErrTenantClubsInvalid          = errors.New("состав клубов сообщества задан неверно")
 	ErrClubInTenantDeleteForbidden = errors.New("клуб входит в сообщество и не может быть удалён: сначала исключите его из сообщества")
 	ErrClubAlreadyInTenant         = errors.New("клуб уже входит в другое сообщество")
+	// The match-edit feed guard (ADR-36): the edit would drop the match from
+	// the tenant's feed, so it is rejected.
+	ErrMatchOutsideTenant          = errors.New("нужен хотя бы один участник сообщества")
 
 	// Game modes (ADR-33).
 	ErrCoopScoresRejected  = errors.New("кооперативная партия не принимает очки игроков — отправьте общий игровой результат")

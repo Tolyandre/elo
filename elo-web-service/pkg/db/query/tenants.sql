@@ -132,6 +132,23 @@ SELECT EXISTS (
       AND pcm.left_at IS NULL
 ) AS is_member;
 
+-- name: TenantHasActiveMemberAmong :one
+-- Whether ANY of the players currently has an active stint in any club of
+-- the tenant (ADR-36) — the tenant-feed membership predicate: a match lands
+-- in the tenant's feed iff at least one participant is a current member.
+-- The match update path rejects edits that would drop the last one. A row
+-- comes from tenants, so an unknown tenant is no rows (ErrTenantNotFound).
+SELECT EXISTS (
+    SELECT 1
+    FROM clubs c
+    JOIN player_club_membership pcm ON pcm.club_id = c.id
+    WHERE c.tenant_id = t.id
+      AND pcm.player_id = ANY(sqlc.arg('player_ids')::uuid[])
+      AND pcm.left_at IS NULL
+) AS has_member
+FROM tenants t
+WHERE t.id = sqlc.arg('tenant_id');
+
 -- name: ListTenantFeedEvents :many
 -- One page of the tenant feed (GET /tenants/{id}/feed, ADR-36): the
 -- community's activity, membership-scoped — deliberately NOT

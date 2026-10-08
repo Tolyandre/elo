@@ -294,6 +294,11 @@ Staged forward, each phase shippable:
   their bets). The main page's market cards render only the current tenant's
   markets, consistent with the feed. Arena responses carry `tenant_id` (the
   API mapping had omitted it), so the arena view's edit pencil correctly
-  stays off the system-managed main arena.
+  stays off the system-managed main arena. Match edits are tenant-scoped
+  too: `PUT /matches/{id}` takes a required `?tenant=` and rejects (400) an
+  edit after which none of the participants is a current member of that
+  tenant — the feed predicate — while the tenant membership re-evaluation on
+  replay stays the settling side's job; the edit page carries `?tenant=` in
+  its URL and does not work tenantless.
 - The dev seed keeps its default club as the «Синие люди» tenant's club and
   seeds the tenant itself (with its `blue-figure` icon, phase 6).

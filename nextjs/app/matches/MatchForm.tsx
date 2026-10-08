@@ -357,7 +357,15 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         setSubmitting(true);
         try {
             if (editSaved) {
-                await updateMatchPromise(editSaved.id, {
+                // The edit is submitted under the current community (ADR-36):
+                // the server rejects it when the match would drop out of the
+                // tenant's feed. The edit page only renders under a tenant.
+                if (!tenant) {
+                    setSubmitting(false);
+                    setBottomErrorMessage("Выберите сообщество");
+                    return;
+                }
+                await updateMatchPromise(editSaved.id, tenant.id, {
                     game_id: selectedGameId,
                     // Untouched date → original full-precision instant (edit-date.ts).
                     date: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
@@ -377,7 +385,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 invalidateMatches();
                 invalidatePlayers();
                 toast.success("Партия обновлена");
-                router.push(`/matches/view?id=${editSaved.id}`);
+                router.push(`/matches/view?id=${editSaved.id}&tenant=${tenant.id}`);
                 return;
             }
             if (editPending) {
@@ -513,13 +521,6 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             )}
             <div>
                 <h2 className="font-semibold mb-2">Участники:</h2>
-                {!isEdit && tenant && (
-                    <p className="text-xs text-muted-foreground mb-2">
-                        {tenant.arena_membership_mode === "members_only"
-                            ? `Сообщество «${tenant.name}» принимает только партии своих участников.`
-                            : `Партия попадёт в ленту сообщества «${tenant.name}», если среди участников есть хотя бы один его участник.`}
-                    </p>
-                )}
                 <PlayerMultiSelect
                     value={participants.map(p => p.id)}
                     onChange={handlePlayersChange}

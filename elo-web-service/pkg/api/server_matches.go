@@ -415,6 +415,11 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 }
 
 func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchRequestObject) (UpdateMatchResponseObject, error) {
+	// The edit is submitted under a community (ADR-36): the service rejects
+	// an edit after which the match would no longer belong to its feed.
+	if request.Params.Tenant == "" {
+		return UpdateMatch400JSONResponse{Status: StatusFail, Message: "tenant query parameter is required"}, nil
+	}
 	gameID, playerScores, err := parseMatchScores(request.Body.GameId, request.Body.Score)
 	if err != nil {
 		return UpdateMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
@@ -454,7 +459,7 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 		opts.Calculator = calc
 	}
 
-	_, err = s.api.MatchService.UpdateMatch(ctx, parseIDParam(request.Id), gameID, playerScores, request.Body.Date, opts)
+	_, err = s.api.MatchService.UpdateMatch(ctx, parseIDParam(request.Params.Tenant), parseIDParam(request.Id), gameID, playerScores, request.Body.Date, opts)
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:

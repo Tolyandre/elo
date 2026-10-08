@@ -161,7 +161,7 @@ beforeEach(() => {
 });
 
 describe("MatchForm tenant membership rules, create mode (ADR-36)", () => {
-    it("any_member: shows the community hint and blocks a members-less roster", () => {
+    it("any_member: blocks a members-less roster", () => {
         tenantScope.tenant = { id: pid("t1"), name: "Синие люди", arena_membership_mode: "any_member" };
         tenantScope.memberIds = [pid("p1")];
         const view = renderForm();
@@ -169,7 +169,6 @@ describe("MatchForm tenant membership rules, create mode (ADR-36)", () => {
             view.byTestId("pick-game").click();
             view.byTestId("pick-guests").click();
         });
-        expect(view.text()).toContain("если среди участников есть хотя бы один его участник");
         expect(view.text()).toContain("Нужен хотя бы один участник сообщества «Синие люди»");
         expect(view.submitButton().disabled).toBe(true);
         view.unmount();

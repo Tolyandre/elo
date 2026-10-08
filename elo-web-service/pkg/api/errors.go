@@ -62,6 +62,7 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrTenantSettingsInvalid),
 		errors.Is(err, elo.ErrTenantClubsInvalid),
 		errors.Is(err, elo.ErrClubInTenantDeleteForbidden),
+		errors.Is(err, elo.ErrMatchOutsideTenant),
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 
@@ -75,6 +76,7 @@ func domainStatusCode(err error) int {
 
 	// --- 404 Not Found ------------------------------------------------------
 	case errors.Is(err, elo.ErrMatchNotFound),
+		errors.Is(err, elo.ErrTenantNotFound),
 		db.IsNoRows(err):
 		return http.StatusNotFound
 

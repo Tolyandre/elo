@@ -4056,7 +4056,10 @@ export interface operations {
     };
     UpdateMatch: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description The community the edit is submitted under (ADR-36): the update rejects (400) an edit after which none of the participants is a current member of the tenant — such a match would drop out of its feed. Naming no existing tenant is a 404. */
+                tenant: string;
+            };
             header?: never;
             path: {
                 id: string;

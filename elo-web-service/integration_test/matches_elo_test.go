@@ -149,7 +149,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 
 	// 5. Move M2 to tPast (now-30min). This makes resolved_at = now-30min < placed_at (≈now).
 	// Bets fall in [now-30min, now+2h) → conflict must be returned.
-	_, err = matchSvc.UpdateMatch(ctx, m2.ID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, tPast, elo.UpdateMatchOpts{})
+	_, err = matchSvc.UpdateMatch(ctx, elo.BlueMenTenantID, m2.ID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, tPast, elo.UpdateMatchOpts{})
 	if err == nil {
 		t.Fatal("UpdateMatch: expected error, got nil")
 	}
