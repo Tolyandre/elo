@@ -12,8 +12,6 @@ const state = vi.hoisted(() => ({
     tenantsLoading: false,
     clubs: [] as { id: string; name: string; player_ids: string[]; tenant_id?: string }[],
     clubsLoading: false,
-    playerId: undefined as string | undefined,
-    meLoading: false,
 }));
 
 vi.mock("../app/tenantsContext", () => ({
@@ -21,9 +19,6 @@ vi.mock("../app/tenantsContext", () => ({
 }));
 vi.mock("../app/clubsContext", () => ({
     useClubs: () => ({ clubs: state.clubs, loading: state.clubsLoading, clubDisplayName: (c: { name: string }) => c.name, clubsForPlayer: () => [], invalidate: () => {} }),
-}));
-vi.mock("../app/meContext", () => ({
-    useMe: () => ({ playerId: state.playerId, loading: state.meLoading }),
 }));
 // The provider reads the pathname only to decide which pages carry ?tenant=
 // in the URL; the tests exercise "/" and "/new" behavior.
@@ -75,7 +70,7 @@ function renderScope() {
     };
 }
 
-describe("TenantScopeProvider resolution chain (ADR-36)", () => {
+describe("TenantScopeProvider resolution chain (ADR-36, explicit only)", () => {
     beforeEach(() => {
         setLocation("");
         localStorage.clear();
@@ -84,13 +79,9 @@ describe("TenantScopeProvider resolution chain (ADR-36)", () => {
         state.tenantsLoading = false;
         state.clubs = [];
         state.clubsLoading = false;
-        state.playerId = undefined;
-        state.meLoading = false;
     });
 
     it("the URL ?tenant= wins over everything", () => {
-        state.playerId = "me";
-        state.clubs = [{ id: "club-blue", name: "Синие люди", player_ids: ["me"], tenant_id: BLUE_MEN }];
         localStorage.setItem("current-tenant-id", JSON.stringify(REDS));
         setLocation("?tenant=" + BLUE_MEN);
 
@@ -101,53 +92,44 @@ describe("TenantScopeProvider resolution chain (ADR-36)", () => {
 
     it("a garbage ?tenant= is ignored and falls through the chain", () => {
         setLocation("?tenant=not-an-id");
-        state.tenants = [tenants[0]];
+        localStorage.setItem("current-tenant-id", JSON.stringify(BLUE_MEN));
 
         renderScope().unmount();
         expect(capturedRef.current?.tenantId).toBe(BLUE_MEN);
     });
 
-    it("the last displayed tenant (localStorage) outranks the user player's tenant", () => {
-        state.playerId = "me";
-        state.clubs = [{ id: "club-blue", name: "Синие люди", player_ids: ["me"], tenant_id: BLUE_MEN }];
+    it("resolves the stored choice without any loads", () => {
         localStorage.setItem("current-tenant-id", JSON.stringify(REDS));
 
         renderScope().unmount();
         expect(capturedRef.current?.tenantId).toBe(REDS);
+        expect(capturedRef.current?.ready).toBe(true);
     });
 
-    it("resolves the signed-in user player's tenant via their club", () => {
-        state.playerId = "me";
+    it("does not default to the signed-in user player's tenant (explicit only)", () => {
+        // A club membership used to auto-resolve the tenant; since phase 7
+        // the chain stops — the pages show the chooser instead.
         state.clubs = [{ id: "club-red", name: "Красные", player_ids: ["me"], tenant_id: REDS }];
 
         renderScope().unmount();
-        expect(capturedRef.current?.tenantId).toBe(REDS);
+        expect(capturedRef.current?.tenantId).toBeNull();
+        expect(capturedRef.current?.ready).toBe(true);
     });
 
-    it("auto-selects the only tenant", () => {
+    it("does not auto-select the only tenant", () => {
         state.tenants = [tenants[0]];
 
         renderScope().unmount();
-        expect(capturedRef.current?.tenantId).toBe(BLUE_MEN);
-    });
-
-    it("stays unresolved (prompt) with several tenants and no signals", async () => {
-        const { unmount } = renderScope();
-        // Radix mounts the dialog content through a presence tick.
-        await act(async () => {
-            await Promise.resolve();
-        });
         expect(capturedRef.current?.tenantId).toBeNull();
         expect(capturedRef.current?.ready).toBe(true);
-        expect(document.body.textContent).toContain("Выберите сообщество");
-        unmount();
     });
 
-    it("waits for the identity loads before settling the default", () => {
-        state.meLoading = true;
-
+    it("resolves to nothing with no signals — pages render the chooser themselves", () => {
         const { unmount } = renderScope();
-        expect(capturedRef.current?.ready).toBe(false);
+        expect(capturedRef.current?.tenantId).toBeNull();
+        expect(capturedRef.current?.ready).toBe(true);
+        // No auto-popup dialog anymore: the provider renders no UI at all.
+        expect(document.body.textContent).not.toContain("Выберите сообщество");
         unmount();
     });
 
@@ -171,9 +153,9 @@ describe("TenantScopeProvider resolution chain (ADR-36)", () => {
         expect(capturedRef.current!.playerHref("p1")).toBe(`/players/view?id=p1&tenant=${BLUE_MEN}`);
     });
 
-    it("writes the resolved tenant into the URL on /new (creation names its community)", () => {
+    it("writes the stored tenant into the URL on /new (creation names its community)", () => {
         state.pathname = "/new";
-        state.tenants = [tenants[0]]; // auto-selected single tenant
+        localStorage.setItem("current-tenant-id", JSON.stringify(BLUE_MEN));
 
         renderScope().unmount();
         expect(capturedRef.current?.tenantId).toBe(BLUE_MEN);

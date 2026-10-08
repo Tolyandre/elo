@@ -21,15 +21,16 @@ export function PlayersProvider({ children
 }: {
     children: ReactNode
 }) {
-    // The catalog is global but the ranking columns are tenant-scoped
-    // (ADR-36 phase 5): hold the load until the tenant scope resolves, then
-    // fetch against its main arena. Refetching on a tenant switch is
-    // deliberate — the ranks are part of the payload.
+    // The catalog is global and loads immediately — name lookups (tournament
+    // brackets, arena feeds, match cards) must resolve even on pages opened
+    // by a direct link with no chosen community (ADR-36 phase 7). The
+    // ranking columns are tenant-scoped (ADR-36 phase 5): once a tenant
+    // resolves the list refetches against its main arena, ranks included.
     const { tenantId } = useTenantScope();
     const { data, loading, error, invalidate } = useAsyncResource(async () => {
-        if (!tenantId) return null;
-        const data = await getPlayersPromise(tenantId);
-        return [...data].sort((a, b) => (a.rank.now.rank ?? Number.MAX_VALUE) - (b.rank.now.rank ?? Number.MAX_VALUE));
+        const data = await getPlayersPromise(tenantId ?? undefined);
+        if (!tenantId) return data;
+        return [...data].sort((a, b) => (a.rank?.now.rank ?? Number.MAX_VALUE) - (b.rank?.now.rank ?? Number.MAX_VALUE));
     }, [tenantId]);
 
     const players = useMemo(() => data ?? [], [data]);

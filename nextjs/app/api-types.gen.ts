@@ -26,8 +26,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all players with Elo rankings
-         * @description The catalog is global (ADR-36) — every player appears — but the ranking columns come from the `tenant`'s main arena, which is required (ADR-36 phase 5: reads are tenant-scoped, there is no global default).
+         * List all players, with Elo rankings when a tenant is named
+         * @description The catalog is global (ADR-36) — every player appears, with or without a tenant: the name lookups (tournament brackets, arena feeds, match cards) must resolve on pages opened by a direct link (ADR-36 phase 7). The ranking columns are tenant-scoped (ADR-36 phase 5) and are present only when `tenant` names an existing tenant; without it `rank` is omitted and no existing tenant is a 404.
          */
         get: operations["ListPlayers"];
         put?: never;
@@ -1325,7 +1325,8 @@ export interface components {
             name: string;
             geologist_name?: string | null;
             user_id?: components["schemas"]["Base58ID"] | null;
-            rank: components["schemas"]["HistoryRank"];
+            /** @description The tenant-scoped ranking columns (ADR-36 phase 5); present only when the list read named a tenant — omitted otherwise (ADR-36 phase 7). */
+            rank?: components["schemas"]["HistoryRank"];
         };
         /** @description Minimal player object returned after create/patch */
         PlayerRef: {
@@ -2420,9 +2421,9 @@ export interface operations {
     };
     ListPlayers: {
         parameters: {
-            query: {
-                /** @description The tenant whose main arena the ratings and leagues are read from (ADR-36). Naming no existing tenant is a 404. */
-                tenant: string;
+            query?: {
+                /** @description The tenant whose main arena the ratings and leagues are read from (ADR-36). Optional — omit it for the name catalog without ranking columns. Naming no existing tenant is a 404. */
+                tenant?: string;
             };
             header?: never;
             path?: never;

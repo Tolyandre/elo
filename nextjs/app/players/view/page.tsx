@@ -14,6 +14,7 @@ import { useTenantScope } from '@/app/tenantScopeContext'
 import { PageHeader } from '@/app/pageHeaderContext'
 import { PageContainer } from '@/components/page-container'
 import { ErrorAlert } from '@/components/error-alert'
+import { TenantChooser } from '@/components/tenant-chooser'
 import { RankIcon } from '@/components/rank-icon'
 import { formatDate } from '@/lib/datetime'
 import { useAsyncResource } from '@/hooks/useAsyncResource'
@@ -174,9 +175,21 @@ function PlayerPageContent() {
 
     if (!id) return <div className="p-6 text-muted-foreground">Игрок не указан</div>
     // The tenant scope settles within the first ticks (a deep link carries
-    // ?tenant=; otherwise the default resolution needs the tenants list) —
-    // hold the skeleton rather than flash numbers of the wrong arena.
+    // ?tenant=; otherwise the stored choice applies) — hold the skeleton
+    // rather than flash numbers of the wrong arena.
     if (!ready) return <LoadingSkeleton />
+    // The stats are tenant-scoped: with no community chosen the chooser
+    // substitutes the content — the page never defaults to one (ADR-36
+    // phase 7).
+    if (!tenantId) {
+        return (
+            <PageContainer width="narrow">
+                <div className="py-8">
+                    <TenantChooser />
+                </div>
+            </PageContainer>
+        )
+    }
 
     return <PlayerStatsView id={id} tenantId={tenantId} tenantName={tenant?.name} />
 }

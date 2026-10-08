@@ -177,8 +177,8 @@ export default function PlayersAdminPage() {
                                                 <Link className="underline font-medium" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
                                             </span>
                                             <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                                Рейтинг: {Math.round(player.rank.now.rating)}
-                                                {player.rank.now.rank && ` (#${player.rank.now.rank})`}
+                                                Рейтинг: {player.rank ? Math.round(player.rank.now.rating) : "—"}
+                                                {player.rank?.now.rank && ` (#${player.rank.now.rank})`}
                                             </div>
                                             {player.user_id && (
                                                 <div className="text-xs text-muted-foreground">{userMap.get(player.user_id)}</div>
@@ -233,9 +233,9 @@ export default function PlayersAdminPage() {
                                                 {player.user_id ? userMap.get(player.user_id) : ""}
                                             </td>
                                             <td className="px-4 py-2">
-                                                {Math.round(player.rank.now.rating)}
+                                                {player.rank ? Math.round(player.rank.now.rating) : "—"}
                                             </td>
-                                            <td className="px-4 py-2">{player.rank.now.rank ? `#${player.rank.now.rank}` : "—"}</td>
+                                            <td className="px-4 py-2">{player.rank?.now.rank ? `#${player.rank.now.rank}` : "—"}</td>
                                             <td className="px-4 py-2">
                                                 <div className="flex gap-2">
                                                     <Button

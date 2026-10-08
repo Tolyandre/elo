@@ -6,8 +6,12 @@ import { Tent, Trophy } from "lucide-react";
 import { ArenaView } from "@/app/arenas/view/arena-view";
 import { useCamps } from "@/app/arenas/campsContext";
 import { useTournaments } from "@/app/tournaments/tournamentsContext";
+import { useTenantScope } from "@/app/tenantScopeContext";
 import { MarketsHighlight } from "@/components/markets-highlight";
 import { RunningTables } from "@/components/tables/running-tables";
+import { TenantChooser } from "@/components/tenant-chooser";
+import { LoadingRows } from "@/components/loading-rows";
+import { PageContainer } from "@/components/page-container";
 
 /**
  * Compact «Сейчас» block above the community arena: plain links to the camps
@@ -67,7 +71,28 @@ function NowBlock() {
 // statically exported redirect is an empty shell with a client-side replay,
 // which made every visit to / (and every PWA launch — the manifest start_url
 // is /) blink through an extra hop.
+//
+// Everything on the page belongs to a community, so with no tenant in force
+// the chooser substitutes the whole content — the page never defaults to a
+// community the user did not pick (ADR-36 phase 7).
 export default function MainPage() {
+    const { ready, tenantId } = useTenantScope();
+    if (!ready) {
+        return (
+            <PageContainer width="narrow">
+                <LoadingRows count={6} />
+            </PageContainer>
+        );
+    }
+    if (!tenantId) {
+        return (
+            <PageContainer width="narrow">
+                <div className="max-w-sm mx-auto py-8">
+                    <TenantChooser />
+                </div>
+            </PageContainer>
+        );
+    }
     return (
         <>
             <NowBlock />

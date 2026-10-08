@@ -81,6 +81,59 @@ func TestListPlayers_EmptyOnFreshDB(t *testing.T) {
 	}
 }
 
+// TestListPlayers_WithoutTenantIsCatalogOnly pins the tenant-optional read
+// (ADR-36 phase 7): without ?tenant= the global catalog loads — names resolve
+// on pages opened by a direct link — but the ranking columns are absent;
+// with a tenant they come back.
+func TestListPlayers_WithoutTenantIsCatalogOnly(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	player := createTestPlayer(t, pool, "Каталог")
+	router := setupRouter(pool)
+
+	withoutTenant := func() []map[string]any {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/players", nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /players: %d %s", w.Code, w.Body.String())
+		}
+		var resp struct {
+			Data []map[string]any `json:"data"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode players: %v", err)
+		}
+		return resp.Data
+	}
+
+	list := withoutTenant()
+	if len(list) != 1 || list[0]["name"] != "Каталог" {
+		t.Fatalf("catalog = %v, want the one player by name", list)
+	}
+	if _, hasRank := list[0]["rank"]; hasRank {
+		t.Fatalf("tenantless catalog carries rank columns: %v", list[0])
+	}
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/players?tenant="+blueMenTenantUUID, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /players?tenant=: %d %s", w.Code, w.Body.String())
+	}
+	var scoped struct {
+		Data []struct {
+			ID   string          `json:"id"`
+			Rank *map[string]any `json:"rank"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&scoped); err != nil {
+		t.Fatalf("decode scoped players: %v", err)
+	}
+	if len(scoped.Data) != 1 || scoped.Data[0].ID != short(player) || scoped.Data[0].Rank == nil {
+		t.Fatalf("scoped list = %+v, want the player with rank columns", scoped.Data)
+	}
+}
+
 // TestCreatePlayer_RequiresAuth checks that POST /players without a token returns 401.
 func TestCreatePlayer_RequiresAuth(t *testing.T) {
 	pool, cleanup := setupTestDB(t)

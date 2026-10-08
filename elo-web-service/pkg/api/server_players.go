@@ -13,34 +13,43 @@ import (
 )
 
 func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersRequestObject) (ListPlayersResponseObject, error) {
-	// The catalog is global but the ranking columns come from a tenant's main
-	// arena — required since ADR-36 phase 5, reads are tenant-scoped.
-	arenaID, err := s.resolveDisplayArena(ctx, request.Params.Tenant)
-	if err != nil {
-		if errors.Is(err, errTenantRequired) {
-			return ListPlayers400JSONResponse{Status: StatusFail, Message: "tenant query parameter is required"}, nil
+	// The catalog is global — names load without a tenant, so the name
+	// lookups (tournament brackets, arena feeds, match cards) resolve on
+	// pages opened by a direct link (ADR-36 phase 7). The ranking columns
+	// stay tenant-scoped (ADR-36 phase 5): present only when ?tenant= names
+	// an existing tenant.
+	arenaID := id.ID("")
+	if request.Params.Tenant != nil && *request.Params.Tenant != "" {
+		var err error
+		arenaID, err = s.resolveDisplayArena(ctx, *request.Params.Tenant)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return ListPlayers404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+			}
+			return nil, err
 		}
-		if db.IsNoRows(err) {
-			return ListPlayers404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
-		}
-		return nil, err
 	}
 
-	now := time.Now()
-	tDay := now.Add(-time.Hour * 12)
-	tWeek := now.Add(-time.Hour * (24*7 - 12))
+	// Ranking reads happen only for the tenant-scoped variant.
+	var actualPlayers, dayAgoPlayers, weekAgoPlayers []elo.Player
+	if !arenaID.IsZero() {
+		now := time.Now()
+		tDay := now.Add(-time.Hour * 12)
+		tWeek := now.Add(-time.Hour * (24*7 - 12))
 
-	actualPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, nil)
-	if err != nil {
-		return nil, err
-	}
-	dayAgoPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, &tDay)
-	if err != nil {
-		return nil, err
-	}
-	weekAgoPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, &tWeek)
-	if err != nil {
-		return nil, err
+		var err error
+		actualPlayers, err = s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, nil)
+		if err != nil {
+			return nil, err
+		}
+		dayAgoPlayers, err = s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, &tDay)
+		if err != nil {
+			return nil, err
+		}
+		weekAgoPlayers, err = s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, &tWeek)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	userLinks, err := s.api.PlayerService.ListPlayerUserLinks(ctx)
@@ -63,6 +72,29 @@ func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersReque
 		if dp.GeologistName.Valid {
 			geologistNameMap[string(dp.ID)] = dp.GeologistName.String
 		}
+	}
+
+	// Without a tenant the catalog iterates the plain db rows: names, links
+	// and club data — no `rank` in the response.
+	if arenaID.IsZero() {
+		result := make([]Player, 0, len(dbPlayers))
+		for _, p := range dbPlayers {
+			var userID *id.ID
+			var geologistName *string
+			if uid, ok := playerUserMap[p.ID]; ok {
+				userID = &uid
+			}
+			if gn, ok := geologistNameMap[string(p.ID)]; ok {
+				geologistName = &gn
+			}
+			result = append(result, Player{
+				Id:            p.ID,
+				Name:          p.Name,
+				GeologistName: geologistName,
+				UserId:        userID,
+			})
+		}
+		return ListPlayers200JSONResponse{Status: StatusSuccess, Data: result}, nil
 	}
 
 	result := make([]Player, 0, len(actualPlayers))
@@ -100,7 +132,7 @@ func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersReque
 			Name:          p.Name,
 			GeologistName: geologistName,
 			UserId:        userID,
-			Rank: HistoryRank{
+			Rank: &HistoryRank{
 				Now: EloRank{
 					Rating:                    p.Elo,
 					League:                    EloRankLeague(p.League),

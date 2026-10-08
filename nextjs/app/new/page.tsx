@@ -1,14 +1,13 @@
 "use client";
 
-import { Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { PageContainer } from "@/components/page-container";
-import { EmptyState } from "@/components/empty-state";
 import { ErrorAlert } from "@/components/error-alert";
 import { LoadingRows } from "@/components/loading-rows";
 import { useTenantScope } from "@/app/tenantScopeContext";
+import { TenantChooser } from "@/components/tenant-chooser";
 import { MatchForm, MatchFormAuthAlerts } from "@/app/matches/MatchForm";
 import { CreateTableForm } from "@/components/tables/create-table-form";
 import { CreateMarketForm } from "@/components/markets/create-market-form";
@@ -40,15 +39,9 @@ export default function NewEntityPage() {
                 // A well-formed but unknown ?tenant= (removed community, stale link).
                 <ErrorAlert message="Сообщество не найдено — возможно, оно было удалено." />
             ) : tenant == null ? (
-                <EmptyState
-                    icon={Users}
-                    title="Выберите сообщество"
-                >
-                    <p className="text-sm text-muted-foreground">
-                        Партии, столы и рынки создаются внутри сообщества — его лента получит новое.
-                        Переключатель сообществ — в шапке сайта.
-                    </p>
-                </EmptyState>
+                // No community chosen yet: the shared chooser, one click away
+                // from storing the choice (ADR-36 phase 7).
+                <TenantChooser />
             ) : (
                 <>
                     {tab !== "market" && <MatchFormAuthAlerts />}

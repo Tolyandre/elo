@@ -3,9 +3,12 @@ import { client, unwrap } from "./client";
 import type { PlayerStats } from "./types";
 import type { Base58ID } from "@/lib/id";
 
-export async function getPlayersPromise(tenant: Base58ID) {
+export async function getPlayersPromise(tenant?: Base58ID) {
+    // The catalog is global: without a tenant it loads without the ranking
+    // columns (name lookups only, ADR-36 phase 7); with one the ranks come
+    // from that tenant's main arena.
     return (await unwrap(client.GET("/players", {
-        params: { query: { tenant } },
+        params: { query: tenant ? { tenant } : {} },
     }))).data;
 }
 

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useMatches } from "../MatchesContext";
 import { useMe } from "../../meContext";
 import { useTenantScope } from "../../tenantScopeContext";
+import { TenantChooser } from "@/components/tenant-chooser";
 import { useOffline } from "../../offline/OfflineContext";
 import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise } from "../../api";
 import { MarketCard } from "@/components/market-card";
@@ -105,7 +106,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   const { roundToInteger, setRoundToInteger } = useMe();
   // The rating columns come from the current tenant's main arena (ADR-36);
   // the matches context is tenant-scoped the same way, so both sources agree.
-  const { tenantId } = useTenantScope();
+  const { ready: scopeReady, tenantId } = useTenantScope();
   const [matchFromApi, setMatchFromApi] = useState<Match | null>(null);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +136,27 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
       .then((data) => setRelatedMarkets(data ?? []))
       .catch(() => {});
   }, [matchId]);
+
+  // The detail read and the rating columns are tenant-scoped: with no
+  // community chosen the chooser substitutes the content — the page never
+  // defaults to one (ADR-36 phase 7). The matches context itself waits for
+  // the scope, so scopeReady is what distinguishes "no tenant" from loading.
+  if (!scopeReady) {
+    return (
+      <PageContainer width="narrow">
+        <LoadingRows />
+      </PageContainer>
+    );
+  }
+  if (!tenantId && !matchFromContext) {
+    return (
+      <PageContainer width="narrow">
+        <div className="py-8">
+          <TenantChooser />
+        </div>
+      </PageContainer>
+    );
+  }
 
   if (loading) {
     return (

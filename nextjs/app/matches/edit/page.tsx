@@ -13,9 +13,9 @@ import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { Match, getMatchByIdPromise, updateMatchPromise } from "../../api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, AlertCircleIcon, Loader2, Users } from "lucide-react";
+import { AlertCircle, AlertCircleIcon, Loader2 } from "lucide-react";
 import { ErrorAlert } from "@/components/error-alert";
-import { EmptyState } from "@/components/empty-state";
+import { TenantChooser } from "@/components/tenant-chooser";
 import { MatchForm, MatchFormAuthAlerts } from "../MatchForm";
 import { AuthWarning } from "@/components/auth-warning";
 import { Button } from "@/components/ui/button";
@@ -92,8 +92,7 @@ function MatchEditPageWrapped() {
     if (!id) return null;
 
     // Tenantless edits are off (ADR-36): wait for the scope, then either the
-    // chooser's empty state (the scope writes ?tenant= back once resolved)
-    // or an unknown-tenant error.
+    // chooser (one click stores the choice) or an unknown-tenant error.
     if (!tenant || !tenantId) {
         return (
             <PageContainer width="form">
@@ -103,11 +102,7 @@ function MatchEditPageWrapped() {
                 ) : tenantId ? (
                     <ErrorAlert message="Сообщество не найдено — возможно, оно было удалено." />
                 ) : (
-                    <EmptyState icon={Users} title="Выберите сообщество">
-                        <p className="text-sm text-muted-foreground">
-                            Редактирование работает внутри сообщества — переключатель в шапке сайта.
-                        </p>
-                    </EmptyState>
+                    <TenantChooser />
                 )}
             </PageContainer>
         );

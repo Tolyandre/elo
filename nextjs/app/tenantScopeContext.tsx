@@ -7,19 +7,16 @@ import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useTenants } from "./tenantsContext";
 import { useClubs } from "./clubsContext";
-import { useMe } from "./meContext";
 import { memberPlayerIds } from "@/lib/tenant-members";
 import type { Tenant } from "./api";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-// The current tenant (ADR-36 phase 4): the community the main page and the
-// player page render. Resolution follows the UI contract — the URL's
-// ?tenant=, then the last displayed tenant (localStorage), then the
-// signed-in user player's tenant (via their clubs), then a single tenant
-// auto-selected, then a prompt. The stored tenant intentionally outranks the
-// user-player default: an explicit switch is "the user switching it", and the
-// header tenant must survive navigation until switched again.
+// The current tenant (ADR-36 phase 4, revised phase 7): the community the
+// tenant-dependent pages render. Resolution is explicit only — the URL's
+// ?tenant=, then the last displayed tenant (localStorage) — and stops there:
+// no silent defaults (the signed-in user's tenant, the single-tenant
+// auto-select) ever pick a community the user did not choose. A fresh visit
+// resolves to nothing and the pages render the tenant chooser in place of
+// their content; one click stores the choice.
 const TENANT_STORAGE_KEY = "current-tenant-id";
 
 // The pages whose URL carries the current tenant (deep-linkable surfaces).
@@ -50,56 +47,40 @@ const TenantScopeContext = createContext<TenantScope | undefined>(undefined);
 export const TenantScopeProvider = ({ children }: { children: ReactNode }) => {
     const params = useUrlQuery();
     const pathname = usePathname();
-    const { tenants, loading: tenantsLoading } = useTenants();
-    const { clubs, loading: clubsLoading } = useClubs();
-    const { playerId, loading: meLoading } = useMe();
+    const { tenants } = useTenants();
     const [storedRaw, setStoredTenant] = useLocalStorage<string | null>(TENANT_STORAGE_KEY, null);
-    const [promptClosed, setPromptClosed] = useState(false);
 
     const urlTenant = useMemo(() => toBase58ID(params.get("tenant") ?? ""), [params]);
     const storedTenant = useMemo(() => toBase58ID(storedRaw ?? ""), [storedRaw]);
 
-    // The signed-in user player's tenant: any club of theirs that belongs to
-    // one. A player straddling several tenants gets the first in list order —
-    // switchable like any other.
-    const myTenantId = useMemo(() => {
-        if (!playerId) return null;
-        for (const tenant of tenants) {
-            if (tenant.club_ids.some((clubId) =>
-                clubs.some((c) => c.id === clubId && c.player_ids.includes(playerId)))) {
-                return tenant.id;
-            }
-        }
-        return null;
-    }, [playerId, clubs, tenants]);
-
-    const identityReady = !meLoading && !clubsLoading;
-    const tenantsReady = !tenantsLoading;
-    // The ADR-36 resolution chain. Unsettled (null, not ready) while the
-    // initial loads are in flight and neither the URL nor the store has an
-    // answer yet.
-    const resolved = useMemo((): { id: Base58ID | null; ready: boolean } => {
-        if (urlTenant) return { id: urlTenant, ready: true };
-        if (storedTenant) return { id: storedTenant, ready: true };
-        if (!identityReady || !tenantsReady) return { id: null, ready: false };
-        if (myTenantId) return { id: myTenantId, ready: true };
-        if (tenants.length === 1) return { id: tenants[0].id, ready: true };
-        return { id: null, ready: true };
-    }, [urlTenant, storedTenant, identityReady, tenantsReady, myTenantId, tenants]);
-
-    const { id: tenantId, ready } = resolved;
-    const tenant = useMemo(() => tenants.find((t) => t.id === tenantId) ?? null, [tenants, tenantId]);
-
-    // Every displayed tenant becomes the stored one, so the choice — explicit
-    // or defaulted — survives navigation and reloads. The gate matters:
-    // useLocalStorage applies the stored value in a post-mount effect, and a
-    // first-commit persist would clobber the unread value with the resolved
-    // default (the stored tenant would never survive a reload).
+    // Explicit resolution only (ADR-36 phase 7): the URL wins, then the
+    // stored choice — never a silent default. Not ready until the did-mount
+    // flag is set: useLocalStorage applies the stored value in a post-mount
+    // effect, and effects run in registration order, so by the time `mounted`
+    // is true the stored read has landed — a resolved-but-tenantless first
+    // commit would flash the chooser before the stored choice appears.
     const [mounted, setMounted] = useState(false);
     useEffect(() => {
         /* eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe did-mount flag (same pattern as meContext): the first commit must match the server; only after it may the stored tenant steer resolution and writes */
         setMounted(true);
     }, []);
+    const resolved = useMemo((): { id: Base58ID | null; ready: boolean } => {
+        if (urlTenant) return { id: urlTenant, ready: true };
+        if (storedTenant) return { id: storedTenant, ready: true };
+        if (!mounted) return { id: null, ready: false };
+        return { id: null, ready: true };
+    }, [urlTenant, storedTenant, mounted]);
+
+    const { id: tenantId, ready } = resolved;
+    // The tenant object fills in from the list once it loads; the id is the
+    // source of truth for everything tenant-scoped.
+    const tenant = useMemo(() => tenants.find((t) => t.id === tenantId) ?? null, [tenants, tenantId]);
+
+    // Every displayed tenant becomes the stored one, so the choice survives
+    // navigation and reloads. The gate matters: useLocalStorage applies the
+    // stored value in a post-mount effect, and a first-commit persist would
+    // clobber the unread value (the stored tenant would never survive a
+    // reload).
     useEffect(() => {
         if (!mounted) return;
         if (tenantId != null && tenantId !== storedTenant) {
@@ -107,10 +88,9 @@ export const TenantScopeProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [mounted, tenantId, storedTenant, setStoredTenant]);
 
-    // Deep-linkable pages carry the tenant in the URL: a resolved default is
-    // written back ("replace" — the resolution is not a navigation step).
-    // Also mounted-gated: writing the pre-read resolution would put a stale
-    // default into the URL, where it outranks the stored tenant forever.
+    // Deep-linkable pages carry the tenant in the URL: the stored choice is
+    // written back ("replace" — the resolution is not a navigation step), so
+    // a refresh or a shared link keeps naming the community.
     useEffect(() => {
         if (!mounted || !ready || tenantId == null || !pageHonorsTenant(pathname)) return;
         if (urlTenant !== tenantId) {
@@ -126,25 +106,9 @@ export const TenantScopeProvider = ({ children }: { children: ReactNode }) => {
     const playerHref = (playerId: string) =>
         tenantId ? `/players/view?id=${playerId}&tenant=${tenantId}` : `/players/view?id=${playerId}`;
 
-    const promptOpen = ready && tenantId == null && tenants.length > 1 && !promptClosed;
-
     return (
         <TenantScopeContext.Provider value={{ tenantId, tenant, ready, setTenant, playerHref }}>
             {children}
-            <Dialog open={promptOpen} onOpenChange={(open) => { if (!open) setPromptClosed(true); }}>
-                <DialogContent className="sm:max-w-sm">
-                    <DialogHeader>
-                        <DialogTitle>Выберите сообщество</DialogTitle>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-2">
-                        {tenants.map((t) => (
-                            <Button key={t.id} variant="outline" onClick={() => setTenant(t.id)}>
-                                {t.name}
-                            </Button>
-                        ))}
-                    </div>
-                </DialogContent>
-            </Dialog>
         </TenantScopeContext.Provider>
     );
 };

@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 // The tenant the form creates under (ADR-36); tests mutate this to exercise
 // the openness rules.
 const tenantScope = vi.hoisted(() => ({
-    tenant: null as { id: string; name: string; arena_membership_mode: "any_member" | "members_only" } | null,
+    tenant: null as { id: string; name: string; arena_membership_mode: "all" | "any_member" | "members_only" } | null,
     memberIds: [] as string[],
 }));
 

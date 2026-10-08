@@ -228,19 +228,25 @@ are.
 ### UI contract (later phases)
 
 The main page and the player page carry the current tenant in the URL
-(`?tenant=<Base58ID>`). Default resolution: query param → last displayed
-tenant (localStorage) → the signed-in user player's tenant (via their clubs) →
-a single tenant auto-selected → a prompt. (The stored tenant outranks the
-user-player default so an explicit switch survives navigation and reloads —
-"preserves the tenant until the user switches it"; a player straddling several
-tenants gets the first in list order and can switch.) The header shows the
-current tenant's name with a switcher; every navigation preserves the tenant
-until the user switches it. The main page renders the tenant's main arena and
-the tenant's community feed (the club filter stays `?club=`). A player's page
-is tenant-scoped: opened with `?tenant=`, its rating, chart and
-Elo-per-game tables come from the tenant's main arena («Частые игры» counts
-every stored match, tenant-independent), and a note names the community the
-rating is from.
+(`?tenant=<Base58ID>`). Resolution is **explicit only** (revised phase 7):
+the query param, then the last displayed tenant (localStorage) — and it
+stops there. The silent defaults of the original chain (the signed-in user
+player's tenant via their clubs, the single-tenant auto-select) are gone: a
+community is what the user picked, never what the site guessed. A fresh
+visit resolves to nothing, and every tenant-dependent page renders the
+**tenant chooser** in place of its content — a «Выберите сообщество» banner
+listing all tenants as one-click options (the pick persists the choice and
+carries `?tenant=` into the URL; on deep-linkable pages it survives refresh
+and sharing). The original auto-popup dialog is gone with it — it could be
+dismissed into a broken-looking page, and the banner cannot. The header
+shows the current tenant's name with a switcher (a skeleton while the scope
+resolves — never a global-arena fallback); every navigation preserves the
+tenant until the user switches it. The main page renders the tenant's main
+arena and the tenant's community feed (the club filter stays `?club=`). A
+player's page is tenant-scoped: opened with `?tenant=`, its rating, chart
+and Elo-per-game tables come from the tenant's main arena («Частые игры»
+counts every stored match, tenant-independent), and a note names the
+community the rating is from.
 
 **The global-arena concept is retired from the UI (phase 7).** The main
 page is the tenant's page, full stop: the nav item that used to say
@@ -406,3 +412,10 @@ Staged forward, each phase shippable:
   server rejects, at creation only, a seating that does not relate to the
   tenant (400) — the flow mirrors the match form's client rule, and live
   games stay unguarded after creation by design.
+- **Phase 7 makes the player catalog tenant-optional.** The phase-5 rule
+  "`?tenant=` required on the player list" narrows: the list without a
+  tenant returns the global catalog without ranking columns (`rank` omitted)
+  — the name lookups (tournament brackets, arena feeds, match cards) must
+  resolve on entity pages opened by a direct link, and the frontend fetches
+  the catalog immediately, refetching with ranks once a tenant is chosen.
+  The ranking reads themselves stay tenant-scoped as before.

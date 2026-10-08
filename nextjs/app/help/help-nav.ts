@@ -9,16 +9,16 @@ export interface HelpArticle {
     description: string;
 }
 
-// The documentation articles. Shared by the help sidebar (help-shell)
-// and the /help landing cards. Routes must stay static (ADR-25) and be
-// listed in lib/offline/routes.ts.
+// The documentation articles, sorted by title. Shared by the help sidebar
+// (help-shell) and the /help landing cards. Routes must stay static (ADR-25)
+// and be listed in lib/offline/routes.ts.
 export const HELP_ARTICLES: HelpArticle[] = [
     {
-        href: "/help/tenants",
-        title: "Сообщества и клубы",
-        navTitle: "Сообщества и клубы",
+        href: "/help/arenas",
+        title: "Арены и лиги",
+        navTitle: "Арены и лиги",
         description:
-            "Что такое сообщество и клуб, как членство определяется клубами, как работает открытость (все партии / есть участник / только участники) и что остаётся общим.",
+            "Главная арена сообщества и игровые арены, лиги и условия перехода между ними, как устроен рейтинг новичков и когда он сойдётся с эло.",
     },
     {
         href: "/help/elo",
@@ -26,13 +26,6 @@ export const HELP_ARTICLES: HelpArticle[] = [
         navTitle: "Рейтинг Эло",
         description:
             "Что такое рейтинг Эло, по каким формулам он считается, каким играм подходит и как выглядит расчёт. Интерактивный пример.",
-    },
-    {
-        href: "/help/arenas",
-        title: "Арены и лиги",
-        navTitle: "Арены и лиги",
-        description:
-            "Главная арена сообщества и игровые арены, лиги и условия перехода между ними, как устроен рейтинг новичков и когда он сойдётся с эло.",
     },
     {
         href: "/help/markets",
@@ -47,6 +40,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
         navTitle: "Турниры",
         description:
             "Турниры: запись участников, планы сеток, столы и партии, автоматическая арена. Пример турнира с двойным выбыванием.",
+    },
+    {
+        href: "/help/tenants",
+        title: "Сообщества и клубы",
+        navTitle: "Сообщества и клубы",
+        description:
+            "Что такое сообщество и клуб, как членство определяется клубами и как работает открытость (все партии / есть участник / только участники).",
     },
     {
         href: "/help/rules",

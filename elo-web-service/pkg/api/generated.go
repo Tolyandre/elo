@@ -2039,10 +2039,10 @@ type Player struct {
 	GeologistName *string `json:"geologist_name,omitempty"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id     Base58ID    `json:"id"`
-	Name   string      `json:"name"`
-	Rank   HistoryRank `json:"rank"`
-	UserId *Base58ID   `json:"user_id,omitempty"`
+	Id     Base58ID     `json:"id"`
+	Name   string       `json:"name"`
+	Rank   *HistoryRank `json:"rank,omitempty"`
+	UserId *Base58ID    `json:"user_id,omitempty"`
 }
 
 // PlayerRef Minimal player object returned after create/patch
@@ -2876,8 +2876,8 @@ type UpdateMatchParams struct {
 
 // ListPlayersParams defines parameters for ListPlayers.
 type ListPlayersParams struct {
-	// Tenant The tenant whose main arena the ratings and leagues are read from (ADR-36). Naming no existing tenant is a 404.
-	Tenant string `form:"tenant" json:"tenant"`
+	// Tenant The tenant whose main arena the ratings and leagues are read from (ADR-36). Optional — omit it for the name catalog without ranking columns. Naming no existing tenant is a 404.
+	Tenant *string `form:"tenant,omitempty" json:"tenant,omitempty"`
 }
 
 // CreatePlayerJSONBody defines parameters for CreatePlayer.
@@ -4140,7 +4140,7 @@ type ServerInterface interface {
 	// GetPing Health check
 	// (GET /ping)
 	GetPing(c *gin.Context)
-	// ListPlayers List all players with Elo rankings
+	// ListPlayers List all players, with Elo rankings when a tenant is named
 	// (GET /players)
 	ListPlayers(c *gin.Context, params ListPlayersParams)
 	// CreatePlayer Create a new player
@@ -5513,9 +5513,9 @@ func (siw *ServerInterfaceWrapper) ListPlayers(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListPlayersParams
 
-	// ------------- Required query parameter "tenant" -------------
+	// ------------- Optional query parameter "tenant" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
 		return
@@ -12731,7 +12731,7 @@ type StrictServerInterface interface {
 	// GetPing Health check
 	// (GET /ping)
 	GetPing(ctx context.Context, request GetPingRequestObject) (GetPingResponseObject, error)
-	// ListPlayers List all players with Elo rankings
+	// ListPlayers List all players, with Elo rankings when a tenant is named
 	// (GET /players)
 	ListPlayers(ctx context.Context, request ListPlayersRequestObject) (ListPlayersResponseObject, error)
 	// CreatePlayer Create a new player
