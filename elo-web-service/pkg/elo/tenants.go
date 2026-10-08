@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
@@ -26,19 +26,23 @@ type ITenantService interface {
 	CreateTenant(ctx context.Context, tenantID id.ID, name, arenaMembershipMode, tournamentsOpenness string, clubIDs []id.ID, actor id.ID) (db.Tenant, error)
 	// UpdateTenantName renames the tenant (audit-recorded, ADR-14).
 	UpdateTenantName(ctx context.Context, tenantID id.ID, name string, actor id.ID) (db.Tenant, error)
+	// UpdateTenantIcon sets or clears the tenant's icon (an empty string
+	// clears; the key is validated at the handler, ADR-36).
+	UpdateTenantIcon(ctx context.Context, tenantID id.ID, icon string, actor id.ID) (db.Tenant, error)
 	// UpdateTenantSettings changes the openness settings. An
 	// arena_membership_mode change re-interprets the main arena's whole
-	// history, so the recalculation runs inside the settings transaction.
+	// history, so the arena is queued for a full recalculation (background
+	// worker, ADR-36 phase 6).
 	UpdateTenantSettings(ctx context.Context, tenantID id.ID, arenaMembershipMode, tournamentsOpenness string, actor id.ID) (db.Tenant, error)
 	// UpdateTenantClubs replaces the club composition wholesale. Composition
-	// changes who is a member, so a change recalculates the main arena inside
-	// the same transaction.
+	// changes who is a member, so a change queues the main arena for a full
+	// recalculation.
 	UpdateTenantClubs(ctx context.Context, tenantID id.ID, clubIDs []id.ID, actor id.ID) error
 	// UpdateTenantArenaSettings replaces the main arena's settings document
 	// (starting rating and leagues, ADR-24 shape) through the tenant (ADR-36
 	// phase 5): main arenas are system-managed, arena PATCH on them is a 409.
 	// A settings change re-derives every rating from the settlement history,
-	// so the recalculation runs inside the same transaction.
+	// so the arena is queued for a full recalculation.
 	UpdateTenantArenaSettings(ctx context.Context, tenantID id.ID, settingsRaw json.RawMessage, actor id.ID) (db.Tenant, error)
 	// FeedArena returns the tenant's main arena id — the tenant feed's
 	// settlement source (ADR-36). No rows means the tenant is missing.
@@ -52,20 +56,18 @@ type TenantService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
 	Arenas  *ArenaService
-	// GlobalReplay runs the full global-arena settlement replay inside an open
-	// transaction (ADR-36): a main-arena openness or composition change on the
-	// converted global arena re-settles the whole history right in the
-	// calling transaction — the global arena is never drained by the
-	// background worker.
-	GlobalReplay IGlobalReplay
+	// Hub is nil-safe: a change that queues the main arena for a
+	// recalculation publishes arenas-changed so open views show the spinner
+	// and refresh when the background drain lands (ADR-36 phase 6).
+	Hub *Hub
 }
 
-func NewTenantService(pool *pgxpool.Pool, arenas *ArenaService, globalReplay IGlobalReplay) ITenantService {
+func NewTenantService(pool *pgxpool.Pool, arenas *ArenaService, hub *Hub) *TenantService {
 	return &TenantService{
-		Queries:      db.New(pool),
-		Pool:         pool,
-		Arenas:       arenas,
-		GlobalReplay: globalReplay,
+		Queries: db.New(pool),
+		Pool:    pool,
+		Arenas:  arenas,
+		Hub:     hub,
 	}
 }
 
@@ -142,8 +144,8 @@ func (s *TenantService) CreateTenant(ctx context.Context, tenantID id.ID, name, 
 			return err
 		}
 		// The main arena is ensured in the same transaction (a fresh tenant
-		// arena starts stale and is filled by the background updater; the
-		// converted global arena of «Синие люди» already exists and is left
+		// arena starts stale and is filled by the background updater;
+		// «Синие люди»'s converted arena already exists and is left
 		// untouched).
 		if err := s.Arenas.EnsureTenantArena(ctx, q, tenantID, name); err != nil {
 			return err
@@ -184,18 +186,40 @@ func (s *TenantService) UpdateTenantName(ctx context.Context, tenantID id.ID, na
 	return updated, err
 }
 
+// UpdateTenantIcon sets or clears the tenant's icon (an empty string clears;
+// the handler validates the key). Audit-recorded as a tenant update with the
+// icon diff.
+func (s *TenantService) UpdateTenantIcon(ctx context.Context, tenantID id.ID, icon string, actor id.ID) (db.Tenant, error) {
+	var updated db.Tenant
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		old, err := q.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		row, err := q.UpdateTenantIcon(ctx, db.UpdateTenantIconParams{ID: tenantID, Icon: icon})
+		if err != nil {
+			return err
+		}
+		updated = row
+		details := audit.NewTenantUpdateDetails()
+		setIconDiff(&details, old.Icon, icon)
+		return recordTenantUpdate(ctx, q, actor, tenantID, details, row.Name)
+	})
+	return updated, err
+}
+
 // UpdateTenantSettings changes the openness settings of an existing tenant
 // (ADR-36). An arena_membership_mode change re-interprets the main arena's
 // whole history (the mode is a current setting applied over all history), so
-// the recalculation runs in the settings transaction: the arena's match rows
-// replay (a fresh arena here; the global arena inside the sweep below), then
-// the full settlement sweep re-chains every market into its owning tenant's
-// arena against the new history.
+// the arena is queued for a full recalculation — the worker replays the match
+// rows and re-chains every market settlement against the new history
+// (ADR-36 phase 6: settings save and history replay are decoupled).
 func (s *TenantService) UpdateTenantSettings(ctx context.Context, tenantID id.ID, arenaMembershipMode, tournamentsOpenness string, actor id.ID) (db.Tenant, error) {
 	if err := validateTenantSettings(arenaMembershipMode, tournamentsOpenness); err != nil {
 		return db.Tenant{}, err
 	}
 	var updated db.Tenant
+	recalcQueued := false
 	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		old, err := q.GetTenantByID(ctx, tenantID)
 		if err != nil {
@@ -210,22 +234,31 @@ func (s *TenantService) UpdateTenantSettings(ctx context.Context, tenantID id.ID
 			return err
 		}
 		if old.ArenaMembershipMode != arenaMembershipMode {
-			if err := s.recalculateMainArena(ctx, q, tenantID); err != nil {
+			queued, err := s.markMainArenaForRecalc(ctx, q, tenantID)
+			if err != nil {
 				return err
 			}
+			recalcQueued = queued
 		}
 		updated = row
-		return recordAuditEvent(ctx, q, actor, audit.EntityTenant, audit.ActionUpdated, tenantID, audit.KindEntity, audit.NewEntityDetails(row.Name))
+		details := audit.NewTenantUpdateDetails()
+		setModeDiff(&details, old.ArenaMembershipMode, arenaMembershipMode)
+		setOpennessDiff(&details, old.TournamentsOpenness, tournamentsOpenness)
+		return recordTenantUpdate(ctx, q, actor, tenantID, details, row.Name)
 	})
+	if err == nil && recalcQueued {
+		s.publishArenasChanged()
+	}
 	return updated, err
 }
 
 // UpdateTenantClubs replaces the club composition wholesale (ADR-36). The
 // change alters who is a member — and through it the main arena's history
-// interpretation — so a real change recalculates the arena inside the same
-// transaction. Audit-recorded as a tenant update.
+// interpretation — so a real change queues the arena for a full
+// recalculation. Audit-recorded as a tenant update.
 func (s *TenantService) UpdateTenantClubs(ctx context.Context, tenantID id.ID, clubIDs []id.ID, actor id.ID) error {
-	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+	recalcQueued := false
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		if err := validateTenantClubs(ctx, q, tenantID, clubIDs); err != nil {
 			return err
 		}
@@ -243,12 +276,23 @@ func (s *TenantService) UpdateTenantClubs(ctx context.Context, tenantID id.ID, c
 		after := slices.Clone(clubIDs)
 		slices.Sort(after)
 		if !slices.Equal(before, after) {
-			if err := s.recalculateMainArena(ctx, q, tenantID); err != nil {
+			queued, err := s.markMainArenaForRecalc(ctx, q, tenantID)
+			if err != nil {
 				return err
 			}
+			recalcQueued = queued
+			details := audit.NewTenantUpdateDetails()
+			setClubsDiff(&details, before, after)
+			return recordTenantUpdate(ctx, q, actor, tenantID, details, tenant.Name)
 		}
+		// No composition change: still an audit row (the PUT happened), but
+		// with no diff to show — the plain entity shape.
 		return recordAuditEvent(ctx, q, actor, audit.EntityTenant, audit.ActionUpdated, tenantID, audit.KindEntity, audit.NewEntityDetails(tenant.Name))
 	})
+	if err == nil && recalcQueued {
+		s.publishArenasChanged()
+	}
+	return err
 }
 
 // attachedClubIDs returns the tenant's currently attached club ids, sorted.
@@ -271,14 +315,17 @@ func attachedClubIDs(ctx context.Context, q *db.Queries, tenantID id.ID) ([]id.I
 // (starting rating and leagues) through the tenant (ADR-36 phase 5). Main
 // arenas are system-managed — arena PATCH/DELETE on them is a 409 — so the
 // tenant is the only edit path. A genuine settings change re-derives every
-// rating from the settlement history, so the recalculation runs inside the
-// settings transaction (same machinery as an openness or composition change).
+// rating from the settlement history, so the arena is queued for a full
+// recalculation: the worker replays it against the freshly committed
+// settings document (ADR-36 phase 6 — decoupling the save from the replay is
+// also what makes the replay see the new starting rating at all).
 func (s *TenantService) UpdateTenantArenaSettings(ctx context.Context, tenantID id.ID, settingsRaw json.RawMessage, actor id.ID) (db.Tenant, error) {
 	settings, err := validateSettings(settingsRaw)
 	if err != nil {
 		return db.Tenant{}, err
 	}
 	var updated db.Tenant
+	recalcQueued := false
 	err = runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		if _, err := q.GetTenantByID(ctx, tenantID); err != nil {
 			return err
@@ -299,18 +346,26 @@ func (s *TenantService) UpdateTenantArenaSettings(ctx context.Context, tenantID 
 			return err
 		}
 		// Only a genuine change re-derives the arena's history.
-		if !settingsEqual(current.Settings, settings) {
-			if err := s.recalculateMainArena(ctx, q, tenantID); err != nil {
+		changed := !settingsEqual(current.Settings, settings)
+		if changed {
+			queued, err := s.markMainArenaForRecalc(ctx, q, tenantID)
+			if err != nil {
 				return err
 			}
+			recalcQueued = queued
 		}
 		tenant, err := q.GetTenantByID(ctx, tenantID)
 		if err != nil {
 			return err
 		}
 		updated = tenant
-		return recordAuditEvent(ctx, q, actor, audit.EntityTenant, audit.ActionUpdated, tenantID, audit.KindEntity, audit.NewEntityDetails(tenant.Name))
+		details := audit.NewTenantUpdateDetails()
+		setSettingsDiff(&details, current.Settings, settings)
+		return recordTenantUpdate(ctx, q, actor, tenantID, details, tenant.Name)
 	})
+	if err == nil && recalcQueued {
+		s.publishArenasChanged()
+	}
 	return updated, err
 }
 
@@ -322,40 +377,33 @@ func settingsEqual(a, b arenasettings.Settings) bool {
 	})
 }
 
-// recalculateMainArena re-settles the tenant's main arena from scratch after
-// its arena_membership_mode or club composition changed (ADR-36).
-func (s *TenantService) recalculateMainArena(ctx context.Context, q *db.Queries, tenantID id.ID) error {
+// markMainArenaForRecalc queues the tenant's main arena for a full
+// recalculation by the background worker (ADR-36 phase 6): the save
+// transaction only writes the stale mark, the worker replays the arena's
+// match rows and re-chains the market ledger against the committed state.
+// Reports whether a mark was actually set (a tenant always has a main arena;
+// nothing to re-settle otherwise).
+func (s *TenantService) markMainArenaForRecalc(ctx context.Context, q *db.Queries, tenantID id.ID) (bool, error) {
 	row, err := q.GetArenaByTenant(ctx, &tenantID)
 	if db.IsNoRows(err) {
-		// A tenant always has a main arena; nothing to re-settle otherwise.
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
-	if row.ID != GlobalArenaID {
-		// A fresh tenant arena: replay its match rows right here, in this
-		// transaction (market rows survive — the arena replay deletes
-		// matches only), so the sweep below re-chains every market
-		// settlement against the new history instead of the stale one.
-		// The mark is required: the updater's staleness check skips
-		// un-marked arenas, and it clears the mark after the clean replay.
-		if err := q.MarkArenasStaleFull(ctx, []id.ID{row.ID}); err != nil {
-			return err
-		}
-		arena, err := arenaFromGetArenaByTenantRow(row)
-		if err != nil {
-			return err
-		}
-		if err := s.Arenas.updateArenaWithinTx(ctx, q, arena); err != nil {
-			return fmt.Errorf("replay main arena: %w", err)
-		}
+	if err := q.MarkArenasStaleFull(ctx, []id.ID{row.ID}); err != nil {
+		return false, fmt.Errorf("mark main arena stale: %w", err)
 	}
-	// The full settlement sweep: matches re-settle per the tenant gate, and
-	// every market unsets and re-settles into its owning tenant's main arena
-	// against the fresh chains. The global arena is never drained by the
-	// background worker, so its share of the replay always runs here.
-	return s.GlobalReplay.RecalculateGlobalWithinTx(ctx, q, time.Time{})
+	return true, nil
+}
+
+// publishArenasChanged nudges open arena views after the transaction
+// committed: they refetch the arena (the stale mark shows the spinner) and
+// refresh again when the drain lands.
+func (s *TenantService) publishArenasChanged() {
+	if s.Hub != nil {
+		s.Hub.PublishSignal(TopicData, "arenas-changed")
+	}
 }
 
 // FeedArena returns the tenant's main arena id; no rows when the tenant is

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/tenant-update.v1.json",
+  "title": "Audit tenant-update details (v1)",
+  "description": "What changed in one tenant settings/composition update (ADR-36): the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing produces no tenant-update row.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "leagues_changed"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "arena_membership_mode": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string", "enum": ["any_member", "members_only"] },
+        "to": { "type": "string", "enum": ["any_member", "members_only"] }
+      }
+    },
+    "tournaments_openness": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string", "enum": ["members_only", "open"] },
+        "to": { "type": "string", "enum": ["members_only", "open"] }
+      }
+    },
+    "starting_rating": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "number" },
+        "to": { "type": "number" }
+      }
+    },
+    "leagues_changed": { "type": "boolean" },
+    "icon": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "clubs": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["added_club_ids", "removed_club_ids"],
+      "properties": {
+        "added_club_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "x-entity-id": true }
+        },
+        "removed_club_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "x-entity-id": true }
+        }
+      }
+    }
+  }
+}

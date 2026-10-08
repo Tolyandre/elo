@@ -9,8 +9,8 @@
 INSERT INTO clubs (id, name) VALUES ('00000000-0000-0000-0000-000000000001', 'Синие люди')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO tenants (id, name, arena_membership_mode, tournaments_openness)
-VALUES ('00000000-0000-0000-0000-000000000101', 'Синие люди', 'any_member', 'open')
+INSERT INTO tenants (id, name, icon, arena_membership_mode, tournaments_openness)
+VALUES ('00000000-0000-0000-0000-000000000101', 'Синие люди', 'blue-figure', 'any_member', 'open')
 ON CONFLICT (id) DO NOTHING;
 
 UPDATE clubs

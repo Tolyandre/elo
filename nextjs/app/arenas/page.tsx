@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";import Link from "next/link";
-import { Tent, Trophy } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Loader2, Tent, Trophy } from "lucide-react";
 import type { Base58ID } from "@/lib/id";
 import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
+import { subscribeDataChange } from "@/lib/live-data";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Arena, getArenasPromise, getTournamentsPromise } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
@@ -63,8 +65,8 @@ function ArenasContent() {
   const tab = parseTab(params.get("tab"));
 
   // The games tab carries a game filter; the selection narrows the list to the
-  // arenas related to that game (by game or by tag), camps and the global
-  // arena excluded.
+  // arenas related to that game (by game or by tag), camps and the tenants'
+  // main arenas excluded.
   const [gameId, setGameId] = useState<Base58ID | undefined>(undefined);
   // The open/ended split of the camps tab — "now" frozen at mount (a
   // re-render must not reshuffle the sections mid-visit).
@@ -74,19 +76,28 @@ function ArenasContent() {
   const { matches } = useMatches();
   const { playerId } = useMe();
 
-  const { data: arenas, loading, error } = useAsyncResource(async () => {
+  const { data: arenas, loading, error, invalidate } = useAsyncResource(async () => {
     if (tab === "camps") {
       return getArenasPromise({ kind: "camps" });
     }
     if (tab === "tournaments") return [];
     if (gameId) {
       const all = await getArenasPromise({ game_id: gameId });
-      // The by-game lookup also matches the global (unconditional) arena and
-      // camp arenas — neither belongs to the games tab.
-      return all.filter((a) => !isUnconditional(a) && !a.camp && a.tournament_id == null);
+      // The by-game lookup also matches «Синие люди»'s main arena (the
+      // unconditional filter) and camp arenas — neither belongs to the games
+      // tab.
+      return all.filter((a) => a.tenant_id == null && !a.camp && a.tournament_id == null);
     }
     return getArenasPromise({ kind: "games" });
   }, [tab, gameId]);
+
+  // Live refresh: a queued or finished arena recalculation (ADR-36 phase 6)
+  // reloads the list, so the spinner flips off when the drain lands.
+  useEffect(() => {
+    return subscribeDataChange((batch) => {
+      if (batch.arenas || batch.players) invalidate();
+    });
+  }, [invalidate]);
 
   // The tournaments tab has its own resource (the tournaments endpoint, not
   // an arena listing) — same local fetch/loading/error shape as the camps tab.
@@ -229,7 +240,8 @@ function ArenasContent() {
 /**
  * A plain single-row list item inside a section card: the arena's name
  * (wrapping only when too long) and its matches count. Camp arenas carry the
- * tent mark of the camps tab (ADR-27).
+ * tent mark of the camps tab (ADR-27); a queued recalculation (ADR-36
+ * phase 6) shows a spinner instead of a matches count that would be stale.
  */
 function ArenaItem({ arena }: { arena: Arena }) {
   return (
@@ -238,22 +250,16 @@ function ArenaItem({ arena }: { arena: Arena }) {
         {arena.camp && <Tent className="mr-1 inline-block h-4 w-4 align-middle" />}
         {arena.name}
       </Link>
-      <span className="text-sm text-muted-foreground shrink-0 whitespace-nowrap">
-        {arena.matches_count != null && <>Партий: {arena.matches_count}</>}
-        {arena.stale_at && <> · обновляется…</>}
+      <span className="text-sm text-muted-foreground shrink-0 whitespace-nowrap flex items-center gap-1.5">
+        {arena.stale_at ? (
+          <>
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-info" />
+            пересчитывается…
+          </>
+        ) : (
+          arena.matches_count != null && <>Партий: {arena.matches_count}</>
+        )}
       </span>
     </div>
-  );
-}
-
-function isUnconditional(arena: Arena): boolean {
-  const f = arena.filter;
-  return (
-    !arena.camp &&
-    f != null &&
-    f.game_ids.length === 0 &&
-    f.tag_ids.length === 0 &&
-    f.date_from == null &&
-    f.date_to == null
   );
 }

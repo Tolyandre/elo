@@ -25,8 +25,7 @@ import { LoadingRows } from "@/components/loading-rows";
 import { EmptyState } from "@/components/empty-state";
 import { BackButton } from "@/components/back-button";
 import { ClubIcons } from "@/components/player-name";
-import { CLUB_ICONS, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
-import { cn } from "@/lib/utils";
+import { IconPicker } from "@/components/icon-picker";
 
 export default function ClubAdminPage() {
     return (
@@ -168,36 +167,11 @@ function ClubAdminContent() {
 
             <section className="mb-8">
                 <h2 className="text-lg font-medium mb-3">Иконка клуба</h2>
-                <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                        type="button"
-                        onClick={() => setIcon("")}
-                        disabled={!canEdit || iconLoading}
-                        className={cn(
-                            "inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30 text-xs text-muted-foreground",
-                            !isValidClubIcon(club.icon) && "ring-2 ring-info border-info",
-                        )}
-                        title="Без иконки"
-                    >
-                        нет
-                    </button>
-                    {CLUB_ICONS.map(({ key, label }) => (
-                        <button
-                            key={key}
-                            type="button"
-                            onClick={() => setIcon(key)}
-                            disabled={!canEdit || iconLoading}
-                            className={cn(
-                                "inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30",
-                                club.icon === key && "ring-2 ring-info border-info",
-                            )}
-                            title={label}
-                        >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={clubIconSrc(key)} alt={label} className="h-8 w-8" />
-                        </button>
-                    ))}
-                </div>
+                <IconPicker
+                    value={club.icon ?? null}
+                    onChange={setIcon}
+                    disabled={!canEdit || iconLoading}
+                />
                 <p className="text-sm text-muted-foreground mt-2">
                     Выберите одну из встроенных иконок. Иконка отображается перед названием клуба и перед именами его игроков.
                 </p>

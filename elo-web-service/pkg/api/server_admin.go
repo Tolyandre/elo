@@ -8,20 +8,15 @@ import (
 )
 
 func (s *StrictServer) UpdateArenas(ctx context.Context, _ UpdateArenasRequestObject) (UpdateArenasResponseObject, error) {
-	// Global arena: exact-replay with the player-state diff.
-	report, err := s.api.MatchService.RecalculateAllGlobalElo(ctx)
+	// Every arena: match settlements per arena, then one market-ledger sweep,
+	// with the per-arena before/after diff across the whole recalculation.
+	reports, err := s.api.ArenaService.RecalculateAllArenas(ctx)
 	if err != nil {
 		// A moved market resolution can hit the same history-conflict guard
 		// the edit+save flow uses; surface it as a real status, not a 500.
 		if domainStatusCode(err) == http.StatusConflict {
 			return UpdateArenas409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		}
-		return nil, err
-	}
-
-	// Every other arena: full replay of its filtered matches.
-	reports, err := s.api.ArenaService.RecalculateArenas(ctx)
-	if err != nil {
 		return nil, err
 	}
 
@@ -43,7 +38,9 @@ func (s *StrictServer) UpdateArenas(ctx context.Context, _ UpdateArenasRequestOb
 	}
 
 	arenaReports := make([]ArenaUpdateReport, 0, len(reports))
+	settlementsReplayed := int64(0)
 	for _, r := range reports {
+		settlementsReplayed += int64(r.MatchesReplayed)
 		arenaReports = append(arenaReports, ArenaUpdateReport{
 			ArenaId:         Base58ID(r.ArenaID),
 			ArenaName:       r.ArenaName,
@@ -54,18 +51,16 @@ func (s *StrictServer) UpdateArenas(ctx context.Context, _ UpdateArenasRequestOb
 
 	// The replays rewrite every settlement — all connected clients are stale.
 	s.api.broadcastDataChange(true, true)
+	s.api.Hub.PublishSignal(elo.TopicData, "arenas-changed")
 
 	return UpdateArenas200JSONResponse{
 		Status: StatusSuccess,
 		Data: struct {
-			Arenas []ArenaUpdateReport `json:"arenas"`
-			Global GlobalReplayReport  `json:"global"`
+			Arenas              []ArenaUpdateReport `json:"arenas"`
+			SettlementsReplayed int64               `json:"settlements_replayed"`
 		}{
-			Global: GlobalReplayReport{
-				MatchesReplayed: int64(report.MatchesReplayed),
-				ChangedPlayers:  changedToAPI(report.ChangedPlayers),
-			},
-			Arenas: arenaReports,
+			Arenas:              arenaReports,
+			SettlementsReplayed: settlementsReplayed,
 		},
 	}, nil
 }

@@ -22,11 +22,11 @@ import type { FeedEvent } from "@/app/api";
 
 /**
  * The arena feed tab (ADR-32): the server-merged event stream — matches, and
- * for the global arena also market resolutions (they settle
- * only there). Each event kind renders as its own card. The game filter is
- * hidden when the arena's filter pins it to exactly one game. The
- * offline-sync queue rides on top of the global feed, like /matches did.
- * (Live tables moved to the main page, above the tabs.)
+ * for the tenant community feed also its market resolutions (ADR-36). Each
+ * event kind renders as its own card. The game filter is hidden when the
+ * arena's filter pins it to exactly one game. The offline-sync queue rides on
+ * top of the tenant feed, like /matches did. (Live tables moved to the main
+ * page, above the tabs.)
  */
 export function ArenaFeedTab({
     arena,
@@ -37,7 +37,7 @@ export function ArenaFeedTab({
     filters,
     onFiltersChange,
     onLoadMore,
-    isGlobal,
+    isTenantFeed,
     pendingGameId,
 }: {
     arena: Arena;
@@ -48,7 +48,7 @@ export function ArenaFeedTab({
     filters: ArenaMatchFilters;
     onFiltersChange: (filters: ArenaMatchFilters) => void;
     onLoadMore: () => void;
-    isGlobal: boolean;
+    isTenantFeed: boolean;
     pendingGameId?: Base58ID;
 }) {
     const { roundToInteger } = useMe();
@@ -73,14 +73,14 @@ export function ArenaFeedTab({
     // Hide the game select when the arena's match filter pins one game.
     const showGameFilter = (arena.filter?.game_ids.length ?? 0) !== 1;
 
-    // Unsynced matches go on top of the global feed. A player filter hides
+    // Unsynced matches go on top of the tenant feed. A player filter hides
     // them (pending score keys may reference offline player ids).
     const visiblePending = useMemo(() => {
-        if (!isGlobal || filters.playerId) return [];
+        if (!isTenantFeed || filters.playerId) return [];
         return pendingMatches
             .filter((m) => !pendingGameId || m.gameId === pendingGameId)
             .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
-    }, [isGlobal, pendingMatches, pendingGameId, filters.playerId]);
+    }, [isTenantFeed, pendingMatches, pendingGameId, filters.playerId]);
 
     return (
         <div className="space-y-2">

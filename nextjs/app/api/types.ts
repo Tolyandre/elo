@@ -32,7 +32,6 @@ export type TournamentWinnerParams = components["schemas"]["TournamentWinnerPara
 export type SettlementDetail = components["schemas"]["SettlementDetail"];
 export type MarketGuarantee = components["schemas"]["MarketGuarantee"];
 export type PlayerStateChange = components["schemas"]["PlayerStateChange"];
-export type GlobalReplayReport = components["schemas"]["GlobalReplayReport"];
 export type ArenaUpdateReport = components["schemas"]["ArenaUpdateReport"];
 export type UpdateArenasResult = components["schemas"]["UpdateArenasResult"];
 export type MatchFilter = components["schemas"]["MatchFilter"];

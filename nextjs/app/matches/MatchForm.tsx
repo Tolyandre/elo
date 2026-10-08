@@ -394,8 +394,8 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             setSuccess(true);
             clearDraft();
             // The match is queued under its final id; the sync (triggered right
-            // away while online) invalidates the lists once it lands. The global
-            // arena's match timeline shows the pending card, then the saved one
+            // away while online) invalidates the lists once it lands. The community
+            // feed shows the pending card, then the saved one
             // with the ratings.
             router.push(`/?tab=feed`);
         } catch (err) {

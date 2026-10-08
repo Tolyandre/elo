@@ -23,6 +23,9 @@ func tenantFromGetRows(rows []db.GetTenantRow) TenantsTenant {
 		ArenaMembershipMode: TenantsTenantArenaMembershipMode(rows[0].TenantArenaMembershipMode),
 		TournamentsOpenness: TenantsTenantTournamentsOpenness(rows[0].TenantTournamentsOpenness),
 	}
+	if rows[0].TenantIcon.Valid {
+		t.Icon = &rows[0].TenantIcon.String
+	}
 	if rows[0].MainArenaID != nil {
 		t.MainArenaId = Base58ID(*rows[0].MainArenaID)
 	}
@@ -42,6 +45,9 @@ func tenantFromListRows(rows []db.ListTenantsRow) TenantsTenant {
 		ClubIds:             []Base58ID{},
 		ArenaMembershipMode: TenantsTenantArenaMembershipMode(rows[0].TenantArenaMembershipMode),
 		TournamentsOpenness: TenantsTenantTournamentsOpenness(rows[0].TenantTournamentsOpenness),
+	}
+	if rows[0].TenantIcon.Valid {
+		t.Icon = &rows[0].TenantIcon.String
 	}
 	if rows[0].MainArenaID != nil {
 		t.MainArenaId = Base58ID(*rows[0].MainArenaID)
@@ -145,6 +151,14 @@ func (s *StrictServer) PatchTenant(ctx context.Context, request PatchTenantReque
 		opennessArg = string(*request.Body.TournamentsOpenness)
 		updateSettings = true
 	}
+	// The icon follows the club convention: an empty string clears it, a
+	// non-empty value is a key into the frontend's built-in icon set.
+	updateIcon := request.Body.Icon != nil
+	if updateIcon && *request.Body.Icon != "" {
+		if _, err := validateClubIconKey(*request.Body.Icon); err != nil {
+			return PatchTenant400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		}
+	}
 	// The main arena's settings document (starting rating, leagues) is edited
 	// through the tenant (ADR-36 phase 5) — arena PATCH on a main arena is a
 	// 409 by design.
@@ -156,7 +170,7 @@ func (s *StrictServer) PatchTenant(ctx context.Context, request PatchTenantReque
 		}
 		settingsArg = raw
 	}
-	if !updateName && !updateSettings && request.Body.Settings == nil {
+	if !updateName && !updateIcon && !updateSettings && request.Body.Settings == nil {
 		return PatchTenant400JSONResponse{Status: StatusFail, Message: "nothing to update"}, nil
 	}
 	if updateName && *request.Body.Name == "" {
@@ -188,6 +202,17 @@ func (s *StrictServer) PatchTenant(ctx context.Context, request PatchTenantReque
 				return PatchTenant404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
 			case http.StatusBadRequest:
 				return PatchTenant400JSONResponse{Status: StatusFail, Message: "invalid tenant settings"}, nil
+			default:
+				return nil, err
+			}
+		}
+	}
+
+	if updateIcon {
+		if _, err := s.api.TenantService.UpdateTenantIcon(ctx, tenantID, *request.Body.Icon, currentActorID(ctx)); err != nil {
+			switch domainStatusCode(err) {
+			case http.StatusNotFound:
+				return PatchTenant404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
 			default:
 				return nil, err
 			}

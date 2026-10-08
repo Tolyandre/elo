@@ -123,8 +123,8 @@ func TestTenants_BlueMenBackfill(t *testing.T) {
 	if tenant.TournamentsOpenness != "open" {
 		t.Fatalf("tournaments_openness = %q, want open", tenant.TournamentsOpenness)
 	}
-	if tenant.MainArenaId != elo.GlobalArenaID.Base58().String() {
-		t.Fatalf("main_arena_id = %s, want the global arena %s", tenant.MainArenaId, elo.GlobalArenaID.Base58())
+	if tenant.MainArenaId != elo.BlueMenArenaID.Base58().String() {
+		t.Fatalf("main_arena_id = %s, want the global arena %s", tenant.MainArenaId, elo.BlueMenArenaID.Base58())
 	}
 	wantClubs := []string{short(idpkg.ID(blueMenClubUUID)), short(idpkg.ID(vkiClubUUID))}
 	if !equalStrings(tenant.ClubIds, wantClubs) {
@@ -146,7 +146,7 @@ func TestTenants_BlueMenBackfill(t *testing.T) {
 	// The arena row carries the tenant anchor.
 	var anchored *string
 	if err := pool.QueryRow(context.Background(),
-		`SELECT tenant_id::text FROM arenas WHERE id = $1`, elo.GlobalArenaID).Scan(&anchored); err != nil {
+		`SELECT tenant_id::text FROM arenas WHERE id = $1`, elo.BlueMenArenaID).Scan(&anchored); err != nil {
 		t.Fatalf("read global arena: %v", err)
 	}
 	if anchored == nil || *anchored != blueMenTenantUUID {
@@ -609,13 +609,13 @@ func TestTenants_ArenaAttributionAnyMember(t *testing.T) {
 	// The global arena (the «Синие люди» main arena) only takes the first
 	// match: its member plays there; memberB is a member of the fresh
 	// tenant's club only, so the second match is member-less for Blue Men.
-	if got := settlementCount(t, pool, elo.GlobalArenaID, nil); got != 2 {
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, nil); got != 2 {
 		t.Fatalf("global arena settled %d rows, want only the Blue-Men member match", got)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, strangers.ID); got != 0 {
 		t.Fatalf("member-less match leaked %d rows into the tenant arena", got)
 	}
-	if got := settlementCount(t, pool, elo.GlobalArenaID, strangers.ID); got != 0 {
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, strangers.ID); got != 0 {
 		t.Fatalf("member-less match leaked %d rows into the global arena", got)
 	}
 
@@ -688,7 +688,7 @@ func TestTenants_MembersOnlyRules(t *testing.T) {
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
 		t.Fatalf("members_only arena settled %d rows, want only the cross-club member match", got)
 	}
-	if got := settlementCount(t, pool, elo.GlobalArenaID, nil); got != 4 {
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, nil); got != 4 {
 		t.Fatalf("global arena settled %d rows, want both matches («Синие люди» is any_member)", got)
 	}
 
@@ -700,8 +700,8 @@ func TestTenants_MembersOnlyRules(t *testing.T) {
 	// Removing a member keeps his settlement history (the match counts — he
 	// was a member at its date) but drops him from the current listing.
 	removeClubMember(t, router, token, clubA.String(), member)
-	if _, err := newArenaService(pool).RecalculateArenas(ctx); err != nil {
-		t.Fatalf("RecalculateArenas: %v", err)
+	if _, err := newArenaService(pool).RecalculateAllArenas(ctx); err != nil {
+		t.Fatalf("RecalculateAllArenas: %v", err)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
 		t.Fatalf("former member's settlements were dropped: %d rows, want 2", got)
@@ -758,10 +758,10 @@ func TestTenants_GlobalArenaOpennessGate(t *testing.T) {
 		t.Fatalf("AddMatch strangers: %v", err)
 	}
 
-	if got := settlementCount(t, pool, elo.GlobalArenaID, mixed.ID); got != 2 {
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, mixed.ID); got != 2 {
 		t.Fatalf("any_member global arena settled %d rows for the mixed match, want 2", got)
 	}
-	if got := settlementCount(t, pool, elo.GlobalArenaID, strangers.ID); got != 0 {
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, strangers.ID); got != 0 {
 		t.Fatalf("member-less match settled %d rows into the global arena, want 0", got)
 	}
 	// The rejected match still records its participants.
@@ -774,24 +774,26 @@ func TestTenants_GlobalArenaOpennessGate(t *testing.T) {
 		t.Fatalf("member-less match has %d score rows, want the 2 participants", scoreRows)
 	}
 
-	// Mode change → full in-transaction replay: the mixed match leaves the
-	// rating under members_only, and the global arena is left clean of stale
-	// marks (the worker must never drain it).
+	// Mode change → the arena is queued for a background recalculation; the
+	// drain (the worker's job) re-settles the history: the mixed match leaves
+	// the rating under members_only, and the arena is left clean of stale
+	// marks.
 	w := doJSON(t, router, http.MethodPatch, "/tenants/"+blueMenTenantUUID, token,
 		`{"arena_membership_mode": "members_only", "tournaments_openness": "members_only"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH «Синие люди» mode: %d %s", w.Code, w.Body.String())
 	}
-	if got := settlementCount(t, pool, elo.GlobalArenaID, mixed.ID); got != 0 {
+	drainArenas(t, pool)
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, mixed.ID); got != 0 {
 		t.Fatalf("after the members_only replay the mixed match has %d rows, want 0", got)
 	}
 	var staleAt *time.Time
 	if err := pool.QueryRow(ctx,
-		`SELECT stale_at FROM arenas WHERE id = $1`, elo.GlobalArenaID).Scan(&staleAt); err != nil {
-		t.Fatalf("read global arena staleness: %v", err)
+		`SELECT stale_at FROM arenas WHERE id = $1`, elo.BlueMenArenaID).Scan(&staleAt); err != nil {
+		t.Fatalf("read main arena staleness: %v", err)
 	}
 	if staleAt != nil {
-		t.Fatalf("global arena was left stale-marked after the settings replay")
+		t.Fatalf("main arena was left stale-marked after the settings drain")
 	}
 
 	// Back to any_member: the replay brings the mixed match's settlements back.
@@ -800,15 +802,16 @@ func TestTenants_GlobalArenaOpennessGate(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH «Синие люди» mode back: %d %s", w.Code, w.Body.String())
 	}
-	if got := settlementCount(t, pool, elo.GlobalArenaID, mixed.ID); got != 2 {
+	drainArenas(t, pool)
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, mixed.ID); got != 2 {
 		t.Fatalf("after the any_member replay the mixed match has %d rows, want 2", got)
 	}
 }
 
 // TestTenants_FreshArenaModeChangeRecalc pins the fresh-arena side of a mode
-// change: the main arena's match rows replay synchronously in the settings
-// transaction (no stale mark — the worker never has to catch up) and the
-// replay re-settles the history under the new mode.
+// change: the save only queues the main arena (a stale mark); the drain —
+// the background worker's job — replays the history under the new mode and
+// clears the mark (ADR-36 phase 6).
 func TestTenants_FreshArenaModeChangeRecalc(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -835,13 +838,14 @@ func TestTenants_FreshArenaModeChangeRecalc(t *testing.T) {
 		t.Fatalf("any_member arena settled %d rows, want 2", got)
 	}
 
-	// The mode change replays synchronously: the mixed match leaves the
-	// members_only arena and no stale mark is left behind.
+	// The mode change queues the arena; the drain replays: the mixed match
+	// leaves the members_only arena and the stale mark clears.
 	w := doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
 		`{"arena_membership_mode": "members_only", "tournaments_openness": "open"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH mode: %d %s", w.Code, w.Body.String())
 	}
+	drainArenas(t, pool)
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
 		t.Fatalf("members_only replay kept %d rows of the mixed match, want 0", got)
 	}
@@ -857,8 +861,8 @@ func TestTenants_FreshArenaModeChangeRecalc(t *testing.T) {
 
 // TestTenants_CompositionChangeRecalc pins the composition side of the
 // recalculation: attaching a club with members re-interprets the arena's
-// history in the same transaction — their earlier matches flow into the main
-// arena without any manual replay. The members_only mode makes the flip
+// history — their earlier matches flow into the main arena once the queued
+// recalculation drains. The members_only mode makes the flip
 // observable: a match of a not-yet-attached club's member does not count
 // (mixed), and attaching the club re-settles it.
 func TestTenants_CompositionChangeRecalc(t *testing.T) {
@@ -898,13 +902,14 @@ func TestTenants_CompositionChangeRecalc(t *testing.T) {
 		t.Fatalf("before the composition change the arena settled %d rows, want 0 (mixed)", got)
 	}
 
-	// Attaching club B re-interprets the history: the match becomes members-only
-	// clean and settles in the same transaction.
+	// Attaching club B re-interprets the history: after the drain the match is
+	// members-only clean and settled.
 	w = doJSON(t, router, http.MethodPut, "/tenants/"+tenantID.String()+"/clubs", token,
 		fmt.Sprintf(`{"club_ids": [%q, %q]}`, clubA, clubB))
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT tenant clubs: %d %s", w.Code, w.Body.String())
 	}
+	drainArenas(t, pool)
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
 		t.Fatalf("after attaching club B the arena settled %d rows, want both members", got)
 	}
@@ -915,6 +920,7 @@ func TestTenants_CompositionChangeRecalc(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT tenant clubs back: %d %s", w.Code, w.Body.String())
 	}
+	drainArenas(t, pool)
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
 		t.Fatalf("after detaching club B the arena settled %d rows, want 0 again", got)
 	}
@@ -1218,7 +1224,7 @@ func TestTenants_MarketSettlesIntoTenantArena(t *testing.T) {
 	if got := arenaMarketRows(t, pool, tenantArenaID, market.ID); got != 2 {
 		t.Fatalf("tenant arena holds %d market rows, want buyer + guarantor", got)
 	}
-	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, market.ID); got != 0 {
+	if got := arenaMarketRows(t, pool, elo.BlueMenArenaID, market.ID); got != 0 {
 		t.Fatalf("global arena holds %d rows of a tenant market", got)
 	}
 
@@ -1230,7 +1236,7 @@ func TestTenants_MarketSettlesIntoTenantArena(t *testing.T) {
 	if got := arenaMarketRows(t, pool, tenantArenaID, market.ID); got != 2 {
 		t.Fatalf("after the edit the tenant arena holds %d market rows, want 2", got)
 	}
-	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, market.ID); got != 0 {
+	if got := arenaMarketRows(t, pool, elo.BlueMenArenaID, market.ID); got != 0 {
 		t.Fatalf("after the edit the global arena holds %d rows of a tenant market", got)
 	}
 }
@@ -1341,7 +1347,7 @@ func TestTenants_TournamentWinnerMarketInTenantArena(t *testing.T) {
 	if got := arenaMarketRows(t, pool, tenantArenaID, marketID); got == 0 {
 		t.Fatalf("cancellation refunds did not land in the tenant arena")
 	}
-	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, marketID); got != 0 {
+	if got := arenaMarketRows(t, pool, elo.BlueMenArenaID, marketID); got != 0 {
 		t.Fatalf("global arena holds %d rows of a tenant tournament market", got)
 	}
 }

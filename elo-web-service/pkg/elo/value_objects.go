@@ -23,16 +23,15 @@ type EloSettings struct {
 	NewbieLeagueEarnedTau float64
 	NewbieLeagueGoalGap   float64 // gap threshold for newbie → amateur promotion
 
-	// Starting display rating per arena type.
-	StartingRatingGlobal float64
-	StartingRatingGame   float64
-
 	EliteMatches6M int
 	EliteMatches2M int
 }
 
-// EloSettingsFromDB converts a sqlc-generated row to a domain value object,
-// decoupling the domain from the generated DB type.
+// EloSettingsFromDB converts a sqlc-generated row to the domain value object,
+// decoupling the domain from the generated DB type. The starting-rating
+// columns are not carried: they only matter when auto-creating arenas
+// (arena_write.go reads the row directly) — settlement math uses the arena's
+// own settings document plus StartingElo.
 func EloSettingsFromDB(row db.GetEloSettingsForDateRow) EloSettings {
 	return EloSettings{
 		K:                     row.EloConstK,
@@ -43,8 +42,6 @@ func EloSettingsFromDB(row db.GetEloSettingsForDateRow) EloSettings {
 		NewbieLeagueEarnedMax: row.NewbieLeagueEarnedMax,
 		NewbieLeagueEarnedTau: row.NewbieLeagueEarnedTau,
 		NewbieLeagueGoalGap:   row.NewbieLeagueGoalGap,
-		StartingRatingGlobal:  row.StartingRatingGlobalArena,
-		StartingRatingGame:    row.StartingRatingGameArena,
 		EliteMatches6M:        int(row.EliteLeagueMatches6months),
 		EliteMatches2M:        int(row.EliteLeagueMatches2months),
 	}

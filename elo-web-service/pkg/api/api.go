@@ -52,6 +52,10 @@ func NewWithClients(pool *pgxpool.Pool, teseraClient *tesera.Client, bggClient *
 	arenaService := elo.NewArenaService(pool, hub)
 	tournamentService := elo.NewTournamentService(pool, arenaService, marketService)
 	matchService := elo.NewMatchService(pool, marketService, arenaService, tournamentService)
+	// The arena updater's main-arena drain re-chains the market ledger through
+	// the settlement sweep (ADR-36 phase 6); set after construction —
+	// MatchService depends on ArenaService.
+	arenaService.Sweep = matchService
 
 	return &API{
 		UserService:        elo.NewUserService(pool),
@@ -62,7 +66,7 @@ func NewWithClients(pool *pgxpool.Pool, teseraClient *tesera.Client, bggClient *
 		MarketQueries:      db.New(pool),
 		EloSettingsService: elo.NewEloSettingsService(pool),
 		ClubService:        elo.NewClubService(pool),
-		TenantService:      elo.NewTenantService(pool, arenaService, matchService),
+		TenantService:      elo.NewTenantService(pool, arenaService, hub),
 		TagService:         elo.NewTagService(pool, arenaService),
 		TableService:       elo.NewTableService(pool, hub),
 		AuditService:       elo.NewAuditService(pool),

@@ -41,16 +41,47 @@ type PlayerStateChange struct {
 // recalculation ran, the mark survives and the arena is recalculated again —
 // cancellation by staleness (ADR-24).
 func (s *ArenaService) updateArenaWithinTx(ctx context.Context, q *db.Queries, arena Arena) error {
-	locked, err := q.GetArenaForUpdate(ctx, arena.ID)
+	mark, err := s.replayArenaMatchesWithinTx(ctx, q, arena.ID)
+	if err != nil || mark == nil {
+		return err // nil mark: someone else recalculated it while we waited for the lock
+	}
+	return q.ClearArenaStale(ctx, db.ClearArenaStaleParams{
+		ID:      arena.ID,
+		StaleAt: pgtype.Timestamptz{Time: *mark, Valid: true},
+	})
+}
+
+// lockedStaleMark locks the arena row and returns its stale mark; nil when the
+// arena is not stale (someone else drained it while we waited for the lock).
+func (s *ArenaService) lockedStaleMark(ctx context.Context, q *db.Queries, arenaID id.ID) (*time.Time, error) {
+	row, err := q.GetArenaForUpdate(ctx, arenaID)
 	if err != nil {
-		return fmt.Errorf("lock arena: %w", err)
+		return nil, fmt.Errorf("lock arena: %w", err)
+	}
+	if !row.StaleAt.Valid {
+		return nil, nil
+	}
+	t := row.StaleAt.Time
+	return &t, nil
+}
+
+// replayArenaMatchesWithinTx locks the arena row, deletes its match
+// settlement rows from the pending replay date, replays the filtered matches
+// in event order, and recomputes the precalculated stats. It does NOT clear
+// the stale mark — the caller does, after any follow-up work (the market
+// re-chaining sweep for main arenas), with the returned mark. Returns nil when
+// the arena was drained by someone else while we waited for the lock.
+func (s *ArenaService) replayArenaMatchesWithinTx(ctx context.Context, q *db.Queries, arenaID id.ID) (*time.Time, error) {
+	locked, err := q.GetArenaForUpdate(ctx, arenaID)
+	if err != nil {
+		return nil, fmt.Errorf("lock arena: %w", err)
 	}
 	lockedArena, err := arenaFromGetArenaForUpdateRow(locked)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if lockedArena.StaleAt == nil {
-		return nil // someone else recalculated it while we waited for the lock
+		return nil, nil // someone else recalculated it while we waited for the lock
 	}
 
 	from := time.Time{}
@@ -58,26 +89,26 @@ func (s *ArenaService) updateArenaWithinTx(ctx context.Context, q *db.Queries, a
 		from = *lockedArena.RecalcFrom
 	}
 	if err := q.DeleteArenaSettlementsFromDate(ctx, db.DeleteArenaSettlementsFromDateParams{
-		ArenaID: arena.ID,
+		ArenaID: arenaID,
 		Date:    pgtype.Timestamptz{Time: from, Valid: true},
 	}); err != nil {
-		return fmt.Errorf("delete settlements from %v: %w", from, err)
+		return nil, fmt.Errorf("delete settlements from %v: %w", from, err)
 	}
 
 	// One replay source for every arena kind (ADR-28): the membership function
 	// selects camp-linked matches for camps and filter matches for the rest.
 	matches, err := q.ListMatchesForArenaReplay(ctx, db.ListMatchesForArenaReplayParams{
-		ArenaID:  arena.ID,
+		ArenaID:  arenaID,
 		FromDate: from,
 	})
 	if err != nil {
-		return fmt.Errorf("list matches from %v: %w", from, err)
+		return nil, fmt.Errorf("list matches from %v: %w", from, err)
 	}
 
 	for _, match := range matches {
 		scores, err := q.GetMatchScoresForMatch(ctx, match.ID)
 		if err != nil {
-			return fmt.Errorf("get scores for match %s: %w", match.ID, err)
+			return nil, fmt.Errorf("get scores for match %s: %w", match.ID, err)
 		}
 		playerScores := make(map[id.ID]float64, len(scores))
 		for _, ms := range scores {
@@ -86,25 +117,22 @@ func (s *ArenaService) updateArenaWithinTx(ctx context.Context, q *db.Queries, a
 
 		prev, err := lockAndGetPrevArenaState(ctx, q, lockedArena, match, playerScores)
 		if err != nil {
-			return fmt.Errorf("prev state for match %s: %w", match.ID, err)
+			return nil, fmt.Errorf("prev state for match %s: %w", match.ID, err)
 		}
 		if err := storeArenaMatchSettlements(ctx, q, lockedArena, match, playerScores, prev); err != nil {
-			return fmt.Errorf("settle match %s: %w", match.ID, err)
+			return nil, fmt.Errorf("settle match %s: %w", match.ID, err)
 		}
 	}
 
 	// Stats are aggregates over the whole arena match set: always recompute.
-	if err := q.DeleteArenaStats(ctx, arena.ID); err != nil {
-		return fmt.Errorf("delete stats: %w", err)
+	if err := q.DeleteArenaStats(ctx, arenaID); err != nil {
+		return nil, fmt.Errorf("delete stats: %w", err)
 	}
-	if err := q.InsertArenaStats(ctx, arena.ID); err != nil {
-		return fmt.Errorf("insert stats: %w", err)
+	if err := q.InsertArenaStats(ctx, arenaID); err != nil {
+		return nil, fmt.Errorf("insert stats: %w", err)
 	}
 
-	return q.ClearArenaStale(ctx, db.ClearArenaStaleParams{
-		ID:      arena.ID,
-		StaleAt: pgtype.Timestamptz{Time: *lockedArena.StaleAt, Valid: true},
-	})
+	return lockedArena.StaleAt, nil
 }
 
 // diffArenaState compares two latest-state snapshots with exact equality: a

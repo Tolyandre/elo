@@ -115,11 +115,10 @@ type Querier interface {
 	// rows for a market (used by unsettle/recalculation).
 	DeleteArenaSettlementByMarket(ctx context.Context, arg DeleteArenaSettlementByMarketParams) error
 	// Replay support for the arena updater: removes the arena's MATCH settlement
-	// rows from the date on — the replay re-settles matches only. Market and
-	// correction rows belong to their own lifecycles (markets re-settle via the
-	// unsettle/re-resolve sweep in RecalculateFrom, per-market in the owning
-	// tenant's arena; corrections live only in the global arena) and must survive
-	// an arena replay.
+	// rows from the date on — the replay re-settles matches only. Market rows
+	// belong to their own lifecycle (they re-settle via the unsettle/re-resolve
+	// sweep in RecalculateFrom, per-market in the owning tenant's arena) and must
+	// survive an arena replay.
 	DeleteArenaSettlementsFromDate(ctx context.Context, arg DeleteArenaSettlementsFromDateParams) error
 	// ---------------------------------------------------------------------------
 	// Precalculated stats
@@ -130,11 +129,6 @@ type Querier interface {
 	DeleteExpiredGameTables(ctx context.Context) error
 	DeleteGame(ctx context.Context, argID id.ID) (Game, error)
 	DeleteGameTable(ctx context.Context, argID id.ID) error
-	// Single delete covering match AND market settlements of the global arena
-	// («Синие люди»'s main arena — ADR-36). Other clubs' market rows are removed
-	// by the per-market deletes in UnsettleMarketsFromDate, in each market's own
-	// arena. Called at the start of RecalculateFrom.
-	DeleteGlobalSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error
 	DeleteMarket(ctx context.Context, argID id.ID) error
 	DeleteMatchScores(ctx context.Context, matchID id.ID) error
 	// Returns the deleted row so the audit trail can capture the player's name.
@@ -145,6 +139,11 @@ type Querier interface {
 	// Cascade invalidation: a slot whose outcome was voided loses its seat rows
 	// and is re-seated from its sources once the upstream replays.
 	DeleteSlotSeats(ctx context.Context, slotID id.ID) error
+	// Single delete covering match AND market settlements of «Синие люди»'s main
+	// arena (the settlement sweep's anchor — ADR-36). Other clubs' market rows are
+	// removed by the per-market deletes in UnsettleMarketsFromDate, in each
+	// market's own arena. Called at the start of RecalculateFrom.
+	DeleteSweepArenaSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
 	// The match left its slot (detach or void, ADR-26): it leaves the tournament
 	// arena too.
@@ -627,6 +626,10 @@ type Querier interface {
 	// Fills one seat cache from the source slot's derived placing.
 	UpdateSeatPlayer(ctx context.Context, arg UpdateSeatPlayerParams) error
 	UpdateTagName(ctx context.Context, arg UpdateTagNameParams) (Tag, error)
+	// Icon update: an empty string clears the icon (the same convention as club
+	// icons). Validation (lowercase kebab-case, a known frontend key) happens in
+	// the handler.
+	UpdateTenantIcon(ctx context.Context, arg UpdateTenantIconParams) (Tenant, error)
 	UpdateTenantName(ctx context.Context, arg UpdateTenantNameParams) (Tenant, error)
 	// Openness settings of an existing tenant (ADR-36); no rows when the tenant
 	// is missing.
@@ -643,13 +646,11 @@ type Querier interface {
 	// caller resolves it from markets.tenant_id.
 	UpsertArenaSettlementByMarket(ctx context.Context, arg UpsertArenaSettlementByMarketParams) error
 	// Arena settlement queries (ADR-24). Every query is arena-scoped; callers
-	// working with the global arena pass elo.GlobalArenaID. The global arena is
-	// seeded by migration 051 with the well-known id below; since ADR-36 phase 2
-	// the display reads in matches.sql, players.sql and player_ranks.sql take the
-	// arena as a parameter (the global arena until the frontend carries ?tenant=),
-	// and the global arena itself is «Синие люди»'s main arena (migration 068).
-	// corrections.sql and markets.sql keep the SQL literal until the
-	// tournaments/markets phase settles them into the owning tenant's arena.
+	// working with «Синие люди»'s main arena pass elo.BlueMenArenaID. The arena
+	// is seeded by migration 051 with the well-known id below; since ADR-36 phase
+	// 2 the display reads in matches.sql, players.sql and player_ranks.sql take
+	// the arena as a parameter, and since migration 068 the arena itself is
+	// «Синие люди»'s main arena.
 	UpsertArenaSettlementByMatch(ctx context.Context, arg UpsertArenaSettlementByMatchParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
 }

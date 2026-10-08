@@ -48,6 +48,7 @@ type auditEntryJSON struct {
 	CreatedAt  time.Time       `json:"created_at"`
 	ActorName  string          `json:"actor_name"`
 	EntityType string          `json:"entity_type"`
+	EntityID   string          `json:"entity_id"`
 	Action     string          `json:"action"`
 	Details    json.RawMessage `json:"details"`
 }
@@ -363,4 +364,83 @@ func TestAuditListIsPublicAndPaginated(t *testing.T) {
 		!(first.Data[1].CreatedAt.Equal(second.Data[0].CreatedAt) && first.Data[1].ID > second.Data[0].ID) {
 		t.Errorf("continuation out of order: page1 tail %+v, page2 head %+v", first.Data[1], second.Data[0])
 	}
+}
+
+// TestAuditTenantSettings covers the tenant journal end to end (ADR-36):
+// settings and composition changes leave structured tenant-update diff
+// documents, and GET /audit?entity_type=tenant lists them. The read side must
+// know the kind — a missing conversion in auditDetailsFromStored 500s the
+// whole feed with "unknown audit details kind".
+func TestAuditTenantSettings(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	router := setupRouter(pool)
+	token, _ := createTestUserWithID(t, pool, true)
+
+	tenantID, clubA, _ := createTenant(t, router, token, "Аудит сообществ", "any_member", "open")
+
+	// An openness change leaves the structured openness diff.
+	if w := doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
+		`{"arena_membership_mode": "members_only", "tournaments_openness": "members_only"}`); w.Code != http.StatusOK {
+		t.Fatalf("PATCH tenant openness: %d %s", w.Code, w.Body.String())
+	}
+	// An arena settings change leaves the starting-rating pair.
+	if w := doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
+		`{"settings": {"starting_rating": 100, "leagues": []}}`); w.Code != http.StatusOK {
+		t.Fatalf("PATCH tenant settings: %d %s", w.Code, w.Body.String())
+	}
+
+	page := listAudit(t, router, "?entity_type=tenant")
+	// Latest first: the settings change, the openness change, then the create.
+	if len(page.Data) < 3 {
+		t.Fatalf("tenant audit has %d entries, want at least 3", len(page.Data))
+	}
+	for i, e := range page.Data[:2] {
+		if e.EntityType != "tenant" || e.Action != "updated" {
+			t.Fatalf("entry %d = %s/%s, want tenant/updated", i, e.EntityType, e.Action)
+		}
+		if e.EntityID != string(tenantID.Base58()) {
+			t.Fatalf("entry %d entity_id = %s, want the tenant %s", i, e.EntityID, tenantID.Base58())
+		}
+	}
+
+	var opennessDoc struct {
+		ArenaMembershipMode *struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"arena_membership_mode"`
+		TournamentsOpenness *struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"tournaments_openness"`
+	}
+	if err := json.Unmarshal(page.Data[1].Details, &opennessDoc); err != nil {
+		t.Fatalf("decode openness diff: %v", err)
+	}
+	if opennessDoc.ArenaMembershipMode == nil || opennessDoc.ArenaMembershipMode.From != "any_member" || opennessDoc.ArenaMembershipMode.To != "members_only" {
+		t.Fatalf("openness diff mode = %+v", opennessDoc.ArenaMembershipMode)
+	}
+
+	var settingsDoc struct {
+		StartingRating *struct {
+			From float64 `json:"from"`
+			To   float64 `json:"to"`
+		} `json:"starting_rating"`
+		LeaguesChanged bool `json:"leagues_changed"`
+	}
+	if err := json.Unmarshal(page.Data[0].Details, &settingsDoc); err != nil {
+		t.Fatalf("decode settings diff: %v", err)
+	}
+	if settingsDoc.StartingRating == nil || settingsDoc.StartingRating.To != 100 {
+		t.Fatalf("starting_rating diff = %+v, want → 100", settingsDoc.StartingRating)
+	}
+
+	// The club attach on create recorded the club id in the created event's
+	// entity details; the composition change path is covered by the tenants
+	// tests — here the plain created entry closes the lifecycle.
+	if page.Data[2].Action != "created" {
+		t.Fatalf("oldest entry = %s, want created", page.Data[2].Action)
+	}
+	_ = clubA
 }

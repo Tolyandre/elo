@@ -10,7 +10,7 @@ import { MarketsHighlight } from "@/components/markets-highlight";
 import { RunningTables } from "@/components/tables/running-tables";
 
 /**
- * Compact «Сейчас» block above the global arena: plain links to the camps
+ * Compact «Сейчас» block above the community arena: plain links to the camps
  * whose window contains today (ADR-27) and the tournaments currently in
  * registration or running (ADR-26) — from the preloaded lists. Each entry
  * carries the mark of its kind (camp tent / tournament trophy).
@@ -62,7 +62,7 @@ function NowBlock() {
     );
 }
 
-// The global arena is the main page (ADR-24, ADR-25): the arena view renders
+// The community arena is the main page (ADR-24, ADR-25, ADR-36): the arena view renders
 // here directly, without an id. It must not be a redirect() page — a
 // statically exported redirect is an empty shell with a client-side replay,
 // which made every visit to / (and every PWA launch — the manifest start_url

@@ -123,7 +123,7 @@ export default function DebugPage() {
     }
   }
 
-  const globalChanged = report?.global.changed_players ?? [];
+  const changedArenas = (report?.arenas ?? []).filter((a) => a.changed_players.length > 0);
 
   return (
     <PageContainer width="wide">
@@ -133,11 +133,11 @@ export default function DebugPage() {
         <CardHeader>
           <CardTitle>Обновить арены</CardTitle>
           <CardDescription>
-            Пересчитывает все арены до актуального состояния: глобальная арена
-            переигрывается с самого начала (те же партии, коррекции и расчёты
-            рынков), остальные арены — по их отфильтрованным партиям. Стабильный
-            пересчёт не должен менять рейтинги: любые расхождения ниже — признак
-            ошибки. Запускайте вручную после деплоя.
+            Пересчитывает все арены до актуального состояния: партии каждой
+            арены переигрываются с самого начала, затем весь расчёт рынков
+            перестраивается по свежим цепочкам. Стабильный пересчёт не должен
+            менять рейтинги: любые расхождения ниже — признак ошибки. Запускайте
+            вручную после деплоя.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -153,35 +153,43 @@ export default function DebugPage() {
           <CardHeader>
             <CardTitle>Результат</CardTitle>
             <CardDescription>
-              Глобальная арена: переиграно партий {report.global.matches_replayed}.
+              Переиграно расчётов: {report.settlements_replayed}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <ChangedPlayersTable changed={globalChanged} />
-
-            {report.arenas.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">Остальные арены</h3>
-                <table className="w-full table-auto border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-muted-foreground">
-                      <th className="px-2 py-1.5 font-medium">Арена</th>
-                      <th className="px-2 py-1.5 font-medium">Партий переиграно</th>
-                      <th className="px-2 py-1.5 font-medium">Изменений</th>
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Арены</h3>
+              <table className="w-full table-auto border-collapse text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="px-2 py-1.5 font-medium">Арена</th>
+                    <th className="px-2 py-1.5 font-medium">Партий переиграно</th>
+                    <th className="px-2 py-1.5 font-medium">Изменений</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.arenas.map((a: ArenaUpdateReport) => (
+                    <tr key={a.arena_id} className="border-b">
+                      <td className="px-2 py-1.5">{a.arena_name}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{a.matches_replayed}</td>
+                      <td className="px-2 py-1.5 tabular-nums">{a.changed_players.length}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {report.arenas.map((a: ArenaUpdateReport) => (
-                      <tr key={a.arena_id} className="border-b">
-                        <td className="px-2 py-1.5">{a.arena_name}</td>
-                        <td className="px-2 py-1.5 tabular-nums">{a.matches_replayed}</td>
-                        <td className="px-2 py-1.5 tabular-nums">{a.changed_players.length}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  ))}
+                </tbody>
+              </table>
+              {report.arenas.length === 0 && (
+                <p className="text-sm text-muted-foreground">Нет арен</p>
+              )}
+            </div>
+
+            {changedArenas.map((a) => (
+              <div key={a.arena_id} className="space-y-2">
+                <h3 className="text-sm font-medium">
+                  «{a.arena_name}»: изменившиеся рейтинги
+                </h3>
+                <ChangedPlayersTable changed={a.changed_players} />
               </div>
-            )}
+            ))}
           </CardContent>
         </Card>
       )}

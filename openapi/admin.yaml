@@ -5,12 +5,12 @@ UpdateArenas:
     operationId: UpdateArenas
     tags: [admin]
     summary: >-
-      Recalculate every arena to the actual state (ADR-24): the global arena by
-      replaying the whole settlement history (matches and market settlements —
-      the same computation an edit+save of the chronologically
-      first match triggers), and every other arena by a full replay of its
-      filtered matches. A stable recalculation reports no changed players.
-      Invoked manually after deployments via the /debug page.
+      Recalculate every arena to the actual state (ADR-24, ADR-36 phase 6):
+      each arena's match settlements replay from scratch (one transaction per
+      arena), then one settlement sweep re-chains the market ledger. The
+      report covers every arena — «Синие люди»'s main arena included. A stable
+      recalculation reports no changed players. Invoked manually after
+      deployments via the /debug page.
     security:
       - cookieAuth: []
     responses:
@@ -21,7 +21,7 @@ UpdateArenas:
             schema:
               $ref: '#/UpdateArenasResult'
       "409":
-        description: History change conflict during the global replay
+        description: History change conflict during the settlement sweep
         content:
           application/json:
             schema:
@@ -60,18 +60,6 @@ PlayerStateChange:
       nullable: true
   required: [player_id, player_name, elo_before, elo_after, rating_before, rating_after, league_before, league_after]
 
-GlobalReplayReport:
-  type: object
-  properties:
-    matches_replayed:
-      type: integer
-      format: int64
-    changed_players:
-      type: array
-      items:
-        $ref: '#/PlayerStateChange'
-  required: [matches_replayed, changed_players]
-
 ArenaUpdateReport:
   type: object
   properties:
@@ -96,11 +84,13 @@ UpdateArenasResult:
     data:
       type: object
       properties:
-        global:
-          $ref: '#/GlobalReplayReport'
         arenas:
           type: array
           items:
             $ref: '#/ArenaUpdateReport'
-      required: [global, arenas]
+        settlements_replayed:
+          type: integer
+          format: int64
+          description: Total match-settlement events replayed across all arenas.
+      required: [arenas, settlements_replayed]
   required: [status, data]

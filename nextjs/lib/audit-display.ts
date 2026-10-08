@@ -23,6 +23,15 @@ export type MatchUpdateRow =
     | { kind: "player"; playerId: Base58ID; change: "added" | "removed" | "score"; oldScore?: number | null; newScore?: number | null }
     | { kind: "calculator" };
 
+/** One row of the expanded tenant-settings diff (ADR-36). */
+export type TenantUpdateRow =
+    | { kind: "membership-mode"; old: string; new: string }
+    | { kind: "tournaments-openness"; old: string; new: string }
+    | { kind: "starting-rating"; old: number; new: number }
+    | { kind: "leagues" }
+    | { kind: "icon"; old: string | null; new: string | null }
+    | { kind: "clubs"; added: Base58ID[]; removed: Base58ID[] };
+
 /**
  * Collapsed-row summary, e.g. "создал игру «Skull King»". Entity names known
  * from the details document (created/deleted events) are inlined; renames and
@@ -55,7 +64,11 @@ function entityNameSuffix(entry: AuditEntry): string {
 
 /** Whether the row expands into a details section (chevron affordance). */
 export function auditIsExpandable(entry: AuditEntry): boolean {
-    return entry.action === "renamed" || (entry.action === "updated" && entry.entity_type === "match");
+    return (
+        entry.action === "renamed" ||
+        (entry.action === "updated" && entry.entity_type === "match") ||
+        (entry.action === "updated" && entry.entity_type === "tenant")
+    );
 }
 
 /** Match-edit diff as display rows: date, game, then players, then calculator. */
@@ -85,4 +98,35 @@ export function matchUpdateRows(changes: {
 export function formatScore(value: number | null | undefined): string {
     if (value == null) return "—";
     return String(value);
+}
+
+/** Tenant-settings diff as display rows: openness pair, arena settings, icon, clubs. */
+export function tenantUpdateRows(changes: {
+    arena_membership_mode?: { from: string; to: string } | null;
+    tournaments_openness?: { from: string; to: string } | null;
+    starting_rating?: { from: number; to: number } | null;
+    leagues_changed?: boolean;
+    icon?: { from: string | null; to: string | null } | null;
+    clubs?: { added_club_ids: Base58ID[]; removed_club_ids: Base58ID[] } | null;
+}): TenantUpdateRow[] {
+    const rows: TenantUpdateRow[] = [];
+    if (changes.arena_membership_mode) {
+        rows.push({ kind: "membership-mode", old: changes.arena_membership_mode.from, new: changes.arena_membership_mode.to });
+    }
+    if (changes.tournaments_openness) {
+        rows.push({ kind: "tournaments-openness", old: changes.tournaments_openness.from, new: changes.tournaments_openness.to });
+    }
+    if (changes.starting_rating) {
+        rows.push({ kind: "starting-rating", old: changes.starting_rating.from, new: changes.starting_rating.to });
+    }
+    if (changes.leagues_changed) {
+        rows.push({ kind: "leagues" });
+    }
+    if (changes.icon) {
+        rows.push({ kind: "icon", old: changes.icon.from, new: changes.icon.to });
+    }
+    if (changes.clubs) {
+        rows.push({ kind: "clubs", added: changes.clubs.added_club_ids, removed: changes.clubs.removed_club_ids });
+    }
+    return rows;
 }

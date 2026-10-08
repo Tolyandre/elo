@@ -311,7 +311,7 @@ export interface paths {
         };
         /**
          * The arena's feed (ADR-32) — merged match/market-resolution events with cursor-based pagination
-         * @description Market-resolution events settle only into the global arena (ADR-24), so they appear only in the global arena's feed; every other arena's feed is its matches. Filters apply to match and market events; for markets see the parameter descriptions.
+         * @description Market-resolution events settle into the owning tenant's main arena (ADR-36), so they appear in that arena's feed; every other arena's feed is its matches. Filters apply to match and market events; for markets see the parameter descriptions.
          */
         get: operations["ListArenaFeed"];
         put?: never;
@@ -331,7 +331,7 @@ export interface paths {
         };
         /**
          * The main page's feed (ADR-32) — all events of interest, not just rating-relevant ones
-         * @description Today the home feed is the global arena's event set; unlike the global arena's own feed it is the extensible surface for content that affects no rating (future cooperative matches, posts). Parameters and cursor are the arena feed's.
+         * @description The home feed is «Синие люди»'s main arena's event set (the converted global arena) plus the coop matches (ADR-33) — the extensible main-page surface for content that affects no rating. Parameters and cursor are the arena feed's.
          */
         get: operations["ListHomeFeed"];
         put?: never;
@@ -780,8 +780,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a tenant (name, openness settings, main-arena settings)
-         * @description Partial update. A field that is omitted is left unchanged. The openness settings `arena_membership_mode` / `tournaments_openness` are always provided together. The main arena is system-managed — its settings document (starting rating and leagues, the same shape as arena PATCH, arenas.yaml ADR-24) is edited here, through the tenant; changing it re-interprets the arena's whole history, so the recalculation runs in the same transaction. An `arena_membership_mode` change re-interprets the main arena's whole history the same way. Renaming the tenant also renames its main arena. Clubs are managed through the dedicated clubs endpoint, not here.
+         * Update a tenant (name, icon, openness settings, main-arena settings)
+         * @description Partial update. A field that is omitted is left unchanged. For `icon`, an empty string clears the icon; a non-empty value is a key into the frontend's built-in icon set and is validated server-side (lowercase kebab-case, 1-32 characters). The openness settings `arena_membership_mode` / `tournaments_openness` are always provided together. The main arena is system-managed — its settings document (starting rating and leagues, the same shape as arena PATCH, arenas.yaml ADR-24) is edited here, through the tenant; changing it queues the arena for a full background recalculation (ADR-36 phase 6): the request returns once the settings are saved, the arena replays afterwards, and clients follow via the arenas-changed SSE signal. An `arena_membership_mode` change queues the recalculation the same way. Renaming the tenant also renames its main arena. Clubs are managed through the dedicated clubs endpoint, not here.
          */
         patch: operations["PatchTenant"];
         trace?: never;
@@ -1130,7 +1130,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page. */
+        /** Recalculate every arena to the actual state (ADR-24, ADR-36 phase 6): each arena's match settlements replay from scratch (one transaction per arena), then one settlement sweep re-chains the market ledger. The report covers every arena — «Синие люди»'s main arena included. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page. */
         post: operations["UpdateArenas"];
         delete?: never;
         options?: never;
@@ -1470,6 +1470,8 @@ export interface components {
             game_id?: components["schemas"]["Base58ID"];
             /** @description Set for the auto-managed per-tournament arena. */
             tournament_id?: components["schemas"]["Base58ID"];
+            /** @description Set for a tenant's main arena (ADR-36) — system-managed, settings are edited through the tenant. */
+            tenant_id?: components["schemas"]["Base58ID"];
             /**
              * Format: date-time
              * @description Not null while the arena waits for a background recalculation.
@@ -1781,8 +1783,11 @@ export interface components {
             newbie_league_earned_tau: number;
             /** Format: double */
             newbie_league_goal_gap: number;
-            /** Format: double */
-            starting_rating_global_arena: number;
+            /**
+             * Format: double
+             * @description The default starting rating for newly auto-created arenas (fresh tenant arenas in particular, ADR-36).
+             */
+            starting_rating_default: number;
             /** Format: double */
             starting_rating_game_arena: number;
             elite_league_matches_6months: number;
@@ -1934,7 +1939,7 @@ export interface components {
             type: "match";
             data: components["schemas"]["Match"];
         };
-        /** @description A market (global arena only, ADR-24). An active market (open or betting_closed) enters the feed at its creation moment; a settled one (resolved or cancelled) at its resolution moment — a match-triggered resolution lands immediately after the match that resolved it, because resolved_at carries the match's date. */
+        /** @description A market settlement in the feed. An active market (open or betting_closed) enters the feed at its creation moment; a settled one (resolved or cancelled) at its resolution moment — a match-triggered resolution lands immediately after the match that resolved it, because resolved_at carries the match's date. Market events appear in the owning tenant's main arena feed (ADR-36). */
         FeedMarketEvent: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1957,11 +1962,6 @@ export interface components {
             league_before: string | null;
             league_after: string | null;
         };
-        GlobalReplayReport: {
-            /** Format: int64 */
-            matches_replayed: number;
-            changed_players: components["schemas"]["PlayerStateChange"][];
-        };
         ArenaUpdateReport: {
             arena_id: components["schemas"]["Base58ID"];
             arena_name: string;
@@ -1972,8 +1972,12 @@ export interface components {
         UpdateArenasResult: {
             status: string;
             data: {
-                global: components["schemas"]["GlobalReplayReport"];
                 arenas: components["schemas"]["ArenaUpdateReport"][];
+                /**
+                 * Format: int64
+                 * @description Total match-settlement events replayed across all arenas.
+                 */
+                settlements_replayed: number;
             };
         };
         AuditEntry: {
@@ -1989,8 +1993,8 @@ export interface components {
             entity_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             action: "created" | "updated" | "renamed" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
-            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant settings/composition); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
+            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditTenantUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
         };
         AuditEntityDetails: {
             schema_version: number;
@@ -2024,6 +2028,38 @@ export interface components {
                 new_score?: number | null;
             }[];
             calculator_changed: boolean;
+        };
+        /** @description What changed in one tenant settings/composition update (ADR-36): the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing carries the plain entity details instead. */
+        AuditTenantUpdateDetails: {
+            schema_version: number;
+            arena_membership_mode?: {
+                /** @enum {string} */
+                from: "any_member" | "members_only";
+                /** @enum {string} */
+                to: "any_member" | "members_only";
+            } | null;
+            tournaments_openness?: {
+                /** @enum {string} */
+                from: "members_only" | "open";
+                /** @enum {string} */
+                to: "members_only" | "open";
+            } | null;
+            starting_rating?: {
+                /** Format: double */
+                from: number;
+                /** Format: double */
+                to: number;
+            } | null;
+            leagues_changed: boolean;
+            /** @description Icon change; a null side means "no icon" there. */
+            icon?: {
+                from: string | null;
+                to: string | null;
+            } | null;
+            clubs?: {
+                added_club_ids: components["schemas"]["Base58ID"][];
+                removed_club_ids: components["schemas"]["Base58ID"][];
+            } | null;
         };
         AuditPage: {
             status: string;
@@ -2162,6 +2198,8 @@ export interface components {
         Tenant: {
             id: components["schemas"]["Base58ID"];
             name: string;
+            /** @description Key into the frontend's built-in icon set (the same pool as club icons, e.g. "blue-figure"). Null means the tenant has no icon. The icon itself is a version-controlled static SVG in the frontend, shown in front of the tenant's name. */
+            icon?: string | null;
             /** @description The clubs belonging to the tenant (ADR-36); a tenant holds one or many. */
             club_ids: components["schemas"]["Base58ID"][];
             /**
@@ -2174,7 +2212,7 @@ export interface components {
              * @enum {string}
              */
             tournaments_openness: "members_only" | "open";
-            /** @description The tenant's main arena — its global rating space. */
+            /** @description The tenant's main arena — the tenant's own rating space (ADR-36). */
             main_arena_id: components["schemas"]["Base58ID"];
         };
         /** @description Name and date window of a camp arena (ADR-27) as before → after pairs. Create fills the 'to' side, update both sides (changed fields only), delete the 'from' side. Untouched fields stay null. */
@@ -3232,9 +3270,9 @@ export interface operations {
     ListArenas: {
         parameters: {
             query?: {
-                /** @description games returns every user-created arena except camps and the global one; camps returns only camp arenas (ADR-27); tournaments returns only the tournament arenas (empty until ADR-26). */
+                /** @description games returns every user-created arena except camps and the tenants' main arenas (ADR-36); camps returns only camp arenas (ADR-27); tournaments returns only the tournament arenas (empty until ADR-26). */
                 kind?: "games" | "camps" | "tournaments";
-                /** @description Return arenas whose filter includes this game or one of its tags; the global arena (unconditional filter) is always included. */
+                /** @description Return arenas whose filter includes this game or one of its tags; «Синие люди»'s main arena (the converted global arena, unconditional filter) is always included. */
                 game_id?: string;
                 /** @description Return the tournament's arena. */
                 tournament_id?: string;
@@ -3394,7 +3432,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description The global arena cannot be deleted; auto-managed arenas follow their entity */
+            /** @description A tenant's main arena cannot be deleted (ADR-36); auto-managed arenas follow their entity */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3456,7 +3494,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description The arena is auto-managed (per-game, per-tournament or the global one), or new camp dates do not cover already-linked matches. */
+            /** @description The arena is auto-managed (per-game, per-tournament, or a tenant's main arena — ADR-36), or new camp dates do not cover already-linked matches. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5482,6 +5520,7 @@ export interface operations {
             content: {
                 "application/json": {
                     name?: string;
+                    icon?: string;
                     /** @enum {string} */
                     arena_membership_mode?: "any_member" | "members_only";
                     /** @enum {string} */
@@ -6785,7 +6824,7 @@ export interface operations {
                     "application/json": components["schemas"]["UpdateArenasResult"];
                 };
             };
-            /** @description History change conflict during the global replay */
+            /** @description History change conflict during the settlement sweep */
             409: {
                 headers: {
                     [name: string]: unknown;

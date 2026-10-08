@@ -20,9 +20,12 @@ import { PageContainer } from "@/components/page-container";
 import { LoadingRows } from "@/components/loading-rows";
 import { ErrorAlert } from "@/components/error-alert";
 import { BackButton } from "@/components/back-button";
+import { IconPicker } from "@/components/icon-picker";
+import { TenantIcon } from "@/components/tenant-icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Select,
     SelectContent,
@@ -31,6 +34,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { MultiSelect } from "@/components/vendor/multi-select";
+import { ClubIcon } from "@/components/club-icon";
 import {
     ArenaSettingsFields,
     ArenaSettingsValues,
@@ -60,9 +64,10 @@ function TenantSettingsContent() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
 
-    // Form state: one save applies the tenant PATCH (name, openness, main-arena
-    // settings) and, when the composition changed, the clubs PUT.
+    // Form state: one save applies the tenant PATCH (name, icon, openness,
+    // main-arena settings) and, when the composition changed, the clubs PUT.
     const [name, setName] = useState("");
+    const [icon, setIcon] = useState("");
     const [membershipMode, setMembershipMode] = useState<Tenant["arena_membership_mode"]>("any_member");
     const [tournamentsOpenness, setTournamentsOpenness] = useState<Tenant["tournaments_openness"]>("open");
     const [clubIds, setClubIds] = useState<Base58ID[]>([]);
@@ -83,6 +88,7 @@ function TenantSettingsContent() {
                 if (cancelled) return;
                 setTenant(tenant);
                 setName(tenant.name);
+                setIcon(tenant.icon ?? "");
                 setMembershipMode(tenant.arena_membership_mode);
                 setTournamentsOpenness(tenant.tournaments_openness);
                 setClubIds(tenant.club_ids);
@@ -104,7 +110,7 @@ function TenantSettingsContent() {
     }, [tenantId]);
 
     // Every club is a candidate; the ones owned by another tenant are shown
-    // but disabled.
+    // but disabled. The dropdown carries each club's icon.
     const clubOptions = useMemo(
         () => [...clubs]
             .sort((a, b) => clubDisplayName(a).localeCompare(clubDisplayName(b), undefined, { sensitivity: "base" }))
@@ -112,6 +118,7 @@ function TenantSettingsContent() {
                 value: c.id,
                 label: clubDisplayName(c),
                 disabled: !!c.tenant_id && !!tenant && c.tenant_id !== tenant.id,
+                icon: () => <ClubIcon club={c} />,
             })),
         [clubs, clubDisplayName, tenant],
     );
@@ -136,6 +143,7 @@ function TenantSettingsContent() {
             const doc: ArenaSettings = buildSettingsFromValues(settings);
             await patchTenantPromise(tenant.id, {
                 name: name.trim(),
+                icon,
                 arena_membership_mode: membershipMode,
                 tournaments_openness: tournamentsOpenness,
                 settings: doc,
@@ -146,7 +154,7 @@ function TenantSettingsContent() {
             if (!sameClubs) {
                 await setTenantClubsPromise(tenant.id, clubIds);
             }
-            toast.success("Настройки сообщества сохранены");
+            toast.success("Настройки сообщества сохранены — арена пересчитывается в фоне");
             router.push("/admin/tenants");
         } catch (err) {
             // The API helper already shows a toast; surface the message inline
@@ -189,10 +197,13 @@ function TenantSettingsContent() {
 
     return (
         <PageContainer width="form">
-            <PageHeader title={`Сообщество «${tenant.name}»`} />
+            <PageHeader
+                title={`Сообщество «${tenant.name}»`}
+                icon={tenant.icon ? <TenantIcon icon={tenant.icon} className="h-6 w-6" /> : undefined}
+            />
             <BackButton href="/admin/tenants" />
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
                 {offline && (
                     <Alert variant="destructive">
                         <CloudOff />
@@ -201,91 +212,123 @@ function TenantSettingsContent() {
                     </Alert>
                 )}
 
-                <div>
-                    <label className="block font-semibold mb-2" htmlFor="tenantName">Название:</label>
-                    <Input
-                        id="tenantName"
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        disabled={!canEdit}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                        Должно быть уникальным. Главная арена называется по сообществу и переименовывается вместе с ним.
-                    </p>
-                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Иконка</CardTitle>
+                        <CardDescription>
+                            Отображается перед названием сообщества — в меню и в списке сообществ.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <IconPicker value={icon} onChange={setIcon} disabled={!canEdit} />
+                    </CardContent>
+                </Card>
 
-                <div className="space-y-3">
-                    <h2 className="font-semibold">Открытость:</h2>
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <div className="flex-1">
-                            <label className="block text-sm mb-1.5" htmlFor="tenantMembershipMode">Какие партии идут в общий рейтинг:</label>
-                            <Select
-                                value={membershipMode}
-                                onValueChange={(v) => setMembershipMode(v as Tenant["arena_membership_mode"])}
-                                disabled={!canEdit}
-                            >
-                                <SelectTrigger id="tenantMembershipMode" className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="any_member">{MEMBERSHIP_MODE_LABELS.any_member}</SelectItem>
-                                    <SelectItem value="members_only">{MEMBERSHIP_MODE_LABELS.members_only}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Смена правила пересчитывает рейтинг сообщества с самого начала.
-                            </p>
-                        </div>
-                        <div className="flex-1">
-                            <label className="block text-sm mb-1.5" htmlFor="tenantOpenness">Турниры:</label>
-                            <Select
-                                value={tournamentsOpenness}
-                                onValueChange={(v) => setTournamentsOpenness(v as Tenant["tournaments_openness"])}
-                                disabled={!canEdit}
-                            >
-                                <SelectTrigger id="tenantOpenness" className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="members_only">{TOURNAMENTS_OPENNESS_LABELS.members_only}</SelectItem>
-                                    <SelectItem value="open">{TOURNAMENTS_OPENNESS_LABELS.open}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Кто может регистрироваться в турнирах сообщества.
-                            </p>
-                        </div>
-                    </div>
-                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Название</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-1.5">
+                        <Input
+                            id="tenantName"
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            disabled={!canEdit}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Должно быть уникальным. Главная арена называется по сообществу и переименовывается вместе с ним.
+                        </p>
+                    </CardContent>
+                </Card>
 
-                <div>
-                    <h2 className="font-semibold mb-2 flex items-center gap-1.5"><Users className="size-4" /> Клубы сообщества:</h2>
-                    <MultiSelect
-                        options={clubOptions}
-                        placeholder="Клубы сообщества"
-                        searchPlaceholder="Искать клуб..."
-                        hideSelectAll={true}
-                        onValueChange={(ids: string[]) => setClubIds(ids as Base58ID[])}
-                        defaultValue={clubIds}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                        Принадлежность сообществу задаётся клубами: участник сообщества — активный участник любого из них.
-                        Изменение состава пересчитывает рейтинг сообщества. Затемнённые клубы уже принадлежат другому сообществу.
-                    </p>
-                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Открытость</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <div className="flex-1 space-y-1.5">
+                                <label className="block text-sm" htmlFor="tenantMembershipMode">Какие партии идут в общий рейтинг:</label>
+                                <Select
+                                    value={membershipMode}
+                                    onValueChange={(v) => setMembershipMode(v as Tenant["arena_membership_mode"])}
+                                    disabled={!canEdit}
+                                >
+                                    <SelectTrigger id="tenantMembershipMode" className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="any_member">{MEMBERSHIP_MODE_LABELS.any_member}</SelectItem>
+                                        <SelectItem value="members_only">{MEMBERSHIP_MODE_LABELS.members_only}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Смена правила пересчитывает рейтинг сообщества с самого начала.
+                                </p>
+                            </div>
+                            <div className="flex-1 space-y-1.5">
+                                <label className="block text-sm" htmlFor="tenantOpenness">Турниры:</label>
+                                <Select
+                                    value={tournamentsOpenness}
+                                    onValueChange={(v) => setTournamentsOpenness(v as Tenant["tournaments_openness"])}
+                                    disabled={!canEdit}
+                                >
+                                    <SelectTrigger id="tenantOpenness" className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="members_only">{TOURNAMENTS_OPENNESS_LABELS.members_only}</SelectItem>
+                                        <SelectItem value="open">{TOURNAMENTS_OPENNESS_LABELS.open}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Кто может регистрироваться в турнирах сообщества.
+                                </p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-1.5"><Users className="size-4" /> Клубы сообщества</CardTitle>
+                        <CardDescription>
+                            Принадлежность сообществу задаётся клубами: участник сообщества — активный участник любого из них.
+                            Изменение состава пересчитывает рейтинг сообщества. Затемнённые клубы уже принадлежат другому сообществу.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <MultiSelect
+                            options={clubOptions}
+                            placeholder="Клубы сообщества"
+                            searchPlaceholder="Искать клуб..."
+                            hideSelectAll={true}
+                            onValueChange={(ids: string[]) => setClubIds(ids as Base58ID[])}
+                            defaultValue={clubIds}
+                        />
+                    </CardContent>
+                </Card>
 
                 {settings && (
-                    <ArenaSettingsFields
-                        values={settings}
-                        onChange={setSettings}
-                        disabled={!canEdit}
-                        idPrefix="tenantArena"
-                    />
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Главная арена</CardTitle>
+                            <CardDescription>
+                                Смена стартового рейтинга или лиг пересчитывает рейтинг сообщества с самого
+                                начала — в фоне, уже после сохранения.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ArenaSettingsFields
+                                values={settings}
+                                onChange={setSettings}
+                                disabled={!canEdit}
+                                idPrefix="tenantArena"
+                            />
+                        </CardContent>
+                    </Card>
                 )}
-                <p className="text-xs text-muted-foreground -mt-3">
-                    Это настройки главной арены сообщества. Смена стартового рейтинга или лиг пересчитывает её рейтинг с самого начала.
-                </p>
 
                 {error && <div className="text-destructive text-sm">{error}</div>}
 

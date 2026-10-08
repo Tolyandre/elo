@@ -303,7 +303,7 @@ func TestArena_GameListExcludesLinkOnlyArenas(t *testing.T) {
 	}
 
 	want := map[idpkg.ID]bool{
-		elo.GlobalArenaID:            true,
+		elo.BlueMenArenaID:           true,
 		gameArenaID(t, pool, gameID): true,
 	}
 	for _, a := range list.Data {
@@ -340,7 +340,7 @@ func TestArena_GlobalArenaBacksPlayersPage(t *testing.T) {
 
 	// The global arena's players tab agrees with /players' data source.
 	arenas := newArenaService(pool)
-	players, err := arenas.GetArenaPlayers(ctx, elo.GlobalArenaID)
+	players, err := arenas.GetArenaPlayers(ctx, elo.BlueMenArenaID)
 	if err != nil {
 		t.Fatalf("GetArenaPlayers(global): %v", err)
 	}

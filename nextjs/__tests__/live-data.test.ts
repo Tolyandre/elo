@@ -11,18 +11,18 @@ describe('createDataEventBatcher', () => {
     });
 
     it('flushes a single signal after the quiet window', () => {
-        const batches: Array<{ matches: boolean; players: boolean }> = [];
+        const batches: Array<{ matches: boolean; players: boolean; arenas: boolean }> = [];
         const batcher = createDataEventBatcher((b) => batches.push(b));
 
         batcher.add('matches-changed');
         expect(batches).toEqual([]);
 
         vi.advanceTimersByTime(500);
-        expect(batches).toEqual([{ matches: true, players: false }]);
+        expect(batches).toEqual([{ matches: true, players: false, arenas: false }]);
     });
 
     it('collapses a burst into one combined batch (offline-sync queue)', () => {
-        const batches: Array<{ matches: boolean; players: boolean }> = [];
+        const batches: Array<{ matches: boolean; players: boolean; arenas: boolean }> = [];
         const batcher = createDataEventBatcher((b) => batches.push(b));
 
         // Offline sync pushes several matches; the server emits both signals
@@ -34,11 +34,21 @@ describe('createDataEventBatcher', () => {
         }
 
         vi.advanceTimersByTime(500);
-        expect(batches).toEqual([{ matches: true, players: true }]);
+        expect(batches).toEqual([{ matches: true, players: true, arenas: false }]);
+    });
+
+    it('carries the arenas signal (a queued arena recalculation)', () => {
+        const batches: Array<{ matches: boolean; players: boolean; arenas: boolean }> = [];
+        const batcher = createDataEventBatcher((b) => batches.push(b));
+
+        batcher.add('arenas-changed');
+        vi.advanceTimersByTime(500);
+
+        expect(batches).toEqual([{ matches: false, players: false, arenas: true }]);
     });
 
     it('keeps batches separated once flushed', () => {
-        const batches: Array<{ matches: boolean; players: boolean }> = [];
+        const batches: Array<{ matches: boolean; players: boolean; arenas: boolean }> = [];
         const batcher = createDataEventBatcher((b) => batches.push(b));
 
         batcher.add('players-changed');
@@ -47,13 +57,13 @@ describe('createDataEventBatcher', () => {
         vi.advanceTimersByTime(500);
 
         expect(batches).toEqual([
-            { matches: false, players: true },
-            { matches: true, players: false },
+            { matches: false, players: true, arenas: false },
+            { matches: true, players: false, arenas: false },
         ]);
     });
 
     it('ignores unrelated event types', () => {
-        const batches: Array<{ matches: boolean; players: boolean }> = [];
+        const batches: Array<{ matches: boolean; players: boolean; arenas: boolean }> = [];
         const batcher = createDataEventBatcher((b) => batches.push(b));
 
         batcher.add('markets-changed');
@@ -64,7 +74,7 @@ describe('createDataEventBatcher', () => {
     });
 
     it('cancel drops the pending batch', () => {
-        const batches: Array<{ matches: boolean; players: boolean }> = [];
+        const batches: Array<{ matches: boolean; players: boolean; arenas: boolean }> = [];
         const batcher = createDataEventBatcher((b) => batches.push(b));
 
         batcher.add('matches-changed');
@@ -77,21 +87,21 @@ describe('createDataEventBatcher', () => {
 
 describe('data-change emitter', () => {
     it('delivers batches to every subscriber until they unsubscribe', () => {
-        const seenA: Array<{ matches: boolean; players: boolean }> = [];
-        const seenB: Array<{ matches: boolean; players: boolean }> = [];
+        const seenA: Array<{ matches: boolean; players: boolean; arenas: boolean }> = [];
+        const seenB: Array<{ matches: boolean; players: boolean; arenas: boolean }> = [];
         const unsubA = subscribeDataChange((b) => seenA.push(b));
         const unsubB = subscribeDataChange((b) => seenB.push(b));
 
-        emitDataChange({ matches: true, players: false });
+        emitDataChange({ matches: true, players: false, arenas: false });
         unsubA();
         unsubB();
-        emitDataChange({ matches: false, players: true });
+        emitDataChange({ matches: false, players: true, arenas: false });
 
-        expect(seenA).toEqual([{ matches: true, players: false }]);
-        expect(seenB).toEqual([{ matches: true, players: false }]);
+        expect(seenA).toEqual([{ matches: true, players: false, arenas: false }]);
+        expect(seenB).toEqual([{ matches: true, players: false, arenas: false }]);
     });
 
     it('emitting with no subscribers is a no-op', () => {
-        expect(() => emitDataChange({ matches: true, players: true })).not.toThrow();
+        expect(() => emitDataChange({ matches: true, players: true, arenas: false })).not.toThrow();
     });
 });

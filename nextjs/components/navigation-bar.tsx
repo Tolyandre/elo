@@ -23,6 +23,7 @@ import { useTenantScope } from "@/app/tenantScopeContext"
 import { useTenants } from "@/app/tenantsContext"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
+import { TenantIcon } from "@/components/tenant-icon"
 import { Check, ChevronDown, CircleHelp, LogOut, LayoutGrid, Menu, Settings, SlidersHorizontal, Trophy, Users } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
@@ -62,7 +63,7 @@ export function NavigationBar() {
               icon+name pair: flex-row here lets tailwind-merge win over it. */}
           <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "min-w-0 flex-row gap-1 px-1.5 sm:px-2")}>
             <Link href={tenantHomeHref} onClick={goHome} aria-label="На главную сообщества" className="min-w-0">
-              <Users className="h-4 w-4 shrink-0" />
+              {tenant ? <TenantIcon icon={tenant.icon} className="h-4 w-4" /> : <Users className="h-4 w-4 shrink-0" />}
               <span className="truncate max-w-[8rem] sm:max-w-[12rem]">{tenant?.name ?? "Главная"}</span>
             </Link>
           </NavigationMenuLink>
@@ -77,6 +78,7 @@ export function NavigationBar() {
                 {tenants.map((t) => (
                   <DropdownMenuItem key={t.id} onClick={() => setTenant(t.id)}>
                     <Check className={`mr-1 h-4 w-4 shrink-0 ${t.id === tenant?.id ? "opacity-100" : "opacity-0"}`} />
+                    <TenantIcon icon={t.icon} className="mr-1 h-4 w-4" />
                     <span className="truncate">{t.name}</span>
                   </DropdownMenuItem>
                 ))}

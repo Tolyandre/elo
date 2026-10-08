@@ -16,7 +16,7 @@ import (
 const createTenant = `-- name: CreateTenant :one
 INSERT INTO tenants (id, name, arena_membership_mode, tournaments_openness)
 VALUES ($1, $2, $3, $4)
-RETURNING id, name, arena_membership_mode, tournaments_openness
+RETURNING id, name, arena_membership_mode, tournaments_openness, icon
 `
 
 type CreateTenantParams struct {
@@ -39,6 +39,7 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Ten
 		&i.Name,
 		&i.ArenaMembershipMode,
 		&i.TournamentsOpenness,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -47,6 +48,7 @@ const getTenant = `-- name: GetTenant :many
 SELECT
     t.id AS tenant_id,
     t.name AS tenant_name,
+    t.icon AS tenant_icon,
     t.arena_membership_mode AS tenant_arena_membership_mode,
     t.tournaments_openness AS tenant_tournaments_openness,
     ma.id AS main_arena_id,
@@ -58,12 +60,13 @@ WHERE t.id = $1
 `
 
 type GetTenantRow struct {
-	TenantID                  id.ID  `json:"tenant_id"`
-	TenantName                string `json:"tenant_name"`
-	TenantArenaMembershipMode string `json:"tenant_arena_membership_mode"`
-	TenantTournamentsOpenness string `json:"tenant_tournaments_openness"`
-	MainArenaID               *id.ID `json:"main_arena_id"`
-	ClubID                    *id.ID `json:"club_id"`
+	TenantID                  id.ID       `json:"tenant_id"`
+	TenantName                string      `json:"tenant_name"`
+	TenantIcon                pgtype.Text `json:"tenant_icon"`
+	TenantArenaMembershipMode string      `json:"tenant_arena_membership_mode"`
+	TenantTournamentsOpenness string      `json:"tenant_tournaments_openness"`
+	MainArenaID               *id.ID      `json:"main_arena_id"`
+	ClubID                    *id.ID      `json:"club_id"`
 }
 
 func (q *Queries) GetTenant(ctx context.Context, argID id.ID) ([]GetTenantRow, error) {
@@ -78,6 +81,7 @@ func (q *Queries) GetTenant(ctx context.Context, argID id.ID) ([]GetTenantRow, e
 		if err := rows.Scan(
 			&i.TenantID,
 			&i.TenantName,
+			&i.TenantIcon,
 			&i.TenantArenaMembershipMode,
 			&i.TenantTournamentsOpenness,
 			&i.MainArenaID,
@@ -94,7 +98,7 @@ func (q *Queries) GetTenant(ctx context.Context, argID id.ID) ([]GetTenantRow, e
 }
 
 const getTenantByID = `-- name: GetTenantByID :one
-SELECT id, name, arena_membership_mode, tournaments_openness FROM tenants WHERE id = $1
+SELECT id, name, arena_membership_mode, tournaments_openness, icon FROM tenants WHERE id = $1
 `
 
 // Bare row for existence checks and settings recalculation.
@@ -106,6 +110,7 @@ func (q *Queries) GetTenantByID(ctx context.Context, argID id.ID) (Tenant, error
 		&i.Name,
 		&i.ArenaMembershipMode,
 		&i.TournamentsOpenness,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -288,6 +293,7 @@ const listTenants = `-- name: ListTenants :many
 SELECT
     t.id AS tenant_id,
     t.name AS tenant_name,
+    t.icon AS tenant_icon,
     t.arena_membership_mode AS tenant_arena_membership_mode,
     t.tournaments_openness AS tenant_tournaments_openness,
     ma.id AS main_arena_id,
@@ -299,12 +305,13 @@ ORDER BY t.name
 `
 
 type ListTenantsRow struct {
-	TenantID                  id.ID  `json:"tenant_id"`
-	TenantName                string `json:"tenant_name"`
-	TenantArenaMembershipMode string `json:"tenant_arena_membership_mode"`
-	TenantTournamentsOpenness string `json:"tenant_tournaments_openness"`
-	MainArenaID               *id.ID `json:"main_arena_id"`
-	ClubID                    *id.ID `json:"club_id"`
+	TenantID                  id.ID       `json:"tenant_id"`
+	TenantName                string      `json:"tenant_name"`
+	TenantIcon                pgtype.Text `json:"tenant_icon"`
+	TenantArenaMembershipMode string      `json:"tenant_arena_membership_mode"`
+	TenantTournamentsOpenness string      `json:"tenant_tournaments_openness"`
+	MainArenaID               *id.ID      `json:"main_arena_id"`
+	ClubID                    *id.ID      `json:"club_id"`
 }
 
 // Tenant queries (ADR-36). A tenant is a separate community entity: name,
@@ -323,6 +330,7 @@ func (q *Queries) ListTenants(ctx context.Context) ([]ListTenantsRow, error) {
 		if err := rows.Scan(
 			&i.TenantID,
 			&i.TenantName,
+			&i.TenantIcon,
 			&i.TenantArenaMembershipMode,
 			&i.TenantTournamentsOpenness,
 			&i.MainArenaID,
@@ -458,11 +466,39 @@ func (q *Queries) TenantNameExists(ctx context.Context, arg TenantNameExistsPara
 	return exists, err
 }
 
+const updateTenantIcon = `-- name: UpdateTenantIcon :one
+UPDATE tenants
+SET icon = NULLIF($2::text, '')
+WHERE id = $1
+RETURNING id, name, arena_membership_mode, tournaments_openness, icon
+`
+
+type UpdateTenantIconParams struct {
+	ID   id.ID  `json:"id"`
+	Icon string `json:"icon"`
+}
+
+// Icon update: an empty string clears the icon (the same convention as club
+// icons). Validation (lowercase kebab-case, a known frontend key) happens in
+// the handler.
+func (q *Queries) UpdateTenantIcon(ctx context.Context, arg UpdateTenantIconParams) (Tenant, error) {
+	row := q.db.QueryRow(ctx, updateTenantIcon, arg.ID, arg.Icon)
+	var i Tenant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ArenaMembershipMode,
+		&i.TournamentsOpenness,
+		&i.Icon,
+	)
+	return i, err
+}
+
 const updateTenantName = `-- name: UpdateTenantName :one
 UPDATE tenants
 SET name = $2
 WHERE id = $1
-RETURNING id, name, arena_membership_mode, tournaments_openness
+RETURNING id, name, arena_membership_mode, tournaments_openness, icon
 `
 
 type UpdateTenantNameParams struct {
@@ -478,6 +514,7 @@ func (q *Queries) UpdateTenantName(ctx context.Context, arg UpdateTenantNamePara
 		&i.Name,
 		&i.ArenaMembershipMode,
 		&i.TournamentsOpenness,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -486,7 +523,7 @@ const updateTenantSettings = `-- name: UpdateTenantSettings :one
 UPDATE tenants
 SET arena_membership_mode = $2, tournaments_openness = $3
 WHERE id = $1
-RETURNING id, name, arena_membership_mode, tournaments_openness
+RETURNING id, name, arena_membership_mode, tournaments_openness, icon
 `
 
 type UpdateTenantSettingsParams struct {
@@ -505,6 +542,7 @@ func (q *Queries) UpdateTenantSettings(ctx context.Context, arg UpdateTenantSett
 		&i.Name,
 		&i.ArenaMembershipMode,
 		&i.TournamentsOpenness,
+		&i.Icon,
 	)
 	return i, err
 }

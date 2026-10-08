@@ -84,7 +84,8 @@ AuditEntry:
         Action-specific payload; null when the event carries no details (match
         created). Narrow by action: entity → AuditEntityDetails (created/deleted
         of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated →
-        AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails
+        AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant
+        settings/composition); arena → AuditArenaCampConfigDetails
         (camp config) or AuditCampLinkDetails (match attach/detach);
         tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails /
         AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails /
@@ -93,6 +94,7 @@ AuditEntry:
         - $ref: '#/AuditEntityDetails'
         - $ref: '#/AuditRenameDetails'
         - $ref: '#/AuditMatchUpdateDetails'
+        - $ref: '#/AuditTenantUpdateDetails'
         - $ref: '#/AuditArenaCampConfigDetails'
         - $ref: '#/AuditCampLinkDetails'
         - $ref: '#/AuditTournamentConfigDetails'
@@ -171,6 +173,78 @@ AuditMatchUpdateDetails:
             nullable: true
     calculator_changed:
       type: boolean
+
+AuditTenantUpdateDetails:
+  type: object
+  description: >-
+    What changed in one tenant settings/composition update (ADR-36): the
+    openness pair, the main arena's settings document, the club composition.
+    Untouched fields stay null/false; an update that changed nothing carries
+    the plain entity details instead.
+  required: [schema_version, leagues_changed]
+  properties:
+    schema_version:
+      type: integer
+    arena_membership_mode:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          enum: [any_member, members_only]
+        to:
+          type: string
+          enum: [any_member, members_only]
+    tournaments_openness:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          enum: [members_only, open]
+        to:
+          type: string
+          enum: [members_only, open]
+    starting_rating:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: number
+          format: double
+        to:
+          type: number
+          format: double
+    leagues_changed:
+      type: boolean
+    icon:
+      type: object
+      nullable: true
+      required: [from, to]
+      description: Icon change; a null side means "no icon" there.
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+    clubs:
+      type: object
+      nullable: true
+      required: [added_club_ids, removed_club_ids]
+      properties:
+        added_club_ids:
+          type: array
+          items:
+            $ref: './common.yaml#/Base58ID'
+        removed_club_ids:
+          type: array
+          items:
+            $ref: './common.yaml#/Base58ID'
 
 AuditArenaCampConfigDetails:
   type: object

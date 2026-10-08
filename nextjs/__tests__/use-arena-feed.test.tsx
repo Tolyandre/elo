@@ -7,13 +7,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { renderHook } from "./render-hook";
 import { emitDataChange } from "@/lib/live-data";
-import { getArenaFeedPagePromise, getHomeFeedPagePromise, getTenantFeedPagePromise, type FeedEvent, type Market } from "@/app/api";
+import { getArenaFeedPagePromise, getTenantFeedPagePromise, type FeedEvent, type Market } from "@/app/api";
 import { useArenaFeed } from "@/app/arenas/view/use-arena-feed";
 import type { Base58ID } from "@/lib/id";
 
 vi.mock("@/app/api", () => ({
     getArenaFeedPagePromise: vi.fn(),
-    getHomeFeedPagePromise: vi.fn(),
     getTenantFeedPagePromise: vi.fn(),
 }));
 
@@ -28,10 +27,10 @@ vi.mock("@/hooks/useMarketsSSE", () => ({
 const ARENA_ID = "arena-1" as Base58ID;
 const TENANT_ID = "tenant-1" as Base58ID;
 
-// The two scopes every non-tenant test exercises: the id-less home feed and
-// an explicit arena's own feed.
-const homeScope = { home: true, arenaId: ARENA_ID, tenantId: null as Base58ID | null };
-const arenaScope = { home: false, arenaId: ARENA_ID, tenantId: null as Base58ID | null };
+// The two scopes most tests exercise: the tenant-mode main page (community
+// feed) and an explicit arena's own feed.
+const tenantScope = { arenaId: ARENA_ID, tenantId: TENANT_ID as Base58ID | null };
+const arenaScope = { arenaId: ARENA_ID, tenantId: null as Base58ID | null };
 
 function matchEvent(id: string): FeedEvent {
     return {
@@ -67,34 +66,26 @@ async function flushFetches() {
 describe("useArenaFeed endpoint selection", () => {
     beforeEach(() => {
         vi.mocked(getArenaFeedPagePromise).mockReset();
-        vi.mocked(getHomeFeedPagePromise).mockReset();
         vi.mocked(getTenantFeedPagePromise).mockReset();
         vi.mocked(getArenaFeedPagePromise).mockResolvedValue({ items: [], next: null });
-        vi.mocked(getHomeFeedPagePromise).mockResolvedValue({ items: [], next: null });
         vi.mocked(getTenantFeedPagePromise).mockResolvedValue({ items: [], next: null });
         marketsSSE.tick = 0;
     });
 
-    it("uses the home feed for the main page and the arena feed for an explicit arena", async () => {
-        const { unmount } = renderHook(() => useArenaFeed(homeScope, {}));
-        await flushFetches();
-        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
-        expect(getArenaFeedPagePromise).not.toHaveBeenCalled();
-        unmount();
-
-        const { unmount: unmount2 } = renderHook(() => useArenaFeed(arenaScope, {}));
+    it("uses the arena feed for an explicit arena", async () => {
+        const { unmount } = renderHook(() => useArenaFeed(arenaScope, {}));
         await flushFetches();
         expect(getArenaFeedPagePromise).toHaveBeenCalledTimes(1);
-        unmount2();
+        expect(getTenantFeedPagePromise).not.toHaveBeenCalled();
+        unmount();
     });
 
     it("uses the tenant community feed for the tenant-mode main page (ADR-36)", async () => {
         const { unmount } = renderHook(() =>
-            useArenaFeed({ home: false, arenaId: ARENA_ID, tenantId: TENANT_ID }, { clubId: "c1" as Base58ID }),
+            useArenaFeed(tenantScope, { clubId: "c1" as Base58ID }),
         );
         await flushFetches();
         expect(getTenantFeedPagePromise).toHaveBeenCalledWith(TENANT_ID, { club_id: "c1" });
-        expect(getHomeFeedPagePromise).not.toHaveBeenCalled();
         expect(getArenaFeedPagePromise).not.toHaveBeenCalled();
         unmount();
     });
@@ -104,9 +95,7 @@ describe("useArenaFeed endpoint selection", () => {
             .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "tcursor-1" })
             .mockResolvedValueOnce({ items: [], next: null });
 
-        const { current, unmount } = renderHook(() =>
-            useArenaFeed({ home: false, arenaId: ARENA_ID, tenantId: TENANT_ID }, {}),
-        );
+        const { current, unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
         act(() => {
             current.value.loadMore();
@@ -146,11 +135,11 @@ describe("useArenaFeed endpoint selection", () => {
     });
 
     it("deduplicates events on continuation", async () => {
-        vi.mocked(getHomeFeedPagePromise)
+        vi.mocked(getTenantFeedPagePromise)
             .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
             .mockResolvedValueOnce({ items: [matchEvent("m1"), matchEvent("m2")], next: null });
 
-        const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
+        const { current, unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
         act(() => {
             current.value.loadMore();
@@ -164,35 +153,35 @@ describe("useArenaFeed endpoint selection", () => {
 describe("useArenaFeed live invalidation", () => {
     beforeEach(() => {
         vi.mocked(getArenaFeedPagePromise).mockReset();
-        vi.mocked(getHomeFeedPagePromise).mockReset();
+        vi.mocked(getTenantFeedPagePromise).mockReset();
         vi.mocked(getArenaFeedPagePromise).mockResolvedValue({ items: [], next: null });
-        vi.mocked(getHomeFeedPagePromise).mockResolvedValue({ items: [], next: null });
+        vi.mocked(getTenantFeedPagePromise).mockResolvedValue({ items: [], next: null });
         marketsSSE.tick = 0;
     });
 
     it("refetches page 1 when a matches data-change batch arrives", async () => {
-        const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
+        const { current, unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
-        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(1);
         expect(current.value.loading).toBe(false);
 
-        act(() => emitDataChange({ matches: true, players: false }));
+        act(() => emitDataChange({ matches: true, players: false, arenas: false }));
         await flushFetches();
 
-        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(2);
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(2);
         expect(current.value.loading).toBe(false);
         unmount();
     });
 
-    it("refetches the home feed on a markets tick, but never the arena feed", async () => {
-        const { rerender, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
+    it("refetches the tenant feed on a markets tick, but never the arena feed", async () => {
+        const { rerender, unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
-        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(1);
 
         marketsSSE.tick = 1;
-        rerender(() => useArenaFeed(homeScope, {}));
+        rerender(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
-        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(2);
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(2);
         unmount();
 
         const { rerender: rerenderArena, unmount: unmountArena } = renderHook(() =>
@@ -209,18 +198,18 @@ describe("useArenaFeed live invalidation", () => {
     });
 
     it("ignores players-only batches", async () => {
-        const { unmount } = renderHook(() => useArenaFeed(homeScope, {}));
+        const { unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
 
-        act(() => emitDataChange({ matches: false, players: true }));
+        act(() => emitDataChange({ matches: false, players: true, arenas: false }));
         await flushFetches();
 
-        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(1);
         unmount();
     });
 
     it("exposes invalidate for a direct refresh", async () => {
-        const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
+        const { current, unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
 
         act(() => {
@@ -228,43 +217,43 @@ describe("useArenaFeed live invalidation", () => {
         });
         await flushFetches();
 
-        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(2);
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(2);
         unmount();
     });
 
     it("unsubscribes on unmount", async () => {
-        const { unmount } = renderHook(() => useArenaFeed(homeScope, {}));
+        const { unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
         unmount();
 
-        act(() => emitDataChange({ matches: true, players: false }));
+        act(() => emitDataChange({ matches: true, players: false, arenas: false }));
         await flushFetches();
 
-        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(1);
     });
 });
 
 describe("useArenaFeed loadAll (leaders tab)", () => {
     beforeEach(() => {
         vi.mocked(getArenaFeedPagePromise).mockReset();
-        vi.mocked(getHomeFeedPagePromise).mockReset();
+        vi.mocked(getTenantFeedPagePromise).mockReset();
         marketsSSE.tick = 0;
     });
 
     it("drains the cursor keeping only match events", async () => {
-        vi.mocked(getHomeFeedPagePromise)
+        vi.mocked(getTenantFeedPagePromise)
             .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
             .mockResolvedValueOnce({ items: [marketEvent("c1"), matchEvent("m2")], next: "cursor-2" })
             .mockResolvedValueOnce({ items: [], next: null });
 
-        const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
+        const { current, unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
         await flushFetches();
 
         await act(async () => {
             await current.value.loadAll();
         });
 
-        expect(getHomeFeedPagePromise).toHaveBeenLastCalledWith({ next: "cursor-2", limit: 100 });
+        expect(getTenantFeedPagePromise).toHaveBeenLastCalledWith(TENANT_ID, { next: "cursor-2", limit: 100 });
         expect(current.value.allMatches.map((m) => m.id)).toEqual(["m1", "m2"]);
         expect(current.value.hasMore).toBe(false);
         unmount();

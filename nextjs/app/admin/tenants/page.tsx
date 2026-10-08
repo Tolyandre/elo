@@ -3,11 +3,11 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { createTenantPromise } from "@/app/api";
-import { MEMBERSHIP_MODE_LABELS, TOURNAMENTS_OPENNESS_LABELS } from "./labels";
 import { useMe } from "@/app/meContext";
 import { useTenants } from "@/app/tenantsContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
+import { TenantIcon } from "@/components/tenant-icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageContainer } from "@/components/page-container";
@@ -47,7 +47,7 @@ export default function TenantsAdminPage() {
             <PageHeader title="Управление сообществами" />
             <BackButton href="/admin" />
 
-            <AdminPageTabs entityType="club" mainLabel="Сообщества">
+            <AdminPageTabs entityType="tenant" mainLabel="Сообщества">
             <div className="mb-6 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                 <Input
                     className="flex-1"
@@ -73,15 +73,10 @@ export default function TenantsAdminPage() {
                         {sortedTenants.map((tenant) => (
                             <div key={tenant.id} className="border rounded p-3 flex flex-col sm:flex-row sm:items-center gap-2">
                                 <div className="flex-1 min-w-0">
-                                    <Link href={`/admin/tenants/edit?id=${tenant.id}`} className="font-medium underline">
-                                        {tenant.name}
+                                    <Link href={`/?tenant=${tenant.id}`} className="font-medium underline inline-flex items-center gap-1.5 min-w-0">
+                                        <TenantIcon icon={tenant.icon} />
+                                        <span className="truncate">{tenant.name}</span>
                                     </Link>
-                                    <div className="text-sm text-muted-foreground">
-                                        {tenant.club_ids.length}{" "}
-                                        {tenant.club_ids.length === 1 ? "клуб" : "клубов"}
-                                        {" · "}{MEMBERSHIP_MODE_LABELS[tenant.arena_membership_mode]}
-                                        {" · "}{TOURNAMENTS_OPENNESS_LABELS[tenant.tournaments_openness]}
-                                    </div>
                                 </div>
                                 <div className="w-full sm:w-auto">
                                     <Button asChild variant="outline" className="w-full sm:w-auto">

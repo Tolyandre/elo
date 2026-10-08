@@ -175,7 +175,7 @@ function PlayerPageContent() {
     if (!id) return <div className="p-6 text-muted-foreground">Игрок не указан</div>
     // The tenant scope settles within the first ticks (a deep link carries
     // ?tenant=; otherwise the default resolution needs the tenants list) —
-    // hold the skeleton rather than flash global-arena numbers.
+    // hold the skeleton rather than flash numbers of the wrong arena.
     if (!ready) return <LoadingSkeleton />
 
     return <PlayerStatsView id={id} tenantId={tenantId} tenantName={tenant?.name} />

@@ -7,6 +7,7 @@
 SELECT
     t.id AS tenant_id,
     t.name AS tenant_name,
+    t.icon AS tenant_icon,
     t.arena_membership_mode AS tenant_arena_membership_mode,
     t.tournaments_openness AS tenant_tournaments_openness,
     ma.id AS main_arena_id,
@@ -20,6 +21,7 @@ ORDER BY t.name;
 SELECT
     t.id AS tenant_id,
     t.name AS tenant_name,
+    t.icon AS tenant_icon,
     t.arena_membership_mode AS tenant_arena_membership_mode,
     t.tournaments_openness AS tenant_tournaments_openness,
     ma.id AS main_arena_id,
@@ -50,6 +52,15 @@ RETURNING *;
 -- name: UpdateTenantName :one
 UPDATE tenants
 SET name = $2
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdateTenantIcon :one
+-- Icon update: an empty string clears the icon (the same convention as club
+-- icons). Validation (lowercase kebab-case, a known frontend key) happens in
+-- the handler.
+UPDATE tenants
+SET icon = NULLIF(sqlc.arg('icon')::text, '')
 WHERE id = $1
 RETURNING *;
 

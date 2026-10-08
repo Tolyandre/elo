@@ -83,11 +83,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// Mirror production boot (ADR-36 phase 5): a migration that rewrites the
-	// global arena's settlement history (071 dropped the corrections) marks
-	// it stale, and the API process replays it in full before serving. The
-	// background worker never drains the global arena, so nothing else would
-	// clear the mark.
+	// Mirror production boot (ADR-36 phase 6): a migration that rewrites a
+	// main arena's settlement history marks it stale, and the API process
+	// drains every stale arena in full before serving — the background worker
+	// would wait out its debounce.
 	{
 		bootPool, err := pgxpool.New(ctx, connStr)
 		if err != nil {
@@ -98,8 +97,9 @@ func TestMain(m *testing.M) {
 		marketSvc := elo.NewMarketService(bootPool)
 		tournamentSvc := elo.NewTournamentService(bootPool, arenaSvc, marketSvc)
 		matchSvc := elo.NewMatchService(bootPool, marketSvc, arenaSvc, tournamentSvc)
-		if err := matchSvc.ReplayStaleGlobal(ctx); err != nil {
-			fmt.Fprintf(os.Stderr, "boot replay of the global arena: %v\n", err)
+		arenaSvc.Sweep = matchSvc
+		if err := arenaSvc.ReplayStaleArenas(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "boot replay of stale arenas: %v\n", err)
 			os.Exit(1)
 		}
 		bootPool.Close()
@@ -752,17 +752,34 @@ func guarantorRoleDelta(t *testing.T, pool *pgxpool.Pool, marketID, playerID idp
 }
 
 // Service constructors with the arena service wired (ADR-24): tests build the
-// same dependency graph main.go does.
+// same dependency graph main.go does. The arena updater's main-arena drain
+// re-chains markets through the settlement sweep (ADR-36 phase 6), so the
+// sweep is wired here exactly as in production.
 func newArenaService(pool *pgxpool.Pool) *elo.ArenaService {
-	return elo.NewArenaService(pool, nil)
+	arenaSvc := elo.NewArenaService(pool, nil)
+	arenaSvc.Sweep = elo.NewMatchService(pool, elo.NewMarketService(pool), arenaSvc,
+		elo.NewTournamentService(pool, arenaSvc, elo.NewMarketService(pool)))
+	return arenaSvc
 }
 
 func newMatchService(pool *pgxpool.Pool) elo.IMatchService {
-	arenaSvc := newArenaService(pool)
+	arenaSvc := elo.NewArenaService(pool, nil)
 	marketSvc := elo.NewMarketService(pool)
 	// The market service is shared (as in api.New): the tournament service's
 	// tournament-winner hooks settle through the same settlement path.
-	return elo.NewMatchService(pool, marketSvc, arenaSvc, elo.NewTournamentService(pool, arenaSvc, marketSvc))
+	matchSvc := elo.NewMatchService(pool, marketSvc, arenaSvc, elo.NewTournamentService(pool, arenaSvc, marketSvc))
+	arenaSvc.Sweep = matchSvc
+	return matchSvc
+}
+
+// drainArenas plays the background worker's part for a test: a no-debounce
+// drain of every stale arena — the arena a tenant settings change queued
+// included (ADR-36 phase 6 decoupled settings saves from the replay).
+func drainArenas(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	if err := newArenaService(pool).ReplayStaleArenas(context.Background()); err != nil {
+		t.Fatalf("drain stale arenas: %v", err)
+	}
 }
 
 func newTagService(pool *pgxpool.Pool) elo.ITagService {
@@ -774,7 +791,7 @@ func newGameService(pool *pgxpool.Pool) elo.IGameService {
 	return elo.NewGameService(pool, newArenaService(pool), nil, nil)
 }
 
-// GlobalArenaID re-exported for raw SQL assertions against the unified
+// BlueMenArenaID re-exported for raw SQL assertions against the unified
 // settlement table.
 var globalArenaUUID = "a2ea0000-0000-0000-0000-000000000001"
 

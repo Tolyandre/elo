@@ -99,23 +99,13 @@ export function mapFeedPage(data: components["schemas"]["FeedEvent"][], next?: s
 
 /**
  * The arena's feed (ADR-32): merged match/market-resolution events,
- * newest first. Market resolutions appear only in the global
- * arena's feed (they settle only there); filters apply to both event kinds.
+ * newest first. Market resolutions appear in the owning tenant's main
+ * arena's feed (ADR-36); filters apply to both event kinds.
  */
 export async function getArenaFeedPagePromise(params: FeedQuery & { id: Base58ID }): Promise<FeedPage> {
     const data = await unwrap(client.GET("/arenas/{id}/feed", {
         params: { path: { id: params.id }, query: feedQueryString(params) },
     }));
-    return mapFeedPage(data.data, data.next);
-}
-
-/**
- * The main page's home feed (ADR-32): today the global arena's event set, and
- * the surface where content that affects no rating (cooperative matches,
- * posts) will appear — unlike the global arena's own feed.
- */
-export async function getHomeFeedPagePromise(params: FeedQuery = {}): Promise<FeedPage> {
-    const data = await unwrap(client.GET("/feed", { params: { query: feedQueryString(params) } }));
     return mapFeedPage(data.data, data.next);
 }
 

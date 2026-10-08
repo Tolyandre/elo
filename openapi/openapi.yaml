@@ -179,8 +179,6 @@ components:
     # Admin / debug
     PlayerStateChange:
       $ref: './admin.yaml#/PlayerStateChange'
-    GlobalReplayReport:
-      $ref: './admin.yaml#/GlobalReplayReport'
     ArenaUpdateReport:
       $ref: './admin.yaml#/ArenaUpdateReport'
     UpdateArenasResult:
@@ -195,6 +193,8 @@ components:
       $ref: './audit.yaml#/AuditRenameDetails'
     AuditMatchUpdateDetails:
       $ref: './audit.yaml#/AuditMatchUpdateDetails'
+    AuditTenantUpdateDetails:
+      $ref: './audit.yaml#/AuditTenantUpdateDetails'
     AuditPage:
       $ref: './audit.yaml#/AuditPage'
 

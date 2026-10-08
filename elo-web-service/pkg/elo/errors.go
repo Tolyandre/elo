@@ -55,9 +55,8 @@ var (
 	ErrTournamentScoreEditUnsafe        = errors.New("правка пересчитает результат стола, уже пошедший в следующие круги, — сначала разберите их от последнего круга к этому (открепите партии или отмените решения)")
 	ErrGrandFinalDeadlinePassed         = errors.New("дедлайн гранд-финала истёк")
 
-	ErrGlobalArenaIsPermanent = errors.New("глобальную арену нельзя изменить или удалить")
-	ErrArenaIsAutoManaged     = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")
-	ErrArenaNameTaken         = errors.New("арена с таким названием уже существует")
+	ErrArenaIsAutoManaged = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")
+	ErrArenaNameTaken     = errors.New("арена с таким названием уже существует")
 
 	// Tenants (ADR-36).
 	ErrTenantArenaIsManaged        = errors.New("главная арена сообщества управляется через настройки сообщества и не меняется напрямую")

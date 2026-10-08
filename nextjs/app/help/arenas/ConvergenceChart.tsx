@@ -129,7 +129,7 @@ export function ConvergenceChart() {
         return simulate(
             playerCount, probs,
             settings.startingElo || 1000,
-            settings.startingRatingGlobalArena,
+            settings.startingRatingDefault,
             settings.newbieLeagueGoalGap || 16,
             settings.eloConstK || 32,
             effD,
@@ -216,7 +216,7 @@ export function ConvergenceChart() {
 
             <p className="text-xs text-muted-foreground">
                 Пунктир — скрытое эло (сумма постоянна). Сплошная — видимый рейтинг.
-                Эло начинается с {settings.startingElo}, рейтинг с {settings.startingRatingGlobalArena}.
+                Эло начинается с {settings.startingElo}, рейтинг с {settings.startingRatingDefault}.
                 Сходимость: эло − рейтинг ≤ {settings.newbieLeagueGoalGap} для всех игроков (не более 200 партий).
             </p>
         </div>

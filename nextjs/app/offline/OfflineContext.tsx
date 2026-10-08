@@ -303,7 +303,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                     // above — tell them the sync landed directly (same signal
                     // the server's SSE echo carries, without depending on the
                     // stream being connected).
-                    emitDataChange({ matches: true, players: true });
+                    emitDataChange({ matches: true, players: true, arenas: false });
                 }
             })
             .finally(() => {

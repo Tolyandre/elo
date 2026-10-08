@@ -662,7 +662,7 @@ func (s *StrictServer) feedMatches(ctx context.Context, arenaID id.ID, ids []id.
 func (s *StrictServer) ListArenaFeed(ctx context.Context, request ListArenaFeedRequestObject) (ListArenaFeedResponseObject, error) {
 	req, err := parseFeedRequest(
 		parseIDParam(request.Id),
-		parseIDParam(request.Id) == elo.GlobalArenaID,
+		parseIDParam(request.Id) == elo.BlueMenArenaID,
 		false,
 		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
 		request.Params.Next, request.Params.Limit,
@@ -682,7 +682,7 @@ func (s *StrictServer) ListHomeFeed(ctx context.Context, request ListHomeFeedReq
 	// the global arena's event set plus the coop matches (ADR-33) — content
 	// that affects no rating joins here, never the global arena's own feed.
 	req, err := parseFeedRequest(
-		elo.GlobalArenaID, true, true,
+		elo.BlueMenArenaID, true, true,
 		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
 		request.Params.Next, request.Params.Limit,
 	)

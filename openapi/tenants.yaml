@@ -136,18 +136,22 @@ TenantItem:
   patch:
     operationId: PatchTenant
     tags: [tenants]
-    summary: Update a tenant (name, openness settings, main-arena settings)
+    summary: Update a tenant (name, icon, openness settings, main-arena settings)
     description: >-
-      Partial update. A field that is omitted is left unchanged. The openness
-      settings `arena_membership_mode` / `tournaments_openness` are always
-      provided together. The main arena is system-managed — its settings
-      document (starting rating and leagues, the same shape as arena PATCH,
-      arenas.yaml ADR-24) is edited here, through the tenant; changing it
-      re-interprets the arena's whole history, so the recalculation runs in the
-      same transaction. An `arena_membership_mode` change re-interprets the
-      main arena's whole history the same way. Renaming the tenant also renames
-      its main arena. Clubs are managed through the dedicated clubs endpoint,
-      not here.
+      Partial update. A field that is omitted is left unchanged. For `icon`,
+      an empty string clears the icon; a non-empty value is a key into the
+      frontend's built-in icon set and is validated server-side (lowercase
+      kebab-case, 1-32 characters). The openness settings
+      `arena_membership_mode` / `tournaments_openness` are always provided
+      together. The main arena is system-managed — its settings document
+      (starting rating and leagues, the same shape as arena PATCH, arenas.yaml
+      ADR-24) is edited here, through the tenant; changing it queues the
+      arena for a full background recalculation (ADR-36 phase 6): the request
+      returns once the settings are saved, the arena replays afterwards, and
+      clients follow via the arenas-changed SSE signal. An
+      `arena_membership_mode` change queues the recalculation the same way.
+      Renaming the tenant also renames its main arena. Clubs are managed
+      through the dedicated clubs endpoint, not here.
     security:
       - cookieAuth: []
     parameters:
@@ -164,6 +168,8 @@ TenantItem:
             type: object
             properties:
               name:
+                type: string
+              icon:
                 type: string
               arena_membership_mode:
                 type: string
@@ -370,6 +376,14 @@ Tenant:
       $ref: './common.yaml#/Base58ID'
     name:
       type: string
+    icon:
+      type: string
+      nullable: true
+      description: >-
+        Key into the frontend's built-in icon set (the same pool as club
+        icons, e.g. "blue-figure"). Null means the tenant has no icon. The
+        icon itself is a version-controlled static SVG in the frontend, shown
+        in front of the tenant's name.
     club_ids:
       type: array
       items:
@@ -385,5 +399,5 @@ Tenant:
       description: Whether tournament registration is restricted to members.
     main_arena_id:
       $ref: './common.yaml#/Base58ID'
-      description: The tenant's main arena — its global rating space.
+      description: The tenant's main arena — the tenant's own rating space (ADR-36).
   required: [id, name, club_ids, arena_membership_mode, tournaments_openness, main_arena_id]

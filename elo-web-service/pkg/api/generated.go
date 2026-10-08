@@ -129,6 +129,78 @@ func (e AuditMatchUpdateDetailsPlayerChangesChange) Valid() bool {
 	}
 }
 
+// Defines values for AuditTenantUpdateDetailsArenaMembershipModeFrom.
+const (
+	AuditTenantUpdateDetailsArenaMembershipModeFromAnyMember   AuditTenantUpdateDetailsArenaMembershipModeFrom = "any_member"
+	AuditTenantUpdateDetailsArenaMembershipModeFromMembersOnly AuditTenantUpdateDetailsArenaMembershipModeFrom = "members_only"
+)
+
+// Valid indicates whether the value is a known member of the AuditTenantUpdateDetailsArenaMembershipModeFrom enum.
+func (e AuditTenantUpdateDetailsArenaMembershipModeFrom) Valid() bool {
+	switch e {
+	case AuditTenantUpdateDetailsArenaMembershipModeFromAnyMember:
+		return true
+	case AuditTenantUpdateDetailsArenaMembershipModeFromMembersOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditTenantUpdateDetailsArenaMembershipModeTo.
+const (
+	AuditTenantUpdateDetailsArenaMembershipModeToAnyMember   AuditTenantUpdateDetailsArenaMembershipModeTo = "any_member"
+	AuditTenantUpdateDetailsArenaMembershipModeToMembersOnly AuditTenantUpdateDetailsArenaMembershipModeTo = "members_only"
+)
+
+// Valid indicates whether the value is a known member of the AuditTenantUpdateDetailsArenaMembershipModeTo enum.
+func (e AuditTenantUpdateDetailsArenaMembershipModeTo) Valid() bool {
+	switch e {
+	case AuditTenantUpdateDetailsArenaMembershipModeToAnyMember:
+		return true
+	case AuditTenantUpdateDetailsArenaMembershipModeToMembersOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditTenantUpdateDetailsTournamentsOpennessFrom.
+const (
+	AuditTenantUpdateDetailsTournamentsOpennessFromMembersOnly AuditTenantUpdateDetailsTournamentsOpennessFrom = "members_only"
+	AuditTenantUpdateDetailsTournamentsOpennessFromOpen        AuditTenantUpdateDetailsTournamentsOpennessFrom = "open"
+)
+
+// Valid indicates whether the value is a known member of the AuditTenantUpdateDetailsTournamentsOpennessFrom enum.
+func (e AuditTenantUpdateDetailsTournamentsOpennessFrom) Valid() bool {
+	switch e {
+	case AuditTenantUpdateDetailsTournamentsOpennessFromMembersOnly:
+		return true
+	case AuditTenantUpdateDetailsTournamentsOpennessFromOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditTenantUpdateDetailsTournamentsOpennessTo.
+const (
+	AuditTenantUpdateDetailsTournamentsOpennessToMembersOnly AuditTenantUpdateDetailsTournamentsOpennessTo = "members_only"
+	AuditTenantUpdateDetailsTournamentsOpennessToOpen        AuditTenantUpdateDetailsTournamentsOpennessTo = "open"
+)
+
+// Valid indicates whether the value is a known member of the AuditTenantUpdateDetailsTournamentsOpennessTo enum.
+func (e AuditTenantUpdateDetailsTournamentsOpennessTo) Valid() bool {
+	switch e {
+	case AuditTenantUpdateDetailsTournamentsOpennessToMembersOnly:
+		return true
+	case AuditTenantUpdateDetailsTournamentsOpennessToOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BracketElimination.
 const (
 	BracketEliminationDouble BracketElimination = "double"
@@ -1087,6 +1159,9 @@ type Arena struct {
 	// StartsAt Camp window start (camps only).
 	StartsAt *time.Time `json:"starts_at,omitempty"`
 
+	// TenantId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TenantId *Base58ID `json:"tenant_id,omitempty"`
+
 	// TournamentId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	TournamentId *Base58ID `json:"tournament_id,omitempty"`
 }
@@ -1187,7 +1262,7 @@ type AuditEntry struct {
 	ActorUserId Base58ID  `json:"actor_user_id"`
 	CreatedAt   time.Time `json:"created_at"`
 
-	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
+	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant settings/composition); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
 	Details *AuditEntry_Details `json:"details,omitempty"`
 
 	// EntityId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -1201,7 +1276,7 @@ type AuditEntry struct {
 // AuditEntryAction defines model for AuditEntry.Action.
 type AuditEntryAction string
 
-// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
+// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant settings/composition); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
 type AuditEntry_Details struct {
 	union json.RawMessage
 }
@@ -1252,6 +1327,46 @@ type AuditRenameDetails struct {
 	OldName       string `json:"old_name"`
 	SchemaVersion int    `json:"schema_version"`
 }
+
+// AuditTenantUpdateDetails What changed in one tenant settings/composition update (ADR-36): the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing carries the plain entity details instead.
+type AuditTenantUpdateDetails struct {
+	ArenaMembershipMode *struct {
+		From AuditTenantUpdateDetailsArenaMembershipModeFrom `json:"from"`
+		To   AuditTenantUpdateDetailsArenaMembershipModeTo   `json:"to"`
+	} `json:"arena_membership_mode,omitempty"`
+	Clubs *struct {
+		AddedClubIds   []Base58ID `json:"added_club_ids"`
+		RemovedClubIds []Base58ID `json:"removed_club_ids"`
+	} `json:"clubs,omitempty"`
+
+	// Icon Icon change; a null side means "no icon" there.
+	Icon *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"icon,omitempty"`
+	LeaguesChanged bool `json:"leagues_changed"`
+	SchemaVersion  int  `json:"schema_version"`
+	StartingRating *struct {
+		From float64 `json:"from"`
+		To   float64 `json:"to"`
+	} `json:"starting_rating,omitempty"`
+	TournamentsOpenness *struct {
+		From AuditTenantUpdateDetailsTournamentsOpennessFrom `json:"from"`
+		To   AuditTenantUpdateDetailsTournamentsOpennessTo   `json:"to"`
+	} `json:"tournaments_openness,omitempty"`
+}
+
+// AuditTenantUpdateDetailsArenaMembershipModeFrom defines model for AuditTenantUpdateDetails.ArenaMembershipMode.From.
+type AuditTenantUpdateDetailsArenaMembershipModeFrom string
+
+// AuditTenantUpdateDetailsArenaMembershipModeTo defines model for AuditTenantUpdateDetails.ArenaMembershipMode.To.
+type AuditTenantUpdateDetailsArenaMembershipModeTo string
+
+// AuditTenantUpdateDetailsTournamentsOpennessFrom defines model for AuditTenantUpdateDetails.TournamentsOpenness.From.
+type AuditTenantUpdateDetailsTournamentsOpennessFrom string
+
+// AuditTenantUpdateDetailsTournamentsOpennessTo defines model for AuditTenantUpdateDetails.TournamentsOpenness.To.
+type AuditTenantUpdateDetailsTournamentsOpennessTo string
 
 // Base58ID Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 type Base58ID = id.ID
@@ -1437,7 +1552,7 @@ type FeedEvent struct {
 	union json.RawMessage
 }
 
-// FeedMarketEvent A market (global arena only, ADR-24). An active market (open or betting_closed) enters the feed at its creation moment; a settled one (resolved or cancelled) at its resolution moment — a match-triggered resolution lands immediately after the match that resolved it, because resolved_at carries the match's date.
+// FeedMarketEvent A market settlement in the feed. An active market (open or betting_closed) enters the feed at its creation moment; a settled one (resolved or cancelled) at its resolution moment — a match-triggered resolution lands immediately after the match that resolved it, because resolved_at carries the match's date. Market events appear in the owning tenant's main arena feed (ADR-36).
 type FeedMarketEvent struct {
 	Data Market              `json:"data"`
 	Type FeedMarketEventType `json:"type"`
@@ -1609,12 +1724,6 @@ type GameTag struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id   Base58ID `json:"id"`
 	Name string   `json:"name"`
-}
-
-// GlobalReplayReport defines model for GlobalReplayReport.
-type GlobalReplayReport struct {
-	ChangedPlayers  []PlayerStateChange `json:"changed_players"`
-	MatchesReplayed int64               `json:"matches_replayed"`
 }
 
 // HistoryRank defines model for HistoryRank.
@@ -2003,9 +2112,11 @@ type Settings struct {
 	NewbieLeagueEarnedTau     float64 `json:"newbie_league_earned_tau"`
 	NewbieLeagueGoalGap       float64 `json:"newbie_league_goal_gap"`
 	StartingElo               float64 `json:"starting_elo"`
-	StartingRatingGameArena   float64 `json:"starting_rating_game_arena"`
-	StartingRatingGlobalArena float64 `json:"starting_rating_global_arena"`
-	WinReward                 float64 `json:"win_reward"`
+
+	// StartingRatingDefault The default starting rating for newly auto-created arenas (fresh tenant arenas in particular, ADR-36).
+	StartingRatingDefault   float64 `json:"starting_rating_default"`
+	StartingRatingGameArena float64 `json:"starting_rating_game_arena"`
+	WinReward               float64 `json:"win_reward"`
 }
 
 // SettlementDetail defines model for SettlementDetail.
@@ -2164,7 +2275,9 @@ type TournamentResponse struct {
 type UpdateArenasResult struct {
 	Data struct {
 		Arenas []ArenaUpdateReport `json:"arenas"`
-		Global GlobalReplayReport  `json:"global"`
+
+		// SettlementsReplayed Total match-settlement events replayed across all arenas.
+		SettlementsReplayed int64 `json:"settlements_replayed"`
 	} `json:"data"`
 	Status string `json:"status"`
 }
@@ -2440,6 +2553,9 @@ type TenantsTenant struct {
 	// ClubIds The clubs belonging to the tenant (ADR-36); a tenant holds one or many.
 	ClubIds []Base58ID `json:"club_ids"`
 
+	// Icon Key into the frontend's built-in icon set (the same pool as club icons, e.g. "blue-figure"). Null means the tenant has no icon. The icon itself is a version-controlled static SVG in the frontend, shown in front of the tenant's name.
+	Icon *string `json:"icon,omitempty"`
+
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
@@ -2485,10 +2601,10 @@ type TournamentsBracketPlanFacetsEliminations string
 
 // ListArenasParams defines parameters for ListArenas.
 type ListArenasParams struct {
-	// Kind games returns every user-created arena except camps and the global one; camps returns only camp arenas (ADR-27); tournaments returns only the tournament arenas (empty until ADR-26).
+	// Kind games returns every user-created arena except camps and the tenants' main arenas (ADR-36); camps returns only camp arenas (ADR-27); tournaments returns only the tournament arenas (empty until ADR-26).
 	Kind *ListArenasParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
 
-	// GameId Return arenas whose filter includes this game or one of its tags; the global arena (unconditional filter) is always included.
+	// GameId Return arenas whose filter includes this game or one of its tags; «Синие люди»'s main arena (the converted global arena, unconditional filter) is always included.
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
 
 	// TournamentId Return the tournament's arena.
@@ -2869,6 +2985,7 @@ type CreateTenantJSONBodyTournamentsOpenness string
 // PatchTenantJSONBody defines parameters for PatchTenant.
 type PatchTenantJSONBody struct {
 	ArenaMembershipMode *PatchTenantJSONBodyArenaMembershipMode `json:"arena_membership_mode,omitempty"`
+	Icon                *string                                 `json:"icon,omitempty"`
 	Name                *string                                 `json:"name,omitempty"`
 
 	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
@@ -3176,6 +3293,32 @@ func (t *AuditEntry_Details) FromAuditMatchUpdateDetails(v AuditMatchUpdateDetai
 
 // MergeAuditMatchUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditMatchUpdateDetails
 func (t *AuditEntry_Details) MergeAuditMatchUpdateDetails(v AuditMatchUpdateDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditTenantUpdateDetails returns the union data inside the AuditEntry_Details as a AuditTenantUpdateDetails
+func (t AuditEntry_Details) AsAuditTenantUpdateDetails() (AuditTenantUpdateDetails, error) {
+	var body AuditTenantUpdateDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditTenantUpdateDetails overwrites any union data inside the AuditEntry_Details as the provided AuditTenantUpdateDetails
+func (t *AuditEntry_Details) FromAuditTenantUpdateDetails(v AuditTenantUpdateDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditTenantUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditTenantUpdateDetails
+func (t *AuditEntry_Details) MergeAuditTenantUpdateDetails(v AuditTenantUpdateDetails) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -3833,7 +3976,7 @@ func (t *SubmitTableJSONBody) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// UpdateArenas Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page.
+	// UpdateArenas Recalculate every arena to the actual state (ADR-24, ADR-36 phase 6): each arena's match settlements replay from scratch (one transaction per arena), then one settlement sweep re-chains the market ledger. The report covers every arena — «Синие люди»'s main arena included. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page.
 	// (POST /admin/update-arenas)
 	UpdateArenas(c *gin.Context)
 	// ListArenas List arenas, optionally narrowed to a game or a tournament
@@ -4049,7 +4192,7 @@ type ServerInterface interface {
 	// GetTenant Get a tenant by ID
 	// (GET /tenants/{id})
 	GetTenant(c *gin.Context, id string)
-	// PatchTenant Update a tenant (name, openness settings, main-arena settings)
+	// PatchTenant Update a tenant (name, icon, openness settings, main-arena settings)
 	// (PATCH /tenants/{id})
 	PatchTenant(c *gin.Context, id string)
 	// SetTenantClubs Replace the tenant's club composition
@@ -12329,7 +12472,7 @@ func (response PatchUser404JSONResponse) VisitPatchUserResponse(w http.ResponseW
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// UpdateArenas Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page.
+	// UpdateArenas Recalculate every arena to the actual state (ADR-24, ADR-36 phase 6): each arena's match settlements replay from scratch (one transaction per arena), then one settlement sweep re-chains the market ledger. The report covers every arena — «Синие люди»'s main arena included. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page.
 	// (POST /admin/update-arenas)
 	UpdateArenas(ctx context.Context, request UpdateArenasRequestObject) (UpdateArenasResponseObject, error)
 	// ListArenas List arenas, optionally narrowed to a game or a tournament
@@ -12545,7 +12688,7 @@ type StrictServerInterface interface {
 	// GetTenant Get a tenant by ID
 	// (GET /tenants/{id})
 	GetTenant(ctx context.Context, request GetTenantRequestObject) (GetTenantResponseObject, error)
-	// PatchTenant Update a tenant (name, openness settings, main-arena settings)
+	// PatchTenant Update a tenant (name, icon, openness settings, main-arena settings)
 	// (PATCH /tenants/{id})
 	PatchTenant(ctx context.Context, request PatchTenantRequestObject) (PatchTenantResponseObject, error)
 	// SetTenantClubs Replace the tenant's club composition

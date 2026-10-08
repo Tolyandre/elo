@@ -89,7 +89,6 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrCampDatesExcludeMatch),
 		errors.Is(err, elo.ErrMatchOutsideCampWindows),
 		errors.Is(err, elo.ErrArenaIsAutoManaged),
-		errors.Is(err, elo.ErrGlobalArenaIsPermanent),
 		errors.Is(err, elo.ErrTenantArenaIsManaged),
 		errors.Is(err, elo.ErrClubAlreadyInTenant),
 		errors.Is(err, elo.ErrPlayerAlreadyLinked),

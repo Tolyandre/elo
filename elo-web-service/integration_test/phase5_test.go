@@ -80,6 +80,11 @@ func TestPhase5_TenantArenaSettings(t *testing.T) {
 		t.Fatalf("main arena starting rating = %v, want 1234 after the tenant PATCH", got)
 	}
 
+	// The settings save only queues the arena (ADR-36 phase 6); the drain —
+	// the background worker's job — re-derives the chain from the NEW
+	// document.
+	drainArenas(t, pool)
+
 	// The recalculation re-derived the arena from the new settings: the
 	// stored ratings moved off their pre-change values.
 	rows := settlementCount(t, pool, arenaID, nil)

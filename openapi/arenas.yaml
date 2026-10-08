@@ -12,16 +12,17 @@ ArenasCollection:
           type: string
           enum: [games, camps, tournaments]
         description: >-
-          games returns every user-created arena except camps and the global
-          one; camps returns only camp arenas (ADR-27); tournaments returns
-          only the tournament arenas (empty until ADR-26).
+          games returns every user-created arena except camps and the tenants'
+          main arenas (ADR-36); camps returns only camp arenas (ADR-27);
+          tournaments returns only the tournament arenas (empty until ADR-26).
       - name: game_id
         in: query
         schema:
           type: string
         description: >-
           Return arenas whose filter includes this game or one of its tags;
-          the global arena (unconditional filter) is always included.
+          «Синие люди»'s main arena (the converted global arena, unconditional
+          filter) is always included.
       - name: tournament_id
         in: query
         schema:
@@ -147,8 +148,9 @@ ArenaItem:
               $ref: './common.yaml#/ApiError'
       "409":
         description: >-
-          The arena is auto-managed (per-game, per-tournament or the global
-          one), or new camp dates do not cover already-linked matches.
+          The arena is auto-managed (per-game, per-tournament, or a tenant's
+          main arena — ADR-36), or new camp dates do not cover already-linked
+          matches.
         content:
           application/json:
             schema:
@@ -191,7 +193,7 @@ ArenaItem:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: The global arena cannot be deleted; auto-managed arenas follow their entity
+        description: A tenant's main arena cannot be deleted (ADR-36); auto-managed arenas follow their entity
         content:
           application/json:
             schema:
@@ -234,10 +236,10 @@ ArenaFeedPath:
     tags: [arenas]
     summary: The arena's feed (ADR-32) — merged match/market-resolution events with cursor-based pagination
     description: >-
-      Market-resolution events settle only into the global arena
-      (ADR-24), so they appear only in the global arena's feed; every other
-      arena's feed is its matches. Filters apply to match and market events;
-      for markets see the parameter descriptions.
+      Market-resolution events settle into the owning tenant's main arena
+      (ADR-36), so they appear in that arena's feed; every other arena's feed
+      is its matches. Filters apply to match and market events; for markets
+      see the parameter descriptions.
     parameters:
       - name: id
         in: path
@@ -305,10 +307,10 @@ HomeFeedPath:
     tags: [arenas]
     summary: The main page's feed (ADR-32) — all events of interest, not just rating-relevant ones
     description: >-
-      Today the home feed is the global arena's event set; unlike the global
-      arena's own feed it is the extensible surface for content that affects no
-      rating (future cooperative matches, posts). Parameters and cursor are the
-      arena feed's.
+      The home feed is «Синие люди»'s main arena's event set (the converted
+      global arena) plus the coop matches (ADR-33) — the extensible main-page
+      surface for content that affects no rating. Parameters and cursor are
+      the arena feed's.
     parameters:
       - name: player_id
         in: query
@@ -441,6 +443,12 @@ Arena:
       $ref: './common.yaml#/Base58ID'
       nullable: true
       description: Set for the auto-managed per-tournament arena.
+    tenant_id:
+      $ref: './common.yaml#/Base58ID'
+      nullable: true
+      description: >-
+        Set for a tenant's main arena (ADR-36) — system-managed, settings are
+        edited through the tenant.
     stale_at:
       type: string
       format: date-time
@@ -620,11 +628,12 @@ FeedMatchEvent:
 FeedMarketEvent:
   type: object
   description: >-
-    A market (global arena only, ADR-24). An active market (open or
+    A market settlement in the feed. An active market (open or
     betting_closed) enters the feed at its creation moment; a settled one
     (resolved or cancelled) at its resolution moment — a match-triggered
     resolution lands immediately after the match that resolved it, because
-    resolved_at carries the match's date.
+    resolved_at carries the match's date. Market events appear in the owning
+    tenant's main arena feed (ADR-36).
   properties:
     type:
       type: string

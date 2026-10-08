@@ -62,27 +62,26 @@ type DeleteArenaSettlementsFromDateParams struct {
 }
 
 // Replay support for the arena updater: removes the arena's MATCH settlement
-// rows from the date on — the replay re-settles matches only. Market and
-// correction rows belong to their own lifecycles (markets re-settle via the
-// unsettle/re-resolve sweep in RecalculateFrom, per-market in the owning
-// tenant's arena; corrections live only in the global arena) and must survive
-// an arena replay.
+// rows from the date on — the replay re-settles matches only. Market rows
+// belong to their own lifecycle (they re-settle via the unsettle/re-resolve
+// sweep in RecalculateFrom, per-market in the owning tenant's arena) and must
+// survive an arena replay.
 func (q *Queries) DeleteArenaSettlementsFromDate(ctx context.Context, arg DeleteArenaSettlementsFromDateParams) error {
 	_, err := q.db.Exec(ctx, deleteArenaSettlementsFromDate, arg.ArenaID, arg.Date)
 	return err
 }
 
-const deleteGlobalSettlementsFromDate = `-- name: DeleteGlobalSettlementsFromDate :exec
+const deleteSweepArenaSettlementsFromDate = `-- name: DeleteSweepArenaSettlementsFromDate :exec
 DELETE FROM arena_settlements
 WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND date >= $1
 `
 
-// Single delete covering match AND market settlements of the global arena
-// («Синие люди»'s main arena — ADR-36). Other clubs' market rows are removed
-// by the per-market deletes in UnsettleMarketsFromDate, in each market's own
-// arena. Called at the start of RecalculateFrom.
-func (q *Queries) DeleteGlobalSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, deleteGlobalSettlementsFromDate, date)
+// Single delete covering match AND market settlements of «Синие люди»'s main
+// arena (the settlement sweep's anchor — ADR-36). Other clubs' market rows are
+// removed by the per-market deletes in UnsettleMarketsFromDate, in each
+// market's own arena. Called at the start of RecalculateFrom.
+func (q *Queries) DeleteSweepArenaSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteSweepArenaSettlementsFromDate, date)
 	return err
 }
 
@@ -324,13 +323,11 @@ type UpsertArenaSettlementByMatchParams struct {
 }
 
 // Arena settlement queries (ADR-24). Every query is arena-scoped; callers
-// working with the global arena pass elo.GlobalArenaID. The global arena is
-// seeded by migration 051 with the well-known id below; since ADR-36 phase 2
-// the display reads in matches.sql, players.sql and player_ranks.sql take the
-// arena as a parameter (the global arena until the frontend carries ?tenant=),
-// and the global arena itself is «Синие люди»'s main arena (migration 068).
-// corrections.sql and markets.sql keep the SQL literal until the
-// tournaments/markets phase settles them into the owning tenant's arena.
+// working with «Синие люди»'s main arena pass elo.BlueMenArenaID. The arena
+// is seeded by migration 051 with the well-known id below; since ADR-36 phase
+// 2 the display reads in matches.sql, players.sql and player_ranks.sql take
+// the arena as a parameter, and since migration 068 the arena itself is
+// «Синие люди»'s main arena.
 func (q *Queries) UpsertArenaSettlementByMatch(ctx context.Context, arg UpsertArenaSettlementByMatchParams) error {
 	_, err := q.db.Exec(ctx, upsertArenaSettlementByMatch,
 		arg.ID,

@@ -129,29 +129,18 @@ type IMatchService interface {
 	AddMatch(ctx context.Context, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
 	UpdateMatch(ctx context.Context, matchID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error)
 
-	// RecalculateAllGlobalElo replays the whole settlement history from the
-	// beginning (the computation an edit+save of the first match triggers) and
-	// reports every player whose global arena state changed. Debug/monitoring
-	// tool: a stable recalculation must report no changed players.
-	RecalculateAllGlobalElo(ctx context.Context) (GlobalReplayReport, error)
-
-	// RecalculateGlobalWithinTx is the TenantService's replay handle (ADR-36):
-	// re-settles the global arena from startDate inside the caller's open
-	// transaction, honoring the main-arena openness at every match date.
-	RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
-
-	// ReplayStaleGlobal drains the global arena at boot when a migration
-	// marked it stale (ADR-36 phase 5); a no-op otherwise.
-	ReplayStaleGlobal(ctx context.Context) error
-
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
 	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
 	// market is already resolved or cancelled.
 	DeleteMarketAndRecalculate(ctx context.Context, marketID id.ID) error
 
+	// RecalculateSettlementsWithinTx is the settlement sweep (ISettlementSweep):
+	// re-settles the ledger from startDate inside the caller's transaction.
+	RecalculateSettlementsWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
+
 	// Read-side queries used by the match list/detail handlers. The rating
 	// columns are scoped to the given display arena (ADR-36: the caller's
-	// current tenant main arena; the global arena until ?tenant= lands).
+	// current tenant main arena).
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg db.ListMatchesWithPlayersPaginatedParams) ([]db.ListMatchesWithPlayersPaginatedRow, error)
 	GetMatchWithPlayers(ctx context.Context, matchID, arenaID id.ID) ([]db.GetMatchWithPlayersRow, error)
 	ListCampArenasByMatchIDs(ctx context.Context, matchIDs []id.ID) ([]db.ListCampArenasByMatchIDsRow, error)
@@ -740,62 +729,45 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 	return s.EventProcessor.RecalculateFrom(ctx, q, startDate, s.calculateAndUpdateElo, s.lockAndGetPrevElos)
 }
 
-// IGlobalReplay is the TenantService's handle for the full global-arena replay
-// (ADR-36): a main-arena openness, composition or settings change on the
-// converted global arena must re-settle the whole history in the caller's
-// transaction — the global arena is never drained by the background worker
-// (that would lose its market settlements).
-type IGlobalReplay interface {
-	RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
+// ISettlementSweep re-settles the whole settlement ledger from a date inside
+// the caller's transaction: the «Синие люди» main arena's match settlements
+// (per the tenant gate) and every tenant's market settlement rows, in event
+// order. The main-arena drain and the /debug recalculation run it after the
+// arena match rows were replayed, so the market re-chain sees the fresh
+// chains (ADR-36 phase 6).
+type ISettlementSweep interface {
+	RecalculateSettlementsWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
 }
 
-// RecalculateGlobalWithinTx replays the global arena's settlements (matches,
-// markets) from startDate — the settlement gate inside respects
-// the tenant's openness mode at every match date.
-func (s *MatchService) RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error {
+// RecalculateSettlementsWithinTx implements ISettlementSweep.
+func (s *MatchService) RecalculateSettlementsWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error {
 	return s.recalculateEloFromDate(ctx, q, startDate)
 }
 
-// ReplayStaleGlobal drains the global arena when a migration marked it stale
-// (ADR-36 phase 5: migration 071 deleted the correction settlements, so the
-// arena's chains had to be rebuilt by history replay). The background worker
-// never drains the global arena — it is maintained transactionally by the
-// settlement path — so boot does it here: a full in-transaction replay, then
-// the stale mark clears. A no-op when the arena is not stale.
-func (s *MatchService) ReplayStaleGlobal(ctx context.Context) error {
-	row, err := s.Queries.GetArena(ctx, GlobalArenaID)
-	if err != nil {
-		return fmt.Errorf("get global arena: %w", err)
-	}
-	if !row.StaleAt.Valid {
-		return nil
-	}
-	mark := row.StaleAt
-	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
-		if err := s.RecalculateGlobalWithinTx(ctx, q, time.Time{}); err != nil {
-			return err
-		}
-		// Conditional clear: a re-mark during the run leaves the arena stale
-		// (staleness cancellation, ADR-24).
-		return q.ClearArenaStale(ctx, db.ClearArenaStaleParams{ID: GlobalArenaID, StaleAt: mark})
-	})
-}
-
 // lockAndGetPrevElos locks the match's players in sorted order and returns
-// their prior state in the global arena — the arena the transactional
-// settlement path (matches, markets) maintains (ADR-24).
+// their prior state in «Синие люди»'s main arena — the arena whose
+// settlements the transactional settlement path (the sweep's Elo step, the
+// market re-chain) maintains (ADR-24, ADR-36).
 //
-// Since the attribution phase (ADR-36) the global arena is «Синие люди»'s
-// main arena: the tenant's openness mode, evaluated at the match date against
-// the membership stints of its clubs, decides whether the match settles into
-// it at all. When the tenant predicate does not hold, settles=false and
-// nothing is locked —
+// The tenant's openness mode, evaluated at the match date against the
+// membership stints of its clubs, decides whether the match settles into it
+// at all. When the tenant predicate does not hold, settles=false and nothing
+// is locked —
 // the caller must still advance everything that is not Elo settlement
 // (market resolution, expiry) and must write the match's score rows itself.
+//
+// The arena row is re-read through the transaction's q, not the pool: a sweep
+// running inside a settings-save transaction must settle against the settings
+// document that transaction is writing (the starting rating in particular),
+// not the last committed one.
 func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, bool, error) {
-	globalArena, err := s.Arenas.GetArena(ctx, GlobalArenaID)
+	row, err := q.GetArena(ctx, BlueMenArenaID)
 	if err != nil {
-		return MatchPrevState{}, false, fmt.Errorf("get global arena: %w", err)
+		return MatchPrevState{}, false, fmt.Errorf("get main arena: %w", err)
+	}
+	globalArena, err := arenaFromGetArenaRow(row)
+	if err != nil {
+		return MatchPrevState{}, false, err
 	}
 	if globalArena.TenantID != nil {
 		contains, err := q.TenantContainsPlayers(ctx, db.TenantContainsPlayersParams{

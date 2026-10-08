@@ -16,6 +16,7 @@ func init() {
 	reg.Register(KindEntity, 1, "entity.v1.json")
 	reg.Register(KindRename, 1, "rename.v1.json")
 	reg.Register(KindMatchUpdate, 1, "match_update.v1.json")
+	reg.Register(KindTenantUpdate, 1, "tenant_update.v1.json")
 	reg.Register(KindArenaCampConf, 1, "arena_camp_config.v1.json")
 	reg.Register(KindCampLink, 1, "camp_link.v1.json")
 	reg.Register(KindTournamentConfig, 1, "tournament_config.v1.json")
@@ -112,6 +113,59 @@ func NewMatchUpdateDetails() MatchUpdateDetails {
 func (d MatchUpdateDetails) IsEmpty() bool {
 	return d.Date == nil && d.Game == nil && len(d.PlayerChanges) == 0 && !d.CalculatorChanged
 }
+
+// ---------------------------------------------------------------------------
+// Tenants (ADR-36): settings and composition updates, in the match-update
+// style. The entity_id of the row is the tenant.
+// ---------------------------------------------------------------------------
+
+// StringChange is one before → after pair of an enum-ish string field.
+type StringChange struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// NumberChange is one before → after pair of a numeric field.
+type NumberChange struct {
+	From float64 `json:"from"`
+	To   float64 `json:"to"`
+}
+
+// TenantClubsChange is one club-composition replacement: the ids added and
+// removed by the update.
+type TenantClubsChange struct {
+	AddedClubIDs   []string `json:"added_club_ids"`
+	RemovedClubIDs []string `json:"removed_club_ids"`
+}
+
+// TenantUpdateDetails describes everything that changed in one tenant
+// settings/composition update. Fields the update did not touch stay nil; an
+// update that changed nothing (IsEmpty) produces the plain entity row
+// instead.
+type TenantUpdateDetails struct {
+	SchemaVersion       int                `json:"schema_version"`
+	ArenaMembershipMode *StringChange      `json:"arena_membership_mode"`
+	TournamentsOpenness *StringChange      `json:"tournaments_openness"`
+	StartingRating      *NumberChange      `json:"starting_rating"`
+	LeaguesChanged      bool               `json:"leagues_changed"`
+	Icon                *ValueChange       `json:"icon"`
+	Clubs               *TenantClubsChange `json:"clubs"`
+}
+
+// NewTenantUpdateDetails builds v1 tenant-update details.
+func NewTenantUpdateDetails() TenantUpdateDetails {
+	return TenantUpdateDetails{SchemaVersion: 1}
+}
+
+// IsEmpty reports whether the details describe no changes at all.
+func (d TenantUpdateDetails) IsEmpty() bool {
+	return d.ArenaMembershipMode == nil && d.TournamentsOpenness == nil &&
+		d.StartingRating == nil && !d.LeaguesChanged && d.Icon == nil && d.Clubs == nil
+}
+
+// ---------------------------------------------------------------------------
+// Camp arenas (ADR-27)
+// ---------------------------------------------------------------------------
 
 // Camp link operations (CampLinkDetails.Op).
 const (

@@ -18,7 +18,9 @@ entity.
 
 ## Decision
 
-A **tenant** is a separate entity: a name, openness settings, and exactly one
+A **tenant** is a separate entity: a name, an optional display **icon** (a key
+into the frontend's built-in icon set — the same pool club icons use, shown in
+front of the tenant's name; phase 6), openness settings, and exactly one
 main arena. A tenant **contains one or many clubs**; a club belongs to at most
 one tenant, or to none (exactly today's grouping behavior). Clubs keep their
 membership stint history — that history is the raw material from which tenant
@@ -76,12 +78,16 @@ Tenant columns, NOT NULL — every tenant carries both:
   behavior).
 
 The mode is a current setting applied over all history: changing it — or
-changing the tenant's club composition, which changes who is a member —
-recalculates the main arena from scratch in the same transaction: a fresh
-arena via a full stale mark for the background updater, the converted global
-arena via the full in-transaction replay (the worker never drains the
-global arena: a match-only replay would lose its market and correction
-settlements).
+changing the tenant's club composition, or the arena settings document —
+queues the main arena for a full recalculation by the background worker
+(phase 6): the save transaction only writes the settings and a full stale
+mark, and the worker replays the arena's match rows and then re-chains every
+market settlement via the epoch sweep (see below). Settings save and history
+replay are decoupled; open views follow the queue via the `arenas-changed`
+SSE signal (the arena's `stale_at` is the spinner). Decoupling is also what
+makes the replay correct: the worker reads the freshly committed settings
+document, where the old in-transaction sweep read the arena row through the
+connection pool and re-derived the history against the *previous* settings.
 
 ### Membership
 
@@ -210,6 +216,22 @@ Staged forward, each phase shippable:
    dropped as a read default** — every read is tenant-scoped, and the
    frontend prompts for a tenant when none resolves (rare: links carry
    `?tenant=`).
+6. **Background recalculation; the global-arena naming retired.** A main
+   arena's settings, openness or composition change only marks the arena
+   stale (the save returns immediately); the background worker drains main
+   arenas by replaying the arena's match rows and then running the epoch
+   settlement sweep — re-settling «Синие люди»'s own match settlements (per
+   the tenant gate) and every tenant's market rows against the fresh chains
+   — so no arena is excluded from the worker anymore. Boot replays every
+   stale arena the same way (migrations mark arenas; the old boot-only
+   global replay is gone). The `/debug` update replays **all** arenas and
+   reports a per-arena diff across the whole recalculation (the old
+   global-vs-rest report split is gone; `starting_rating_global_arena`
+   became `starting_rating_default`). Tenant settings gains a display icon
+   (the club-icon pool) and a structured `tenant-update` audit document in
+   the match-edit style; the admin journal tab on `/admin/tenants` shows the
+   tenant's own events, and the admin list links each tenant to its main
+   page (`/?tenant=`).
 
 ## Consequences
 
@@ -217,7 +239,9 @@ Staged forward, each phase shippable:
   everything community-shaped — arena, feed, rating space, owned
   tournaments and markets — lives on the tenant.
 - Main arenas are system-managed: arena PATCH/DELETE on them returns 409
-  like the global arena; settings are edited through the tenant (phase 5).
+  (a tenant main arena — «Синие люди»'s included — is managed through the
+  tenant; phase 6 removed the separate global-arena guard and naming);
+  settings are edited through the tenant (phase 5).
 - The membership predicate lives in SQL fragments, not in the inlined
   function — the ADR-28 performance rule now has an explicit exception to
   point at.
@@ -231,8 +255,9 @@ Staged forward, each phase shippable:
   and are no longer needed; the same insight is recoverable from a rating
   replay, and deleting them left a recalculation by history replay as the only
   settlement source. The migration deletes their settlement rows, drops the
-  `corrections` table and marks the global arena stale; a boot step replays it
-  in full (the background worker never drains the global arena). The admin
+  `corrections` table and marks the global arena stale; boot replays stale
+  arenas in full (since phase 6 the background worker drains main arenas too —
+  see the phase-6 notes). The admin
   correction endpoint and the feed's correction event kind are gone.
 - **Bet limits count against the tenant's main arena (phase 5)**, replacing
   the single global-derived `players.bet_limit` column (dropped in migration
@@ -250,9 +275,11 @@ Staged forward, each phase shippable:
   tenant creation, and the settings page — name, the openness pair, club
   composition, and the main-arena settings editor (starting rating and
   leagues, the arena form's editor reused; `PATCH /tenants/{id}` accepts the
-  settings document and recalculates the arena in the same transaction).
+  settings document; since phase 6 the recalculation it queues runs in the
+  background). Settings sections render as cards, the audit-style journal on
+  the page shows the tenant's own events with structured diffs.
   Member stints stay internal logic: the settings page does not show them;
   instead the admin club page renders the stint history as audit-style items
   (`GET /clubs/{id}/members/history`).
 - The dev seed keeps its default club as the «Синие люди» tenant's club and
-  seeds the tenant itself.
+  seeds the tenant itself (with its `blue-figure` icon, phase 6).

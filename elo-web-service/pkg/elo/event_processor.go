@@ -98,9 +98,11 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("snapshot market resolutions: %w", err)
 	}
 
-	// Delete all settlement rows from startDate in one query (match and market).
-	// The per-market deletes inside UnsettleMarketsFromDate will become no-ops.
-	if err := q.DeleteGlobalSettlementsFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true}); err != nil {
+	// Delete all settlement rows from startDate in one query (match and market
+	// rows of the sweep's anchor arena, «Синие люди»'s main arena).
+	// The per-market deletes inside UnsettleMarketsFromDate will become
+	// no-ops for its own markets.
+	if err := q.DeleteSweepArenaSettlementsFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true}); err != nil {
 		return fmt.Errorf("delete settlements from date: %w", err)
 	}
 

@@ -108,9 +108,6 @@ func (s *ArenaService) UpdateArena(ctx context.Context, actor id.ID, arenaID id.
 	if err != nil {
 		return Arena{}, err
 	}
-	if arenaID == GlobalArenaID {
-		return Arena{}, ErrGlobalArenaIsPermanent
-	}
 	updated, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (Arena, error) {
 		existing, err := s.GetArena(ctx, arenaID)
 		if err != nil {
@@ -119,7 +116,8 @@ func (s *ArenaService) UpdateArena(ctx context.Context, actor id.ID, arenaID id.
 		// Auto-managed arenas are owned by their game lifecycle; their filters
 		// and settings are system-managed (ADR-24). Camp arenas are never
 		// auto-managed (their anchors are NULL since ADR-27). A tenant's
-		// main arena (ADR-36) is managed through the tenant settings.
+		// main arena (ADR-36) — «Синие люди»'s included — is managed through
+		// the tenant settings.
 		if existing.GameID != nil || existing.TournamentID != nil {
 			return Arena{}, ErrArenaIsAutoManaged
 		}
@@ -209,9 +207,6 @@ func campConfigDiff(existing Arena, opts ArenaWriteOpts) audit.ArenaCampConfigDe
 }
 
 func (s *ArenaService) DeleteArena(ctx context.Context, actor id.ID, arenaID id.ID) (Arena, error) {
-	if arenaID == GlobalArenaID {
-		return Arena{}, ErrGlobalArenaIsPermanent
-	}
 	deleted, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (Arena, error) {
 		existing, err := s.GetArena(ctx, arenaID)
 		if err != nil {

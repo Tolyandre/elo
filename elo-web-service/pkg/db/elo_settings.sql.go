@@ -15,7 +15,7 @@ const createEloSettings = `-- name: CreateEloSettings :exec
 INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
     newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
     newbie_league_goal_gap,
-    starting_rating_global_arena, starting_rating_game_arena,
+    starting_rating_default, starting_rating_game_arena,
     elite_league_matches_6months, elite_league_matches_2months)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 `
@@ -30,7 +30,7 @@ type CreateEloSettingsParams struct {
 	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
 	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
 	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
-	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingDefault     float64            `json:"starting_rating_default"`
 	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
@@ -47,7 +47,7 @@ func (q *Queries) CreateEloSettings(ctx context.Context, arg CreateEloSettingsPa
 		arg.NewbieLeagueEarnedMax,
 		arg.NewbieLeagueEarnedTau,
 		arg.NewbieLeagueGoalGap,
-		arg.StartingRatingGlobalArena,
+		arg.StartingRatingDefault,
 		arg.StartingRatingGameArena,
 		arg.EliteLeagueMatches6months,
 		arg.EliteLeagueMatches2months,
@@ -68,7 +68,7 @@ const getEloSettingsForDate = `-- name: GetEloSettingsForDate :one
 SELECT elo_const_k, elo_const_d, starting_elo, win_reward,
        newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
        newbie_league_goal_gap,
-       starting_rating_global_arena, starting_rating_game_arena,
+       starting_rating_default, starting_rating_game_arena,
        elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 WHERE effective_date <= $1
@@ -85,7 +85,7 @@ type GetEloSettingsForDateRow struct {
 	NewbieLeagueEarnedMax     float64 `json:"newbie_league_earned_max"`
 	NewbieLeagueEarnedTau     float64 `json:"newbie_league_earned_tau"`
 	NewbieLeagueGoalGap       float64 `json:"newbie_league_goal_gap"`
-	StartingRatingGlobalArena float64 `json:"starting_rating_global_arena"`
+	StartingRatingDefault     float64 `json:"starting_rating_default"`
 	StartingRatingGameArena   float64 `json:"starting_rating_game_arena"`
 	EliteLeagueMatches6months int32   `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32   `json:"elite_league_matches_2months"`
@@ -103,7 +103,7 @@ func (q *Queries) GetEloSettingsForDate(ctx context.Context, effectiveDate pgtyp
 		&i.NewbieLeagueEarnedMax,
 		&i.NewbieLeagueEarnedTau,
 		&i.NewbieLeagueGoalGap,
-		&i.StartingRatingGlobalArena,
+		&i.StartingRatingDefault,
 		&i.StartingRatingGameArena,
 		&i.EliteLeagueMatches6months,
 		&i.EliteLeagueMatches2months,
@@ -115,7 +115,7 @@ const getLatestEloSettings = `-- name: GetLatestEloSettings :one
 SELECT elo_const_k, elo_const_d, starting_elo, win_reward, effective_date,
        newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
        newbie_league_goal_gap,
-       starting_rating_global_arena, starting_rating_game_arena,
+       starting_rating_default, starting_rating_game_arena,
        elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 ORDER BY effective_date DESC
@@ -132,7 +132,7 @@ type GetLatestEloSettingsRow struct {
 	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
 	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
 	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
-	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingDefault     float64            `json:"starting_rating_default"`
 	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
@@ -151,7 +151,7 @@ func (q *Queries) GetLatestEloSettings(ctx context.Context) (GetLatestEloSetting
 		&i.NewbieLeagueEarnedMax,
 		&i.NewbieLeagueEarnedTau,
 		&i.NewbieLeagueGoalGap,
-		&i.StartingRatingGlobalArena,
+		&i.StartingRatingDefault,
 		&i.StartingRatingGameArena,
 		&i.EliteLeagueMatches6months,
 		&i.EliteLeagueMatches2months,
@@ -163,7 +163,7 @@ const listEloSettings = `-- name: ListEloSettings :many
 SELECT effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
        newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
        newbie_league_goal_gap,
-       starting_rating_global_arena, starting_rating_game_arena,
+       starting_rating_default, starting_rating_game_arena,
        elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 ORDER BY effective_date DESC
@@ -179,7 +179,7 @@ type ListEloSettingsRow struct {
 	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
 	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
 	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
-	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingDefault     float64            `json:"starting_rating_default"`
 	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
@@ -204,7 +204,7 @@ func (q *Queries) ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, er
 			&i.NewbieLeagueEarnedMax,
 			&i.NewbieLeagueEarnedTau,
 			&i.NewbieLeagueGoalGap,
-			&i.StartingRatingGlobalArena,
+			&i.StartingRatingDefault,
 			&i.StartingRatingGameArena,
 			&i.EliteLeagueMatches6months,
 			&i.EliteLeagueMatches2months,

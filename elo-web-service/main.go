@@ -46,11 +46,11 @@ func main() {
 	apiHandler := api.New(pool)
 	oauth2Handler := oauth2.New(pool)
 
-	// A migration that rewrites the global arena's settlement history marks it
-	// stale; the background worker never drains the global arena, so boot
-	// replays it in full before the API starts serving (ADR-36 phase 5).
-	if err := apiHandler.MatchService.ReplayStaleGlobal(context.Background()); err != nil {
-		log.Fatalf("global arena replay failed: %v", err)
+	// Stale arenas (a migration re-mark, a fresh arena, a queued tenant
+	// main-arena recalculation) drain at boot, before the API starts serving
+	// — no debounce, unlike the background worker (ADR-36 phase 6).
+	if err := apiHandler.ArenaService.ReplayStaleArenas(context.Background()); err != nil {
+		log.Fatalf("stale arena replay failed: %v", err)
 	}
 
 	go apiHandler.MarketService.ScheduleNextExpiry(context.Background())

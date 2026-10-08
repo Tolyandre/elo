@@ -29,6 +29,7 @@ const (
 	KindEntity           = "entity"            // created/deleted game, player, club, or tag
 	KindRename           = "rename"            // renamed game, player, or club
 	KindMatchUpdate      = "match-update"      // edited match
+	KindTenantUpdate     = "tenant-update"     // tenant settings / composition update (ADR-36)
 	KindArenaCampConf    = "arena-camp-config" // camp arena create/update/delete (ADR-27)
 	KindCampLink         = "camp-link"         // match attached to / detached from a camp (ADR-27)
 	KindTournamentConfig = "tournament-config" // tournament create / config update (ADR-26)

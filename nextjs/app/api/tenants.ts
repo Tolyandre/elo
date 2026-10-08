@@ -28,6 +28,7 @@ export async function patchTenantPromise(
     id: Base58ID,
     payload: {
         name?: string;
+        icon?: string;
         arena_membership_mode?: "any_member" | "members_only";
         tournaments_openness?: "members_only" | "open";
         settings?: ArenaSettings;

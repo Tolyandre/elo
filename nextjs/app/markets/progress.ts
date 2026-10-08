@@ -1,4 +1,4 @@
-// Win-streak market progress: which global-arena matches count toward a
+// Win-streak market progress: which community-feed matches count toward a
 // market, and how far the streak has gotten. Mirrors the server's counting —
 // GetPlayerStreakStats (elo-web-service/pkg/db/query/markets.sql) counts a
 // match as a win when the target player's score equals the match's max score
@@ -28,7 +28,7 @@ export function streakWindowEnd(market: Market): Date | null {
  * Matches counting for a win_streak market: the target player's matches in the
  * market's games within [starts_at, end]. An empty game list means "any game"
  * (the server's convention, same as match_winner), so the player's whole feed
- * counts. Composed from the same paginated global feed the /matches page uses;
+ * counts. Composed from the same paginated tenant feed the /matches page uses;
  * pages are followed until a page is entirely older than the window start.
  * `tenant` is required by the read itself (ADR-36 phase 5) — callers pass the
  * current scope's tenant.
@@ -64,7 +64,7 @@ export type StreakProgress = { wins: number; losses: number };
 
 /**
  * Every match counted for a tournament's bracket (ADR-26: arena membership
- * follows the slot link). Composed from the same paginated global feed with
+ * follows the slot link). Composed from the same paginated tenant feed with
  * the tournament filter; pages are followed until the feed is exhausted.
  */
 export async function fetchTournamentMatches(tenant: Base58ID, tournamentId: string): Promise<Match[]> {

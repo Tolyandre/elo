@@ -13,22 +13,25 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-// Well-known ids of the global arena (ADR-24). Chosen outside the legacy
-// int-era migration pattern 00000000-0000-0000-0000-0000000000NN (ADR-07) and
-// outside random-UUID space, so they can never be confused with a migrated or
-// client-generated entity id. The rows are created by schema migration 051 in
-// every environment; SQL literals of the same values live in the query files
-// (see pkg/db/query/rating.sql) and must be kept in sync.
+// Well-known ids of the arena row created by schema migration 051 — the
+// converted global arena, «Синие люди»'s main arena since migration 068
+// (ADR-36). Chosen outside the legacy int-era migration pattern
+// 00000000-0000-0000-0000-0000000000NN (ADR-07) and outside random-UUID
+// space, so they can never be confused with a migrated or client-generated
+// entity id. The rows are created by schema migration 051 in every
+// environment; SQL literals of the same values live in the query files (see
+// pkg/db/query/rating.sql) and must be kept in sync.
 const (
-	globalArenaIDUUID      = "a2ea0000-0000-0000-0000-000000000001"
-	globalArenaFilterIDStr = "a2ea0000-0000-0000-0000-000000000002"
+	blueMenArenaIDUUID      = "a2ea0000-0000-0000-0000-000000000001"
+	blueMenArenaFilterIDStr = "a2ea0000-0000-0000-0000-000000000002"
 )
 
-// GlobalArenaID is the well-known id of the converted global arena —
-// «Синие люди»'s main arena since migration 068 and the settlement path's
-// arena (ADR-36). Not a read default: display reads take their ?tenant='s
-// main arena (phase 5).
-var GlobalArenaID = mustParseID("elo: global arena id", globalArenaIDUUID)
+// BlueMenArenaID is the well-known id of «Синие люди»'s main arena — the
+// arena row created by migration 051 as the single global arena and attached
+// to the tenant by migration 068. Its settlement history is the one the
+// epoch sweep re-settles (ADR-36). Never a read default: display reads take
+// their ?tenant='s main arena.
+var BlueMenArenaID = mustParseID("elo: blue men arena id", blueMenArenaIDUUID)
 
 // League kind names stored in arena settings and settlement rows.
 const (
@@ -176,18 +179,21 @@ type IArenaService interface {
 	SyncArenaName(ctx context.Context, q *db.Queries, arena Arena, entityName string) error
 
 	// Update pipeline. MarkAndDrainAfterMatchWrite marks the affected arenas
-	// (never the global one — it is maintained transactionally by the match
-	// settlement path) for an incremental recalculation from fromDate and
-	// drains them synchronously in the caller's transaction. The Mark*Stale
-	// variants only mark; the background worker drains later.
+	// (never «Синие люди»'s main arena — it is maintained transactionally by
+	// the match settlement path) for an incremental recalculation from
+	// fromDate and drains them synchronously in the caller's transaction. The
+	// Mark*Stale variants only mark; the background worker drains later.
 	MarkAndDrainAfterMatchWrite(ctx context.Context, q *db.Queries, affected []id.ID, fromDate time.Time) error
 	MarkTagFilteredArenasStale(ctx context.Context, q *db.Queries) error
 	MarkAllStaleFull(ctx context.Context, q *db.Queries) error
 
-	// RecalculateArenas recalculates every non-global arena from scratch, one
-	// transaction per arena, and reports per-arena changed players. The
-	// global arena is replayed by MatchService.RecalculateAllGlobalElo.
-	RecalculateArenas(ctx context.Context) ([]ArenaUpdateReport, error)
+	// RecalculateAllArenas recalculates every arena from scratch — match
+	// settlements per arena, then the market-ledger sweep — and reports
+	// per-arena changed players (the /debug endpoint).
+	RecalculateAllArenas(ctx context.Context) ([]ArenaUpdateReport, error)
+
+	// ReplayStaleArenas drains every stale arena at boot (no debounce).
+	ReplayStaleArenas(ctx context.Context) error
 
 	// ScheduleNextUpdate runs the background update loop until ctx is
 	// cancelled: recalculate stale arenas whose debounce has elapsed.
@@ -211,6 +217,11 @@ type ArenaService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
 	Hub     *Hub // nil-safe; used to nudge clients after background recalcs
+	// Sweep re-settles the market ledger (and «Синие люди»'s match
+	// settlements) inside the caller's transaction — the main-arena drain's
+	// second stage (ADR-36 phase 6). Wired after construction: MatchService
+	// depends on this service.
+	Sweep ISettlementSweep
 }
 
 func NewArenaService(pool *pgxpool.Pool, hub *Hub) *ArenaService {

@@ -21,15 +21,15 @@ export default function HelpArenasPage() {
 
             {/* ── Арены ── */}
             <section className="space-y-4 text-sm leading-relaxed">
-                <AnchorHeading id="arenas">Арены: глобальная и игровые</AnchorHeading>
+                <AnchorHeading id="arenas">Арены: сообщества и игры</AnchorHeading>
                 <p>
-                    Рейтинг рассчитывается отдельно для <strong>глобальной арены</strong> (все игры вместе)
-                    и для каждой <strong>игровой арены</strong> (отдельно для каждой игры).
+                    Рейтинг рассчитывается отдельно для <strong>главной арены сообщества</strong> (все
+                    игры вместе) и для каждой <strong>игровой арены</strong> (отдельно для каждой игры).
                     Это позволяет видеть как общий уровень игрока, так и его мастерство в конкретной игре.
                 </p>
                 <p>
                     Партия попадает на арену той игры, в которую играли, и одновременно влияет
-                    на глобальный рейтинг. Турниры создают собственную арену — об этом
+                    на рейтинг сообщества. Турниры создают собственную арену — об этом
                     рассказано в <strong className="font-semibold">статье про турниры</strong>.
                 </p>
             </section>
@@ -87,7 +87,7 @@ export default function HelpArenasPage() {
 
                 <p>
                     Новый игрок попадает в Лигу Новичков, если стартовый разрыв |эло − рейтинг| больше{" "}
-                    {settings.newbieLeagueGoalGap} (стартовый рейтинг на глобальной арене — {settings.startingRatingGlobalArena},
+                    {settings.newbieLeagueGoalGap} (стартовый рейтинг новой арены по умолчанию — {settings.startingRatingDefault},
                     на игровой — {settings.startingRatingGameArena}). Принадлежность к Высшей лиге
                     проверяется при каждой партии по скользящим счётчикам активности.
                 </p>
@@ -102,7 +102,7 @@ export default function HelpArenasPage() {
                 <AnchorHeading id="beginner-rating">Рейтинг новичков на арене</AnchorHeading>
                 <p>
                     У каждого игрока хранятся два значения: скрытое <strong>эло</strong> (начинается с <strong>{settings.startingElo}</strong>) и
-                    видимый <strong>рейтинг</strong> (начинается с <strong>{settings.startingRatingGlobalArena}</strong> на глобальной арене,
+                    видимый <strong>рейтинг</strong> (начинается со стартового рейтинга арены — по умолчанию <strong>{settings.startingRatingDefault}</strong>,
                     <strong> {settings.startingRatingGameArena}</strong> на игровой). Эло используется при расчёте ожидаемого
                     результата игрока, а также влияет на расчёт соперникам.
                     Видимый рейтинг отображается в приложении, постепенно сходясь с эло.

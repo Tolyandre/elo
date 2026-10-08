@@ -2,17 +2,18 @@
  * Trailing-debounce batcher for the global data-change signals (the "data"
  * topic of the multiplexed /events SSE stream). The server broadcasts one
  * payload-less signal per mutation — adding a match emits "matches-changed" +
- * "players-changed" — and bursts happen (offline sync pushes a whole queue of
- * matches at once), so signals are accumulated and flushed as one batch after
- * a quiet window.
+ * "players-changed", a queued arena recalculation emits "arenas-changed" —
+ * and bursts happen (offline sync pushes a whole queue of matches at once),
+ * so signals are accumulated and flushed as one batch after a quiet window.
  */
 export type DataChangeBatch = {
     matches: boolean;
     players: boolean;
+    arenas: boolean;
 };
 
 export type DataEventBatcher = {
-    /** Records one "matches-changed" / "players-changed" signal. */
+    /** Records one "matches-changed" / "players-changed" / "arenas-changed" signal. */
     add: (eventType: string) => void;
     /** Drops any pending batch (e.g. on teardown). */
     cancel: () => void;
@@ -44,7 +45,7 @@ export function createDataEventBatcher(
     delayMs = 500,
 ): DataEventBatcher {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let pending: DataChangeBatch = { matches: false, players: false };
+    let pending: DataChangeBatch = { matches: false, players: false, arenas: false };
 
     return {
         add(eventType: string) {
@@ -52,6 +53,8 @@ export function createDataEventBatcher(
                 pending.matches = true;
             } else if (eventType === "players-changed") {
                 pending.players = true;
+            } else if (eventType === "arenas-changed") {
+                pending.arenas = true;
             } else {
                 return;
             }
@@ -59,8 +62,8 @@ export function createDataEventBatcher(
             timer = setTimeout(() => {
                 timer = null;
                 const batch = pending;
-                pending = { matches: false, players: false };
-                if (batch.matches || batch.players) {
+                pending = { matches: false, players: false, arenas: false };
+                if (batch.matches || batch.players || batch.arenas) {
                     onBatch(batch);
                 }
             }, delayMs);
@@ -68,7 +71,7 @@ export function createDataEventBatcher(
         cancel() {
             if (timer) clearTimeout(timer);
             timer = null;
-            pending = { matches: false, players: false };
+            pending = { matches: false, players: false, arenas: false };
         },
     };
 }

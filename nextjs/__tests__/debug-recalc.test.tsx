@@ -53,10 +53,10 @@ const pid = (s: string) => s as Base58ID;
 
 type UpdateArenasData = UpdateArenasResult["data"];
 
-function report(overrides: Partial<UpdateArenasData["global"]> = {}): UpdateArenasData {
+function report(arenas: UpdateArenasData["arenas"] = []): UpdateArenasData {
     return {
-        global: { matches_replayed: 3, changed_players: [], ...overrides },
-        arenas: [],
+        arenas,
+        settlements_replayed: 3,
     };
 }
 
@@ -118,28 +118,33 @@ describe("DebugPage arena update", () => {
         });
 
         expect(mocks.updateArenas).toHaveBeenCalledTimes(1);
-        expect(view.text()).toContain("Расхождений нет");
-        expect(view.text()).toContain("переиграно партий 3");
+        expect(view.text()).toContain("Переиграно расчётов: 3");
+        expect(view.text()).not.toContain("Обнаружены расхождения");
         expect(view.dialog()).toBeNull();
         view.unmount();
     });
 
     it("lists every changed player with full-precision before → after values", async () => {
         mocks.updateArenas.mockResolvedValue(
-            report({
-                changed_players: [
-                    {
-                        player_id: pid("p1"),
-                        player_name: "Alice",
-                        elo_before: 1050.5,
-                        elo_after: 1050.50000001,
-                        rating_before: 1102.25,
-                        rating_after: 1102.3,
-                        league_before: "amateur",
-                        league_after: "pro",
-                    },
-                ],
-            }),
+            report([
+                {
+                    arena_id: pid("a0"),
+                    arena_name: "Главная",
+                    matches_replayed: 3,
+                    changed_players: [
+                        {
+                            player_id: pid("p1"),
+                            player_name: "Alice",
+                            elo_before: 1050.5,
+                            elo_after: 1050.50000001,
+                            rating_before: 1102.25,
+                            rating_after: 1102.3,
+                            league_before: "amateur",
+                            league_after: "pro",
+                        },
+                    ],
+                },
+            ]),
         );
         const view = renderPage();
 
@@ -161,18 +166,17 @@ describe("DebugPage arena update", () => {
         view.unmount();
     });
 
-    it("summarizes the other arenas' reports", async () => {
-        mocks.updateArenas.mockResolvedValue({
-            global: { matches_replayed: 1, changed_players: [] },
-            arenas: [
+    it("summarizes every arena's report", async () => {
+        mocks.updateArenas.mockResolvedValue(
+            report([
                 {
                     arena_id: pid("a1"),
                     arena_name: "Арена: Skull King",
                     matches_replayed: 12,
                     changed_players: [],
                 },
-            ],
-        });
+            ]),
+        );
         const view = renderPage();
 
         act(() => {

@@ -103,7 +103,7 @@ type EloSetting struct {
 	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
 	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
 	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
-	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingDefault     float64            `json:"starting_rating_default"`
 	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 }
 
@@ -235,10 +235,11 @@ type Tag struct {
 }
 
 type Tenant struct {
-	ID                  id.ID  `json:"id"`
-	Name                string `json:"name"`
-	ArenaMembershipMode string `json:"arena_membership_mode"`
-	TournamentsOpenness string `json:"tournaments_openness"`
+	ID                  id.ID       `json:"id"`
+	Name                string      `json:"name"`
+	ArenaMembershipMode string      `json:"arena_membership_mode"`
+	TournamentsOpenness string      `json:"tournaments_openness"`
+	Icon                pgtype.Text `json:"icon"`
 }
 
 type Tournament struct {

@@ -1,9 +1,9 @@
 -- Arena settlement queries (ADR-24). Every query is arena-scoped; callers
--- working with the global arena pass elo.GlobalArenaID. The global arena is
--- seeded by migration 051 with the well-known id below; since ADR-36 phase 2
--- the display reads in matches.sql, players.sql and player_ranks.sql take the
--- arena as a parameter, and the global arena itself is «Синие люди»'s main
--- arena (migration 068).
+-- working with «Синие люди»'s main arena pass elo.BlueMenArenaID. The arena
+-- is seeded by migration 051 with the well-known id below; since ADR-36 phase
+-- 2 the display reads in matches.sql, players.sql and player_ranks.sql take
+-- the arena as a parameter, and since migration 068 the arena itself is
+-- «Синие люди»'s main arena.
 
 -- name: UpsertArenaSettlementByMatch :exec
 INSERT INTO arena_settlements
@@ -97,10 +97,10 @@ FROM arena_settlements s
 WHERE s.arena_id = $1 AND s.player_id = $2
 ORDER BY s.date;
 
--- name: DeleteGlobalSettlementsFromDate :exec
--- Single delete covering match AND market settlements of the global arena
--- («Синие люди»'s main arena — ADR-36). Other clubs' market rows are removed
--- by the per-market deletes in UnsettleMarketsFromDate, in each market's own
--- arena. Called at the start of RecalculateFrom.
+-- name: DeleteSweepArenaSettlementsFromDate :exec
+-- Single delete covering match AND market settlements of «Синие люди»'s main
+-- arena (the settlement sweep's anchor — ADR-36). Other clubs' market rows are
+-- removed by the per-market deletes in UnsettleMarketsFromDate, in each
+-- market's own arena. Called at the start of RecalculateFrom.
 DELETE FROM arena_settlements
 WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND date >= $1;

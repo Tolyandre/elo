@@ -4,7 +4,10 @@ import type { components } from "@/app/api-types.gen";
 import type { AuditEntry } from "@/app/api";
 import { useGames } from "@/app/gamesContext";
 import { usePlayers } from "@/app/players/PlayersContext";
-import { matchUpdateRows, formatScore } from "@/lib/audit-display";
+import { useClubs } from "@/app/clubsContext";
+import { MEMBERSHIP_MODE_LABELS, TOURNAMENTS_OPENNESS_LABELS } from "@/app/admin/tenants/labels";
+import { matchUpdateRows, tenantUpdateRows, formatScore } from "@/lib/audit-display";
+import { TenantIcon } from "@/components/tenant-icon";
 import { formatDateTime } from "@/lib/datetime";
 
 /**
@@ -25,7 +28,84 @@ export function AuditEntryDetailsView({ entry }: { entry: AuditEntry }) {
     if (entry.details?.kind === "match-update") {
         return <MatchUpdateDetails changes={entry.details.changes} />;
     }
+    if (entry.details?.kind === "tenant-update") {
+        return <TenantUpdateDetails changes={entry.details.changes} />;
+    }
     return null;
+}
+
+function TenantUpdateDetails({ changes }: { changes: components["schemas"]["AuditTenantUpdateDetails"] }) {
+    const { clubs, clubDisplayName } = useClubs();
+
+    const clubName = (id: string): string => {
+        const club = clubs.find((c) => c.id === id);
+        return club ? clubDisplayName(club) : "—";
+    };
+    const rows = tenantUpdateRows(changes);
+    if (rows.length === 0) return null;
+
+    return (
+        <dl className="space-y-1.5 text-sm">
+            {rows.map((row, i) => {
+                if (row.kind === "membership-mode") {
+                    return (
+                        <div key={i} className="flex flex-wrap gap-x-2">
+                            <dt className="text-muted-foreground">Какие партии идут в общий рейтинг:</dt>
+                            <dd>{MEMBERSHIP_MODE_LABELS[row.old as keyof typeof MEMBERSHIP_MODE_LABELS]} → {MEMBERSHIP_MODE_LABELS[row.new as keyof typeof MEMBERSHIP_MODE_LABELS]}</dd>
+                        </div>
+                    );
+                }
+                if (row.kind === "tournaments-openness") {
+                    return (
+                        <div key={i} className="flex flex-wrap gap-x-2">
+                            <dt className="text-muted-foreground">Регистрация в турнирах:</dt>
+                            <dd>{TOURNAMENTS_OPENNESS_LABELS[row.old as keyof typeof TOURNAMENTS_OPENNESS_LABELS]} → {TOURNAMENTS_OPENNESS_LABELS[row.new as keyof typeof TOURNAMENTS_OPENNESS_LABELS]}</dd>
+                        </div>
+                    );
+                }
+                if (row.kind === "starting-rating") {
+                    return (
+                        <div key={i} className="flex flex-wrap gap-x-2">
+                            <dt className="text-muted-foreground">Стартовый рейтинг:</dt>
+                            <dd>{formatScore(row.old)} → {formatScore(row.new)}</dd>
+                        </div>
+                    );
+                }
+                if (row.kind === "leagues") {
+                    return (
+                        <div key={i} className="flex flex-wrap gap-x-2">
+                            <dt className="text-muted-foreground">Лиги:</dt>
+                            <dd>изменены параметры лиг</dd>
+                        </div>
+                    );
+                }
+                if (row.kind === "icon") {
+                    return (
+                        <div key={i} className="flex flex-wrap gap-x-2 items-center">
+                            <dt className="text-muted-foreground">Иконка:</dt>
+                            <dd className="inline-flex items-center gap-1.5">
+                                <TenantIcon icon={row.old} className="h-4 w-4" />
+                                {row.old ? "иконка" : "нет"}
+                                {" → "}
+                                <TenantIcon icon={row.new} className="h-4 w-4" />
+                                {row.new ? "иконка" : "нет"}
+                            </dd>
+                        </div>
+                    );
+                }
+                const parts: string[] = [
+                    ...row.added.map((id) => `+${clubName(id)}`),
+                    ...row.removed.map((id) => `−${clubName(id)}`),
+                ];
+                return (
+                    <div key={i} className="flex flex-wrap gap-x-2">
+                        <dt className="text-muted-foreground">Клубы:</dt>
+                        <dd>{parts.join(", ")}</dd>
+                    </div>
+                );
+            })}
+        </dl>
+    );
 }
 
 function MatchUpdateDetails({ changes }: { changes: components["schemas"]["AuditMatchUpdateDetails"] }) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuditEntry } from "@/app/api";
-import { auditIsExpandable, auditSummary, formatScore, matchUpdateRows } from "@/lib/audit-display";
+import { auditIsExpandable, auditSummary, formatScore, matchUpdateRows, tenantUpdateRows } from "@/lib/audit-display";
 import type { Base58ID } from "@/lib/id";
 
 function entry(partial: Partial<AuditEntry>): AuditEntry {
@@ -81,5 +81,40 @@ describe("formatScore", () => {
         expect(formatScore(3.5)).toBe("3.5");
         expect(formatScore(null)).toBe("—");
         expect(formatScore(undefined)).toBe("—");
+    });
+});
+
+describe("tenantUpdateRows", () => {
+    it("maps every changed field to a row", () => {
+        const rows = tenantUpdateRows({
+            arena_membership_mode: { from: "any_member", to: "members_only" },
+            tournaments_openness: { from: "open", to: "members_only" },
+            starting_rating: { from: 500, to: 100 },
+            leagues_changed: true,
+            clubs: { added_club_ids: ["c1" as Base58ID], removed_club_ids: ["c2" as Base58ID, "c3" as Base58ID] },
+        });
+        expect(rows.map((r) => r.kind)).toEqual([
+            "membership-mode",
+            "tournaments-openness",
+            "starting-rating",
+            "leagues",
+            "clubs",
+        ]);
+        expect(rows[2]).toEqual({ kind: "starting-rating", old: 500, new: 100 });
+        expect(rows[4]).toEqual({ kind: "clubs", added: ["c1"], removed: ["c2", "c3"] });
+    });
+
+    it("skips untouched fields", () => {
+        expect(tenantUpdateRows({ starting_rating: { from: 500, to: 100 } })).toEqual([
+            { kind: "starting-rating", old: 500, new: 100 },
+        ]);
+        expect(tenantUpdateRows({})).toEqual([]);
+    });
+});
+
+describe("auditIsExpandable", () => {
+    it("expands tenant settings updates", () => {
+        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "updated" }))).toBe(true);
+        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "created" }))).toBe(false);
     });
 });
