@@ -126,7 +126,7 @@ type CalculatorUpdate struct {
 }
 
 type IMatchService interface {
-	AddMatch(ctx context.Context, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
+	AddMatch(ctx context.Context, tenantID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
 	UpdateMatch(ctx context.Context, tenantID id.ID, matchID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error)
 
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
@@ -240,9 +240,12 @@ func pgBool(b *bool) pgtype.Bool {
 	return pgtype.Bool{Bool: *b, Valid: true}
 }
 
-// AddMatch adds a single match with Elo calculations
-// Validates that game_id and all player_ids exist via foreign key constraints
-func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts AddMatchOpts) (db.Match, error) {
+// AddMatch adds a single match with Elo calculations. The match is created
+// under a tenant (ADR-36 phase 7): the tenant must exist and at least one
+// participant must be a current member of it — the same predicate the tenant
+// feed and the match edit apply. Validates that game_id and all player_ids
+// exist via foreign key constraints.
+func (s *MatchService) AddMatch(ctx context.Context, tenantID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts AddMatchOpts) (db.Match, error) {
 	if opts.ClientDate {
 		if err := validateNewMatchDate(time.Now(), date); err != nil {
 			return db.Match{}, err
@@ -258,6 +261,34 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	}()
 
 	q := s.Queries.WithTx(tx)
+
+	// The path tenant must exist (a 404, not a silent default — ADR-36 phase
+	// 5 retired the fallback).
+	if _, err := q.GetTenantByID(ctx, tenantID); err != nil {
+		if db.IsNoRows(err) {
+			return db.Match{}, ErrTenantNotFound
+		}
+		return db.Match{}, fmt.Errorf("get tenant: %w", err)
+	}
+
+	// The match settles into the creating tenant's main arena (ADR-36); when
+	// that arena is the sweep anchor (the converted global arena) the
+	// settlement is transactional, otherwise the arena replay below handles
+	// it. Resolved before the write so the settlement branch is a plain
+	// decision on the row.
+	mainArenaRow, err := q.GetArenaByTenant(ctx, &tenantID)
+	if err != nil {
+		return db.Match{}, fmt.Errorf("get tenant main arena: %w", err)
+	}
+	mainArena, err := arenaFromGetArenaByTenantRow(mainArenaRow)
+	if err != nil {
+		return db.Match{}, err
+	}
+
+	// The arena whose settlements this write maintains transactionally, if
+	// any — the affected-arena drain at the end skips exactly that arena
+	// (zero: everything goes through the replay).
+	var settledArenaID id.ID
 
 	// The game's mode decides (with the request, for mixed games) whether this
 	// is a rating match or a coop one (ADR-33).
@@ -276,6 +307,26 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	if err := validateMatchResult(mode, opts.GameScore, opts.GameWon); err != nil {
 		return db.Match{}, err
 	}
+
+	// The feed guard at creation (ADR-36 phase 7): the match must relate to
+	// the tenant it is created under — at least one participant is a current
+	// member of any of its clubs. The same predicate the edit applies and the
+	// tenant feed selects by; without it a match could never appear in the
+	// community it was recorded for. Checked inside the write transaction, so
+	// a concurrent membership change cannot slip past it. Coop matches are
+	// gated the same way (they are community news even though they settle no
+	// rating, ADR-33).
+	hasMember, err := q.TenantHasActiveMemberAmong(ctx, db.TenantHasActiveMemberAmongParams{
+		TenantID:  tenantID,
+		PlayerIds: playerIDsOf(playerScores),
+	})
+	if err != nil {
+		return db.Match{}, fmt.Errorf("check tenant membership: %w", err)
+	}
+	if !hasMember {
+		return db.Match{}, ErrMatchOutsideTenant
+	}
+
 	if mode == MatchModeCoop && len(opts.CampArenaIDs) > 0 {
 		return db.Match{}, ErrCoopLinksRejected
 	}
@@ -323,6 +374,10 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	if opts.ClientDate {
 		// Client-supplied (possibly backdated) date: write scores, then replay all
 		// events from that date so this match and every later one settle in order.
+		// The sweep is anchored at the converted global arena (ADR-36 phase 7);
+		// every other arena — the creating tenant's own main arena included,
+		// when it is not the anchor — is refreshed by the affected-arena drain
+		// at the end of this transaction.
 		for playerID, score := range playerScores {
 			if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
 				MatchID:  createdMatch.ID,
@@ -336,20 +391,55 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 		if err := s.recalculateEloFromDate(ctx, q, date); err != nil {
 			return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
 		}
+		settledArenaID = BlueMenArenaID
 	} else {
 		if mode == MatchModeCompetitive {
-			// Lock players and collect all prior state needed for dual-track
-			// settlement. settles=false when the tenant predicate (ADR-36) keeps
-			// the match out of the global arena's rating.
-			state, settles, err := s.lockAndGetPrevElos(ctx, q, createdMatch, playerScores)
-			if err != nil {
-				return db.Match{}, err
-			}
+			// The transactional settlement path serves the sweep anchor arena
+			// (the converted global arena) — the one arena whose settlement
+			// chain the sweep maintains (ADR-24, ADR-36 phase 7). A match
+			// created under another tenant settles into that tenant's main
+			// arena through the arena replay instead: the score rows written
+			// here are what the replay reads, and the affected-arena drain at
+			// the end of this transaction refreshes every arena whose
+			// membership function matches — that tenant's own main arena
+			// included. settles=false when the tenant predicate (ADR-36) keeps
+			// the match out of the arena's rating.
+			if mainArena.ID == BlueMenArenaID {
+				state, settles, err := s.lockAndGetPrevElos(ctx, q, mainArena, createdMatch, playerScores)
+				if err != nil {
+					return db.Match{}, err
+				}
+				settledArenaID = mainArena.ID
 
-			if !settles {
-				// No Elo settlement — the participant rows still record the
-				// match's players (they are what the tenant predicate of a
-				// later mode change / recalculation reads).
+				if !settles {
+					// No Elo settlement — the participant rows still record the
+					// match's players (they are what the tenant predicate of a
+					// later mode change / recalculation reads).
+					for playerID, score := range playerScores {
+						if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
+							MatchID:  createdMatch.ID,
+							PlayerID: playerID,
+							Score:    score,
+						}); err != nil {
+							return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
+						}
+					}
+				}
+
+				if err := s.EventProcessor.processMatchSettlements(
+					ctx, q, createdMatch.ID, playerScores,
+					state, date,
+					mode,
+					settles,
+					s.calculateAndStoreEloWithScores,
+				); err != nil {
+					return db.Match{}, err
+				}
+			} else {
+				// A non-anchor tenant's main arena is a replay arena: record
+				// the participants, run the market side of the settlement
+				// (resolution and expiry are arena-independent), and let the
+				// drain settle the arena from the match date.
 				for playerID, score := range playerScores {
 					if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
 						MatchID:  createdMatch.ID,
@@ -359,16 +449,15 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 						return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
 					}
 				}
-			}
-
-			if err := s.EventProcessor.processMatchSettlements(
-				ctx, q, createdMatch.ID, playerScores,
-				state, date,
-				mode,
-				settles,
-				s.calculateAndStoreEloWithScores,
-			); err != nil {
-				return db.Match{}, err
+				if err := s.EventProcessor.processMatchSettlements(
+					ctx, q, createdMatch.ID, playerScores,
+					MatchPrevState{}, date,
+					mode,
+					false,
+					s.calculateAndStoreEloWithScores,
+				); err != nil {
+					return db.Match{}, err
+				}
 			}
 		} else {
 			// A coop match settles nothing (ADR-33): no Elo, no market
@@ -434,7 +523,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 		if err != nil {
 			return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
 		}
-		if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, affected, date); err != nil {
+		if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, affected, date, settledArenaID); err != nil {
 			return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
 		}
 	}
@@ -681,7 +770,9 @@ func (s *MatchService) UpdateMatch(ctx context.Context, tenantID id.ID, matchID 
 			union = append(union, aid)
 		}
 	}
-	if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, union, recalcStartDate); err != nil {
+	// The edit's sweep re-settled the sweep anchor's settlements from
+	// recalcStartDate (ADR-36 phase 7); every other affected arena replays.
+	if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, union, recalcStartDate, BlueMenArenaID); err != nil {
 		return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
 	}
 
@@ -748,10 +839,23 @@ func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID 
 	return nil
 }
 
-// recalculateEloFromDate delegates to EventProcessor.RecalculateFrom.
+// recalculateEloFromDate delegates to EventProcessor.RecalculateFrom. The
+// sweep's Elo step is anchored at the converted global arena (ADR-36 phase
+// 7): that arena's settlement chain is what the sweep re-settles; every other
+// arena is replay-driven and never sees the sweep's Elo step.
 // Must be called within a transaction.
 func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries, startDate time.Time) error {
-	return s.EventProcessor.RecalculateFrom(ctx, q, startDate, s.calculateAndUpdateElo, s.lockAndGetPrevElos)
+	return s.EventProcessor.RecalculateFrom(ctx, q, startDate, s.calculateAndUpdateElo, func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, bool, error) {
+		row, err := q.GetArena(ctx, BlueMenArenaID)
+		if err != nil {
+			return MatchPrevState{}, false, fmt.Errorf("get sweep anchor arena: %w", err)
+		}
+		anchor, err := arenaFromGetArenaRow(row)
+		if err != nil {
+			return MatchPrevState{}, false, err
+		}
+		return s.lockAndGetPrevElos(ctx, q, anchor, match, playerScores)
+	})
 }
 
 // ISettlementSweep re-settles the whole settlement ledger from a date inside
@@ -770,11 +874,12 @@ func (s *MatchService) RecalculateSettlementsWithinTx(ctx context.Context, q *db
 }
 
 // lockAndGetPrevElos locks the match's players in sorted order and returns
-// their prior state in «Синие люди»'s main arena — the arena whose
-// settlements the transactional settlement path (the sweep's Elo step, the
-// market re-chain) maintains (ADR-24, ADR-36).
+// their prior state in the given arena. The transactional settlement path
+// (the sweep's Elo step, the market re-chain) maintains exactly one arena —
+// the sweep anchor, the converted global arena (ADR-24, ADR-36 phase 7);
+// every other arena, other tenants' main arenas included, is replay-driven.
 //
-// The tenant's openness mode, evaluated at the match date against the
+// The arena tenant's openness mode, evaluated at the match date against the
 // membership stints of its clubs, decides whether the match settles into it
 // at all. When the tenant predicate does not hold, settles=false and nothing
 // is locked —
@@ -785,18 +890,10 @@ func (s *MatchService) RecalculateSettlementsWithinTx(ctx context.Context, q *db
 // running inside a settings-save transaction must settle against the settings
 // document that transaction is writing (the starting rating in particular),
 // not the last committed one.
-func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, bool, error) {
-	row, err := q.GetArena(ctx, BlueMenArenaID)
-	if err != nil {
-		return MatchPrevState{}, false, fmt.Errorf("get main arena: %w", err)
-	}
-	globalArena, err := arenaFromGetArenaRow(row)
-	if err != nil {
-		return MatchPrevState{}, false, err
-	}
-	if globalArena.TenantID != nil {
+func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, arena Arena, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, bool, error) {
+	if arena.TenantID != nil {
 		contains, err := q.TenantContainsPlayers(ctx, db.TenantContainsPlayersParams{
-			TenantID:  *globalArena.TenantID,
+			TenantID:  *arena.TenantID,
 			PlayerIds: playerIDsOf(playerScores),
 			Date:      match.Date.Time,
 		})
@@ -807,12 +904,12 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 			return MatchPrevState{}, false, nil
 		}
 	}
-	prev, err := lockAndGetPrevArenaState(ctx, q, globalArena, match, playerScores)
+	prev, err := lockAndGetPrevArenaState(ctx, q, arena, match, playerScores)
 	if err != nil {
 		return MatchPrevState{}, false, err
 	}
 	return MatchPrevState{
-		Arena:    globalArena,
+		Arena:    arena,
 		Elo:      prev.Elo,
 		Rating:   prev.Rating,
 		League:   prev.League,

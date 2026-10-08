@@ -32,6 +32,7 @@ export const PAGES = [
     "/help/elo",
     "/help/markets",
     "/help/rules",
+    "/help/tenants",
     "/help/tournaments",
     "/markets/view",
     "/matches/edit",

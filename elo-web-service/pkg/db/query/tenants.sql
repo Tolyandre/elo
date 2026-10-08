@@ -86,12 +86,13 @@ WHERE tenant_id = sqlc.arg('tenant_id')::uuid
 -- name: TenantContainsPlayers :one
 -- Whether the participants count into the tenant's main arena under its
 -- CURRENT openness mode, evaluated at @date against stint history (ADR-36):
--- any_member — at least one participant was a member of any club of the
--- tenant at @date; members_only — all were. The Go settlement gate consults
--- this before settling a match into the tenant's arena (the SQL-side twin,
--- tenant_arena_contains_match, probes match_scores itself and lives in
--- migration 069).
+-- all — every match (membership irrelevant); any_member — at least one
+-- participant was a member of any club of the tenant at @date; members_only —
+-- all were. The Go settlement gate consults this before settling a match into
+-- the tenant's arena (the SQL-side twin, tenant_arena_contains_match, probes
+-- match_scores itself and lives in migration 069).
 SELECT CASE t.arena_membership_mode
+           WHEN 'all' THEN true
            WHEN 'any_member' THEN EXISTS (
                SELECT 1
                FROM clubs c
@@ -153,19 +154,25 @@ WHERE t.id = sqlc.arg('tenant_id');
 -- One page of the tenant feed (GET /tenants/{id}/feed, ADR-36): the
 -- community's activity, membership-scoped — deliberately NOT
 -- arena-attribution-scoped, so a tournament match appears even when it does
--- not count into the tenant's main arena rating. Match events go to any
--- current member's matches — of any club of the tenant (coop included:
--- community life, not just rating); market events to the markets the tenant
--- OWNS (a member's bet on another tenant's market is that tenant's news).
--- The player/club/game filters apply to both branches (the arena feed's
--- matching rule). Parameters and cursor are the arena
--- feed's minus the arena and the include flags; the tenant itself is the
--- feed's identity.
+-- not count into the tenant's main arena rating. Under arena_membership_mode
+-- 'all' the match branch widens to every match — the arena counts matches the
+-- membership predicate would hide, and the feed must not be narrower than the
+-- rating (ADR-36 phase 7). Match events go to any current member's matches —
+-- of any club of the tenant (coop included: community life, not just rating);
+-- market events to the markets the tenant OWNS (a member's bet on another
+-- tenant's market is that tenant's news). The player/club/game filters apply
+-- to both branches (the arena feed's matching rule). Parameters and cursor
+-- are the arena feed's minus the arena and the include flags; the tenant
+-- itself is the feed's identity.
 WITH events AS (
     SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
     FROM matches m
+    CROSS JOIN tenants t
     JOIN match_scores ms ON ms.match_id = m.id
-    WHERE EXISTS (
+    WHERE t.id = sqlc.arg('tenant_id')::uuid
+      AND (
+          t.arena_membership_mode = 'all'
+          OR EXISTS (
               SELECT 1
               FROM clubs c
               JOIN player_club_membership pcm ON pcm.club_id = c.id
@@ -173,6 +180,7 @@ WITH events AS (
                 AND pcm.left_at IS NULL
                 AND pcm.player_id = ms.player_id
           )
+      )
       AND (
           sqlc.narg('player_id')::uuid IS NULL OR ms.player_id = sqlc.narg('player_id')::uuid
       )

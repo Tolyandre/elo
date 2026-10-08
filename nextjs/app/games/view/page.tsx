@@ -18,9 +18,9 @@ import { Trophy } from "lucide-react";
 // So use query parameters instead /games/view?id=<GAME_ID>
 //
 // Since ADR-24 the page lists the arenas whose filter includes this game or
-// its tags (the game's own arena and the global arena included) instead of
-// hosting the per-game rating tabs — the arena page owns ranking, matches,
-// medals and score leaders now.
+// its tags (the game's own arena and the tenants' main arenas included)
+// instead of hosting the per-game rating tabs — the arena page owns ranking,
+// matches, medals and score leaders now.
 
 const LEAGUE_TITLES: Record<string, string> = {
   elite: "высшая лига",

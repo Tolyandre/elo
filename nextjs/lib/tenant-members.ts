@@ -27,7 +27,9 @@ export function memberPlayerIds(
  * Why the given roster cannot be submitted under the tenant, or null when it
  * can. `any_member` demands at least one member (otherwise the match would
  * never reach the tenant's feed or rating); `members_only` forbids everyone
- * else. An empty roster stays quiet — the disabled submit does the talking.
+ * else; `all` («Все партии») accepts any roster — membership is irrelevant to
+ * the rating. An empty roster stays quiet — the disabled submit does the
+ * talking.
  */
 export function participantsMembershipIssue(
     participantIds: readonly string[],
@@ -36,6 +38,7 @@ export function participantsMembershipIssue(
     tenantName: string,
 ): string | null {
     if (participantIds.length === 0) return null;
+    if (mode === "all") return null;
     if (mode === "any_member") {
         return participantIds.some((id) => memberIds.has(id))
             ? null

@@ -35,7 +35,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match (before market creation) to initialise bet limits.
-	_, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, now.Add(-time.Hour), newMatchOpts(t))
+	_, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, now.Add(-time.Hour), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up match: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	}
 
 	// Add a match whose date is past closes_at — ExpireMarketsAtDate cancels the market.
-	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 6, playerB: 4}, tMatch, newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 6, playerB: 4}, tMatch, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch after expiry: %v", err)
 	}

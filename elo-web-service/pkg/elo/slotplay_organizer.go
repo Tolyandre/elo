@@ -362,7 +362,9 @@ func (s *TournamentService) refreshTournamentArena(ctx context.Context, q *db.Qu
 	if err := q.MarkArenasStaleFull(ctx, []id.ID{arena.ID}); err != nil {
 		return fmt.Errorf("mark tournament arena stale: %w", err)
 	}
-	return s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, []id.ID{arena.ID}, time.Now())
+	// Nothing was settled transactionally here (a membership refresh, not a
+	// match write): the whole affected list replays.
+	return s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, []id.ID{arena.ID}, time.Now(), "")
 }
 
 // slotOfTournament loads the slot row and verifies it belongs to the

@@ -39,6 +39,14 @@ func TestCalculatorData_IDCodecRoundtrip(t *testing.T) {
 	paPlayer, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-0000000000a1", Name: "Alpha"})
 	pbPlayer, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-0000000000a2", Name: "Beta"})
 	pa, pb := paPlayer.ID, pbPlayer.ID
+	// The create guard (ADR-36 phase 7) requires a current member of the
+	// tenant the match is recorded under — both join «Синие люди».
+	if err := addBlueMenStint(ctx, pool, pa); err != nil {
+		t.Fatalf("add stint: %v", err)
+	}
+	if err := addBlueMenStint(ctx, pool, pb); err != nil {
+		t.Fatalf("add stint: %v", err)
+	}
 	gameRow, _ := q.AddGame(ctx, db.AddGameParams{ID: "00000000-0000-0000-0000-0000000000b1", NameEn: pgText("ЭБМ"), GameMode: elo.GameModeCompetitive})
 	game := gameRow.ID
 
@@ -78,7 +86,7 @@ func TestCalculatorData_IDCodecRoundtrip(t *testing.T) {
 	}
 	bodyBytes, _ := json.Marshal(body)
 
-	req := httptest.NewRequest(http.MethodPost, "/matches", strings.NewReader(string(bodyBytes)))
+	req := httptest.NewRequest(http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", strings.NewReader(string(bodyBytes)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()

@@ -31,7 +31,7 @@ export function CreateTableForm() {
     // The table's eventual match lands in the community under which the table
     // is created (ADR-36): the same openness rules as the match form — the
     // roster must satisfy the tenant or the match would never reach its feed.
-    const { tenant } = useTenantScope();
+    const { tenant, tenantId } = useTenantScope();
     const memberIds = useTenantMemberIds();
 
     const [gameId, setGameId] = useState<Base58ID>(GAME_APPS[0].id);
@@ -39,12 +39,13 @@ export function CreateTableForm() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const app = gameAppByGameId(gameId);
-    const canCreate = !!(me.isAuthenticated && me.playerId);
+    const canCreate = !!(me.isAuthenticated && me.playerId) && !!tenantId;
     const membershipIssue = tenant
         ? participantsMembershipIssue(playerIds, memberIds, tenant.arena_membership_mode, tenant.name)
         : null;
 
     async function create() {
+        if (!tenantId) return;
         const players = playerIds
             .map((id) => allPlayers.find((p) => p.id === id))
             .filter(Boolean)
@@ -55,7 +56,10 @@ export function CreateTableForm() {
 
         setIsSubmitting(true);
         try {
-            const table = await createTablePromise(app.id, app.createInitialState(players));
+            // The table belongs to the community it is created under (ADR-36
+            // phase 7): the server re-checks the seating against the tenant's
+            // openness mode.
+            const table = await createTablePromise(tenantId, app.id, app.createInitialState(players));
             // The table page resumes the host session from localStorage; the
             // ?id= binding it lands on keeps the URL shareable (ADR-25:
             // cross-route navigation goes through the router, same-route
@@ -100,7 +104,9 @@ export function CreateTableForm() {
                     <p className="text-xs text-muted-foreground">
                         {tenant.arena_membership_mode === "members_only"
                             ? `Сообщество «${tenant.name}» принимает только партии своих участников.`
-                            : `Партия стола попадёт в ленту сообщества «${tenant.name}», если среди участников есть хотя бы один его участник.`}
+                            : tenant.arena_membership_mode === "all"
+                                ? `Сообщество «${tenant.name}» считает все партии: стол попадёт в его ленту в любом составе.`
+                                : `Партия стола попадёт в ленту сообщества «${tenant.name}», если среди участников есть хотя бы один его участник.`}
                     </p>
                 )}
                 <PlayerMultiSelect

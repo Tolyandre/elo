@@ -17,8 +17,8 @@ export async function getTenantPromise(id: Base58ID): Promise<Tenant> {
 
 export async function createTenantPromise(payload: {
     name: string;
-    arena_membership_mode: "any_member" | "members_only";
-    tournaments_openness: "members_only" | "open";
+    arena_membership_mode: Tenant["arena_membership_mode"];
+    tournaments_openness: Tenant["tournaments_openness"];
     club_ids?: Base58ID[];
 }): Promise<Tenant> {
     return (await unwrap(client.POST("/tenants", { body: { id: newId(), ...payload } }))).data;
@@ -29,8 +29,8 @@ export async function patchTenantPromise(
     payload: {
         name?: string;
         icon?: string;
-        arena_membership_mode?: "any_member" | "members_only";
-        tournaments_openness?: "members_only" | "open";
+        arena_membership_mode?: Tenant["arena_membership_mode"];
+        tournaments_openness?: Tenant["tournaments_openness"];
         settings?: ArenaSettings;
     },
 ): Promise<Tenant> {

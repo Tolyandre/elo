@@ -180,10 +180,14 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	}, nil
 }
 
-func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObject) (AddMatchResponseObject, error) {
+// CreateTenantMatch adds a match under its owning tenant (ADR-36 phase 7):
+// the path tenant must exist (404) and at least one participant must be a
+// current member of it (400, the same guard the edit applies). The match
+// settles into the tenant's main arena per its openness mode.
+func (s *StrictServer) CreateTenantMatch(ctx context.Context, request CreateTenantMatchRequestObject) (CreateTenantMatchResponseObject, error) {
 	gameID, playerScores, err := parseMatchScores(request.Body.GameId, request.Body.Score)
 	if err != nil {
-		return AddMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		return CreateTenantMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	}
 
 	date := time.Now()
@@ -213,14 +217,14 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 	if request.Body.CalculatorKind != nil {
 		calc, cerr := buildCalculatorInput(*request.Body.CalculatorKind, request.Body.CalculatorData)
 		if cerr != nil {
-			return AddMatch400JSONResponse{Status: StatusFail, Message: cerr.Error()}, nil
+			return CreateTenantMatch400JSONResponse{Status: StatusFail, Message: cerr.Error()}, nil
 		}
 		opts.Calculator = calc
 	}
 
-	match, err := s.api.MatchService.AddMatch(ctx, gameID, playerScores, date, opts)
+	match, err := s.api.MatchService.AddMatch(ctx, parseIDParam(request.Id), gameID, playerScores, date, opts)
 	if err != nil {
-		return addMatchError(err)
+		return createMatchError(err)
 	}
 
 	// Live updates: signal every connected client to refresh matches/players
@@ -237,20 +241,23 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 		}
 	}
 
-	resp := AddMatch200JSONResponse{Status: StatusSuccess}
+	resp := CreateTenantMatch200JSONResponse{Status: StatusSuccess}
 	resp.Data.Id = match.ID
 	return resp, nil
 }
 
-// addMatchError maps a MatchService error to an AddMatch response. Domain
-// errors produce the appropriate 4xx typed body; genuine internal failures
-// surface as 500 via errorMiddleware (previously they were masked as 400).
-func addMatchError(err error) (AddMatchResponseObject, error) {
+// createMatchError maps a MatchService error to a CreateTenantMatch response.
+// Domain errors produce the appropriate 4xx typed body; genuine internal
+// failures surface as 500 via errorMiddleware (previously they were masked as
+// 400).
+func createMatchError(err error) (CreateTenantMatchResponseObject, error) {
 	switch domainStatusCode(err) {
 	case http.StatusBadRequest:
-		return AddMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		return CreateTenantMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+	case http.StatusNotFound:
+		return CreateTenantMatch404JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	case http.StatusConflict:
-		return AddMatch409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		return CreateTenantMatch409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	default:
 		return nil, err
 	}

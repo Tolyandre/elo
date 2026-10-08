@@ -15,6 +15,7 @@ import (
 const (
 	// Which matches count into the tenant's main arena, evaluated at the
 	// match date against membership history.
+	ArenaMembershipAll         = "all"          // every rated match; membership irrelevant
 	ArenaMembershipAnyMember   = "any_member"   // ≥1 participant was a member; guests accumulate rating and are listed
 	ArenaMembershipMembersOnly = "members_only" // all participants were members; the arena lists current members only
 	// Whether tournament registration is restricted to club members.

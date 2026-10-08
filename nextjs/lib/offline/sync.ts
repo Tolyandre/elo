@@ -26,6 +26,12 @@ export type SyncApi = {
     createPlayer(body: { id: Base58ID; name: string }): Promise<SyncCallResult<{ id: Base58ID }>>;
     addClubMember(body: { club_id: Base58ID; player_id: Base58ID }): Promise<SyncCallResult<null>>;
     addMatch(body: {
+        /**
+         * The owning tenant (ADR-36 phase 7), captured at submit time. Null
+         * for legacy items from before the field existed — the impl resolves
+         * its fallback or rejects the item.
+         */
+        tenant: Base58ID | null;
         id: Base58ID;
         game_id: Base58ID;
         score: Record<string, number>;
@@ -207,6 +213,9 @@ export async function syncOffline(
         let result: SyncCallResult<{ id: Base58ID }>;
         try {
             result = await api.addMatch({
+                // The owning tenant (ADR-36 phase 7), captured at submit time;
+                // null only for legacy pre-tenancy items.
+                tenant: match.tenantId ?? null,
                 id: match.clientId,
                 game_id: match.gameId,
                 score: match.score,

@@ -148,25 +148,32 @@ arena_contains_match(
   field-identical so the `arenaFrom*Row` adapters cannot silently mis-map a
   swapped column.
 
-## Exception (2026-10, ADR-36): club arenas
+## Exception (2026-10, ADR-36): tenant main arenas
 
-Club main arenas (ADR-36) are the explicit exception to the
-pure-expression rule. Their membership is the club's openness mode evaluated
+Tenant main arenas (ADR-36) are the explicit exception to the
+pure-expression rule. Their membership is the tenant's openness mode evaluated
 at the **match date** against `player_club_membership` stint history — table
 probes, so it cannot live inside `arena_contains_match` without killing the
 inlining this ADR exists for. Instead a separate STABLE function,
-`club_arena_contains_match` (migration 069), owns the club rule, and every
+`tenant_arena_contains_match` (migration 069), owns the tenant rule, and every
 arena query dispatches:
 
 ```sql
-CASE WHEN a.club_id IS NOT NULL
-     THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+CASE WHEN a.tenant_id IS NOT NULL
+     THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
      ELSE arena_contains_match(...) END
 ```
 
-The opaque call never runs for filter/camp/tournament arenas — the CASE
-guard reaches it only for club arenas, whose count is proportional to the
+(The section originally described an earlier ADR-36 iteration where the club
+itself was the tenant — `club_arena_contains_match`, `a.club_id`,
+`ClubContainsPlayers`; the separate-entity decision renamed all of it.)
+
+The mode dispatch covers `all` («Все партии», ADR-36 phase 7) — every rated
+match counts, no membership probe at all — `any_member` (an EXISTS over the
+stint history) and `members_only` (a NOT EXISTS). The opaque call never runs
+for filter/camp/tournament arenas — the CASE
+guard reaches it only for tenant arenas, whose count is proportional to the
 number of tenants, so the ADR-24/28 performance envelope for the general
 arena machinery is preserved. The transactional settlement path mirrors the
-rule in Go (`ClubContainsPlayers`) before settling a match into the global
-arena (which is «Синие люди»'s main arena since migration 068).
+rule in Go (`TenantContainsPlayers`) before settling a match into the
+tenant's main arena.

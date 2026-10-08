@@ -184,7 +184,7 @@ func containsID(ids []idpkg.ID, want idpkg.ID) bool {
 func playMatch(t *testing.T, ctx context.Context, pool *pgxpool.Pool, gameID idpkg.ID, date time.Time, scores map[idpkg.ID]float64) db.Match {
 	t.Helper()
 	matchSvc := newMatchService(pool)
-	m, err := matchSvc.AddMatch(ctx, gameID, scores, date, newMatchOpts(t))
+	m, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, scores, date, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}

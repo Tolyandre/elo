@@ -47,10 +47,13 @@ The exclusion has exactly two plug-in points:
 
 1. **`arena_contains_match` v2** (ADR-28): the membership function takes the
    match mode and returns `false` for `coop` before any other check. Every
-   arena kind — global, per-game, filter, camp, tournament — and everything
+   arena kind — the tenants' main arenas (the global arena at the time of
+   writing; ADR-36), per-game, filter, camp, tournament — and everything
    derived from the membership set (settlements, medals, arena feeds, replay,
    period counts, player profile stats that read settlements) excludes coop
-   matches through this single function. A coop match is created with no
+   matches through this single function (its tenant twin
+   `tenant_arena_contains_match` keeps the same coop exclusion in every
+   openness mode, «Все партии» included). A coop match is created with no
    settlement step, no market resolution, no bracket acceptance, no camp links
    and no arena drain; the replay (`RecalculateFrom`) skips its Elo/market
    steps but still advances time-based market expiry — a coop match is a point
@@ -59,9 +62,8 @@ The exclusion has exactly two plug-in points:
    union delete the settlements of a match that became coop and settle a match
    that became competitive.
 2. **The home feed includes them** (ADR-32 delivered the surface): `GET /feed`
-   merges coop matches into its match branch (the query's `include_coop`
-   flag, set only by `ListHomeFeed`); `GET /arenas/{id}/feed` — the global
-   arena's own feed included — never sees them. The feed's match event schema
+   merges coop matches into its match branch; arena feeds — the main arenas'
+   own feed included — never see them. The feed's match event schema
    gained `mode` / `game_score` / `game_won`; the card renders the shared
    result (win/loss badge, score, participants) with no ranks and no Elo bars.
 

@@ -103,8 +103,9 @@ func getTenant(t *testing.T, router interface {
 }
 
 // TestTenants_BlueMenBackfill pins the migration backfill: the «Синие люди»
-// tenant owns the global arena as its main arena, carries any_member / open,
-// and holds both clubs («Синие люди» and «Весёлые карточные игры»).
+// tenant owns the global arena as its main arena, carries the «Все партии»
+// openness (all — migration 075) / open, and holds both clubs («Синие люди»
+// and «Весёлые карточные игры»).
 func TestTenants_BlueMenBackfill(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -117,8 +118,8 @@ func TestTenants_BlueMenBackfill(t *testing.T) {
 	if tenant.Name != "Синие люди" {
 		t.Fatalf("tenant name = %q, want «Синие люди»", tenant.Name)
 	}
-	if tenant.ArenaMembershipMode != "any_member" {
-		t.Fatalf("arena_membership_mode = %q, want any_member", tenant.ArenaMembershipMode)
+	if tenant.ArenaMembershipMode != "all" {
+		t.Fatalf("arena_membership_mode = %q, want all", tenant.ArenaMembershipMode)
 	}
 	if tenant.TournamentsOpenness != "open" {
 		t.Fatalf("tournaments_openness = %q, want open", tenant.TournamentsOpenness)
@@ -595,42 +596,45 @@ func TestTenants_ArenaAttributionAnyMember(t *testing.T) {
 	game := createTestGame(t, pool, "Игра атрибуции")
 	svc := newMatchService(pool)
 
-	// Member of club A + guest: counts under any_member — the arena's
-	// affected-set drain settles it in the same transaction, and the global
-	// arena takes it too («Синие люди» is any_member as well).
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	// Member of club A + guest: counts under any_member. The match is created
+	// under its owning tenant (ADR-36 phase 7); the arena's affected-set drain
+	// settles it in the same transaction, and the anchor arena takes it too
+	// («Синие люди» is all — every rated match counts).
+	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch member+guest: %v", err)
 	}
 
 	// Member of club B + guest: the club B membership counts into the SAME
 	// tenant arena — the whole point of the multi-club tenant.
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{memberB: 55, guest: 25}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{memberB: 55, guest: 25}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch clubB member+guest: %v", err)
 	}
 
-	// Member-less match: settles nowhere (the tenant predicate rejects it on
-	// both arenas).
+	// Member-less match: rejected at creation — the guard demands a current
+	// member of the creating tenant (ADR-36 phase 7), the same predicate the
+	// feed selects by.
 	g1 := createBareTestPlayer(t, pool, "Посторонний1")
 	g2 := createBareTestPlayer(t, pool, "Посторонний2")
 	strangers := newMatchOpts(t)
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{g1: 50, g2: 30}, time.Now(), strangers); err != nil {
-		t.Fatalf("AddMatch strangers: %v", err)
+	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{g1: 50, g2: 30}, time.Now(), strangers); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("AddMatch strangers: err = %v, want ErrMatchOutsideTenant", err)
+	}
+	// The same roster under «Синие люди» is rejected too: memberB is a member
+	// of the fresh tenant's club only.
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{memberB: 55, guest: 25}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("AddMatch cross-tenant: err = %v, want ErrMatchOutsideTenant", err)
 	}
 
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 4 {
 		t.Fatalf("tenant arena settled %d rows, want the 4 participants of the member matches", got)
 	}
-	// The global arena (the «Синие люди» main arena) only takes the first
-	// match: its member plays there; memberB is a member of the fresh
-	// tenant's club only, so the second match is member-less for Blue Men.
-	if got := settlementCount(t, pool, elo.BlueMenArenaID, nil); got != 2 {
-		t.Fatalf("global arena settled %d rows, want only the Blue-Men member match", got)
+	// The anchor arena (the «Синие люди» main arena) takes both matches: its
+	// mode is all — membership is irrelevant (ADR-36 phase 7).
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, nil); got != 4 {
+		t.Fatalf("anchor arena settled %d rows, want both matches under the all mode", got)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, strangers.ID); got != 0 {
-		t.Fatalf("member-less match leaked %d rows into the tenant arena", got)
-	}
-	if got := settlementCount(t, pool, elo.BlueMenArenaID, strangers.ID); got != 0 {
-		t.Fatalf("member-less match leaked %d rows into the global arena", got)
+		t.Fatalf("rejected match leaked %d rows into the tenant arena", got)
 	}
 
 	// The guests are listed in the arena ranking (any_member).
@@ -686,7 +690,7 @@ func TestTenants_MembersOnlyRules(t *testing.T) {
 
 	// Mixed match: does not count into the members_only arena (not in the
 	// affected set, nothing drains).
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch mixed: %v", err)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
@@ -696,7 +700,7 @@ func TestTenants_MembersOnlyRules(t *testing.T) {
 	// Member-only match across BOTH clubs: the arena joins the affected set
 	// and the synchronous drain replays it — the mixed match stays out of the
 	// replay.
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, memberB: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, memberB: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch members: %v", err)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
@@ -743,11 +747,12 @@ func TestTenants_MembersOnlyRules(t *testing.T) {
 	}
 }
 
-// TestTenants_GlobalArenaOpennessGate pins the global-arena side of the
-// attribution: «Синие люди» is any_member (migration 068), so a member-less
-// match leaves no rating rows — and a main-arena mode change re-settles the
-// whole history in the settings transaction (the global arena is never
-// drained by the background worker).
+// TestTenants_GlobalArenaOpennessGate pins the anchor-arena side of the
+// attribution: «Синие люди» carries the «Все партии» openness (all —
+// migration 075), so every rated match settles into its main arena; a
+// member-less match cannot even be created (the create guard, ADR-36 phase
+// 7); and a main-arena mode change re-settles the whole history in the
+// settings transaction (the anchor arena's full drain is sweep-only).
 func TestTenants_GlobalArenaOpennessGate(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -763,35 +768,26 @@ func TestTenants_GlobalArenaOpennessGate(t *testing.T) {
 	guest := createBareTestPlayer(t, pool, "Бессиний")
 
 	mixed := newMatchOpts(t)
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), mixed); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), mixed); err != nil {
 		t.Fatalf("AddMatch mixed: %v", err)
 	}
-	strangers := newMatchOpts(t)
 	g2 := createBareTestPlayer(t, pool, "Второй бессиний")
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{guest: 50, g2: 30}, time.Now(), strangers); err != nil {
-		t.Fatalf("AddMatch strangers: %v", err)
+	strangers := newMatchOpts(t)
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{guest: 50, g2: 30}, time.Now(), strangers); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("AddMatch strangers: err = %v, want ErrMatchOutsideTenant", err)
 	}
 
 	if got := settlementCount(t, pool, elo.BlueMenArenaID, mixed.ID); got != 2 {
-		t.Fatalf("any_member global arena settled %d rows for the mixed match, want 2", got)
+		t.Fatalf("all-mode anchor arena settled %d rows for the mixed match, want 2", got)
 	}
 	if got := settlementCount(t, pool, elo.BlueMenArenaID, strangers.ID); got != 0 {
-		t.Fatalf("member-less match settled %d rows into the global arena, want 0", got)
-	}
-	// The rejected match still records its participants.
-	var scoreRows int
-	if err := pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM match_scores WHERE match_id = $1`, strangers.ID).Scan(&scoreRows); err != nil {
-		t.Fatalf("count match scores: %v", err)
-	}
-	if scoreRows != 2 {
-		t.Fatalf("member-less match has %d score rows, want the 2 participants", scoreRows)
+		t.Fatalf("rejected match settled %d rows into the anchor arena, want 0", got)
 	}
 
 	// Mode change → the arena is queued for a background recalculation; the
-	// drain (the worker's job) re-settles the history: the mixed match leaves
-	// the rating under members_only, and the arena is left clean of stale
-	// marks.
+	// drain re-settles the history: under members_only the mixed match (a
+	// guest took part) leaves the rating, and the arena is left clean of
+	// stale marks.
 	w := doJSON(t, router, http.MethodPatch, "/tenants/"+blueMenTenantUUID, token,
 		`{"arena_membership_mode": "members_only", "tournaments_openness": "members_only"}`)
 	if w.Code != http.StatusOK {
@@ -820,6 +816,17 @@ func TestTenants_GlobalArenaOpennessGate(t *testing.T) {
 	if got := settlementCount(t, pool, elo.BlueMenArenaID, mixed.ID); got != 2 {
 		t.Fatalf("after the any_member replay the mixed match has %d rows, want 2", got)
 	}
+
+	// And to all again: the member is irrelevant — the same two rows.
+	w = doJSON(t, router, http.MethodPatch, "/tenants/"+blueMenTenantUUID, token,
+		`{"arena_membership_mode": "all", "tournaments_openness": "open"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH «Синие люди» mode to all: %d %s", w.Code, w.Body.String())
+	}
+	drainArenas(t, pool)
+	if got := settlementCount(t, pool, elo.BlueMenArenaID, mixed.ID); got != 2 {
+		t.Fatalf("after the all replay the mixed match has %d rows, want 2", got)
+	}
 }
 
 // TestTenants_FreshArenaModeChangeRecalc pins the fresh-arena side of a mode
@@ -845,7 +852,7 @@ func TestTenants_FreshArenaModeChangeRecalc(t *testing.T) {
 
 	game := createTestGame(t, pool, "Игра переключений")
 	svc := newMatchService(pool)
-	if _, err := svc.AddMatch(context.Background(), game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(context.Background(), blueMenTenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch mixed: %v", err)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
@@ -909,7 +916,7 @@ func TestTenants_CompositionChangeRecalc(t *testing.T) {
 	}
 	memberB := createBareTestPlayer(t, pool, "Поздний член")
 	addClubMember(t, router, token, clubB.String(), memberB)
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{memberA: 60, memberB: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{memberA: 60, memberB: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
@@ -1085,7 +1092,9 @@ func TestMatchUpdate_RequiresTenantMembership(t *testing.T) {
 	game := createTestGame(t, pool, "Игра правки")
 	svc := newMatchService(pool)
 
-	created, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{tenantMember: 50, guest: 30, guest2: 20}, time.Now(), newMatchOpts(t))
+	// The match is created under its owning tenant — the community
+	// tenantMember belongs to (ADR-36 phase 7).
+	created, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{tenantMember: 50, guest: 30, guest2: 20}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch member+guests: %v", err)
 	}
@@ -1122,14 +1131,15 @@ func TestTenants_MatchDisplayArena(t *testing.T) {
 
 	tenantID, clubA, _ := createTenant(t, router, token, "Матчевое", "any_member", "open")
 
-	// Bare players with no «Синие люди» stint: the match settles ONLY into
-	// the fresh tenant's main arena.
+	// Bare players with no «Синие люди» stint: the match is created under the
+	// fresh tenant (its member takes part, ADR-36 phase 7) and settles into
+	// that tenant's main arena.
 	member := createBareTestPlayer(t, pool, "Матч-член")
 	opponent := createBareTestPlayer(t, pool, "Матч-соперник")
 	addClubMember(t, router, token, clubA.String(), member)
 
 	game := createTestGame(t, pool, "Игра матча")
-	if _, err := newMatchService(pool).AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, opponent: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := newMatchService(pool).AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{member: 60, opponent: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
 
@@ -1274,7 +1284,7 @@ func TestTenants_MarketSettlesIntoTenantArena(t *testing.T) {
 	// The member wins a match against the guest → the market resolves; both
 	// settlement rows land in the tenant's main arena, none in the global one.
 	matchSvc := newMatchService(pool)
-	match, err := matchSvc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t))
+	match, err := matchSvc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
@@ -1451,19 +1461,20 @@ func TestTenants_ClubFeed(t *testing.T) {
 
 	// A mixed member+guest match: does NOT count into the members_only main
 	// arena, yet appears in the tenant feed — membership-scoped by design.
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch mixed: %v", err)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
 		t.Fatalf("mixed match counted into the members_only arena (%d rows)", got)
 	}
 	// A member of club B: in the same feed.
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{memberB: 55, guest: 25}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{memberB: 55, guest: 25}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch clubB member: %v", err)
 	}
-	// A guest-only match stays out of the feed.
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Второй без ленты"): 30}, time.Now(), newMatchOpts(t)); err != nil {
-		t.Fatalf("AddMatch guests: %v", err)
+	// A guest-only match is unrepresentable since the create guard (ADR-36
+	// phase 7): no member of the creating tenant among the participants.
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Второй без ленты"): 30}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("AddMatch guests: err = %v, want ErrMatchOutsideTenant", err)
 	}
 
 	// Markets: the tenant's own market is in; a «Синие люди» market is not.

@@ -10,6 +10,13 @@ designed to carry non-rating content later (cooperative matches, posts).
 together with the corrections feature — feeds merge match and market events
 only.
 
+**Update (ADR-36 phases 5–7):** the home feed is the **tenant feed**
+(`GET /tenants/{id}/feed` — ADR-36), the main page renders the current
+community's feed; the arena feeds of per-game/tag/camp/tournament arenas are
+unchanged. In this ADR's original wording the home feed was the global
+arena's event set — the same arena that later became «Синие люди»'s main
+arena, then the tenant feed proper.
+
 ## Problem
 
 - The feed was assembled **client-side** from two endpoints
@@ -33,15 +40,17 @@ only.
 
 - `GET /arenas/{id}/feed` — an arena's feed: the events its ratings are
   computed from. Matches (arena membership as everywhere, ADR-28) for every
-  arena; corrections and market-resolution events **only for the global
-  arena**, decided server-side by the pinned global id (ADR-24: they settle
-  only there) — never by a client heuristic.
-- `GET /feed` — the **home feed**, the main page's surface. Today it is the
-  global arena's event set, but it is deliberately a separate concept: the
-  global arena's own feed stays rating-only forever. Future content that
-  affects no rating — cooperative matches (not counted in the global arena,
-  absent from the global arena's direct link), posts — joins the home feed
-  only, as new event kinds.
+  arena; market-resolution events **only for the tenant main arenas** (the
+  global arena at the time of writing; ADR-36: they settle into the owning
+  tenant's arena) — decided server-side by the arena's tenant, never by a
+  client heuristic.
+- `GET /feed` — the **home feed**, the main page's surface. At the time of
+  writing it is the global arena's event set; since ADR-36 it is the
+  tenant's community feed (`GET /tenants/{id}/feed`), deliberately a
+  separate concept: the main arena's own feed stays rating-only forever.
+  Future content that affects no rating — cooperative matches (not counted
+  in the main arena, absent from its direct link), posts — joins the home
+  feed only, as new event kinds.
 
 The response envelope is content-typed and closed under extension:
 
@@ -126,11 +135,12 @@ stays — the main-page section renders from it.
 ## Consequences
 
 - Feed composition is a server concern again: one query per page of event
-  keys (`UNION ALL` of matches / corrections / resolved markets, corrections
-  and markets gated by the global-arena flag) plus bulk payload fetches per
-  type — bounded, ordered, and extensible by adding a branch.
+  keys (`UNION ALL` of matches / resolved markets, markets gated by the
+  owning tenant; corrections were removed in ADR-36 phase 5) plus bulk
+  payload fetches per type — bounded, ordered, and extensible by adding a
+  branch.
 - The matches context slims to a plain match list (its corrections timeline
   and merge logic were dead code).
 - Cooperative matches, when built, touch only the home feed's event selection
   and a new event schema — the arena membership semantics (ADR-24/28) and the
-  global arena's feed stay untouched.
+  main arena's feed stay untouched.

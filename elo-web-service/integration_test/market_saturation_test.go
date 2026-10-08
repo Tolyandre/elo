@@ -73,7 +73,7 @@ func TestMarketSaturation_BetsKeepWorking(t *testing.T) {
 	}
 
 	// Warm-up match so the bet-limit recalculation has a baseline to read.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 	setBetLimit(t, pool, blueMenTenantID, playerA, 100) // after the warm-up: it rewrites participants' limits
@@ -116,7 +116,7 @@ func TestMarketSaturation_BetsKeepWorking(t *testing.T) {
 
 	// 3. The leader wins: settlement must be zero-sum, with the guarantor
 	// losing at most the risked 1 (plus FP dust).
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 

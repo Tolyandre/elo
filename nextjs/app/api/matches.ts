@@ -51,7 +51,7 @@ export async function getMatchByIdPromise(id: Base58ID, tenant: Base58ID): Promi
     }))).data);
 }
 
-export async function addMatchPromise(payload: {
+export async function addMatchPromise(tenant: Base58ID, payload: {
     id: Base58ID;
     game_id: Base58ID;
     score: Record<string, number>;
@@ -66,7 +66,13 @@ export async function addMatchPromise(payload: {
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
-    return (await unwrap(client.POST("/matches", { body: payload }))).data;
+    // Creation is tenant-scoped (ADR-36 phase 7): the match belongs to the
+    // community it was recorded for, and at least one participant must be a
+    // current member of it (the same guard the edit applies).
+    return (await unwrap(client.POST("/tenants/{id}/matches", {
+        params: { path: { id: tenant } },
+        body: payload,
+    }))).data;
 }
 
 export async function updateMatchPromise(matchId: Base58ID, tenant: Base58ID, payload: {

@@ -55,7 +55,7 @@ func TestMarketLiquidityJoin_RepricesAndStaysSolvent(t *testing.T) {
 
 	// Warm-up match so the limit recalculation has a baseline, then fund the
 	// traders above its rewrite.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerFav: 5, playerDog: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerFav: 5, playerDog: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 	setBetLimit(t, pool, blueMenTenantID, playerFav, 16)
@@ -127,7 +127,7 @@ func TestMarketLiquidityJoin_RepricesAndStaysSolvent(t *testing.T) {
 
 	// 5. The underdog wins: settlement must be zero-sum, no guarantor loses
 	// more than their risk.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerFav: 2, playerDog: 10}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerFav: 2, playerDog: 10}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 

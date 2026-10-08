@@ -155,6 +155,15 @@ from *rolling the game back* instead of just freezing it:
   Running tables appear on the main page above the arena tabs, and users
   hosting or connected to a table get a game-icon button in the header next
   to the offline-mode indicator.
+- **Tables are tenant-scoped (2026-10, ADR-36 phase 7).** A table belongs to
+  the community it was created under (`game_tables.tenant_id`, migration
+  076): the create is `POST /tenants/{id}/tables` (the flat `POST /tables`
+  is gone), the server rejects at creation a seating that does not relate to
+  the tenant per its openness rule (later joins and submits stay
+  host-token-guarded — a live game never breaks mid-play), and the «Сейчас
+  играют» lobby plus the header table icons read the tenant-scoped list
+  (`GET /tables?tenant=`) — a table of one community is invisible to
+  another.
 - The generic submit endpoint `POST /tables/{id}/submit` carries a per-game
   payload (`oneOf`: skull-king bid / skull-king result / iaww score). The
   Skull King bid/result endpoints are gone; the same validations apply.

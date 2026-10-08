@@ -324,8 +324,8 @@ paths:
     $ref: './clubs.yaml#/ClubMemberItem'
 
   # Tenants (ADR-36): communities owning a main arena, openness settings and
-  # one or many clubs. Every tournament/market is created under its owning
-  # tenant.
+  # one or many clubs. Every match, tournament, market and table is created
+  # under its owning tenant.
   /tenants:
     $ref: './tenants.yaml#/TenantsCollection'
   /tenants/{id}:
@@ -338,6 +338,10 @@ paths:
     $ref: './tournaments.yaml#/TenantTournamentsCollection'
   /tenants/{id}/markets:
     $ref: './markets.yaml#/TenantMarketsCollection'
+  /tenants/{id}/matches:
+    $ref: './matches.yaml#/TenantMatchesCollection'
+  /tenants/{id}/tables:
+    $ref: './tables.yaml#/TenantTablesCollection'
 
   # Settings
   /settings:

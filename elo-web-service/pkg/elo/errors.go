@@ -67,7 +67,10 @@ var (
 	ErrClubAlreadyInTenant         = errors.New("клуб уже входит в другое сообщество")
 	// The match-edit feed guard (ADR-36): the edit would drop the match from
 	// the tenant's feed, so it is rejected.
-	ErrMatchOutsideTenant          = errors.New("нужен хотя бы один участник сообщества")
+	ErrMatchOutsideTenant = errors.New("нужен хотя бы один участник сообщества")
+	// The table-create guard (ADR-36 phase 7): the seating does not relate to
+	// the tenant the table is created under.
+	ErrTableOutsideTenant = errors.New("состав стола не относится к сообществу: посадка должна соответствовать правилу открытости сообщества")
 
 	// Game modes (ADR-33).
 	ErrCoopScoresRejected  = errors.New("кооперативная партия не принимает очки игроков — отправьте общий игровой результат")

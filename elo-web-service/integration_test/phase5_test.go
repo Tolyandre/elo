@@ -43,7 +43,7 @@ func TestPhase5_TenantArenaSettings(t *testing.T) {
 	guest := createBareTestPlayer(t, pool, "Настройщик-гость")
 	addClubMember(t, router, token, clubA.String(), member)
 	game := createTestGame(t, pool, "Игра настроек")
-	if _, err := newMatchService(pool).AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := newMatchService(pool).AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
 

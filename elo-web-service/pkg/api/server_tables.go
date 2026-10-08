@@ -33,6 +33,7 @@ func (t *SubmitTableJSONRequestBody) UnmarshalJSON(b []byte) error {
 func tableSummaryFromElo(t elo.TableSummary) TableSummary {
 	return TableSummary{
 		Id:                 t.ID,
+		TenantId:           t.TenantID,
 		GameId:             t.GameID,
 		HostUserId:         t.HostUserID,
 		HostClientToken:    t.HostClientToken,
@@ -62,8 +63,13 @@ func currentPlayerID(ctx context.Context) (id.ID, error) {
 	return MustGetCurrentPlayerID(ginCtx), nil
 }
 
-func (s *StrictServer) ListTables(ctx context.Context, _ ListTablesRequestObject) (ListTablesResponseObject, error) {
-	tables, err := s.api.TableService.ListTables(ctx)
+// ListTables serves the tenant-scoped lobby (ADR-36 phase 7): only tables
+// created under the ?tenant=, an unknown tenant a 404.
+func (s *StrictServer) ListTables(ctx context.Context, request ListTablesRequestObject) (ListTablesResponseObject, error) {
+	tables, err := s.api.TableService.ListTables(ctx, parseIDParam(request.Params.Tenant))
+	if errors.Is(err, elo.ErrTenantNotFound) {
+		return ListTables404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +80,10 @@ func (s *StrictServer) ListTables(ctx context.Context, _ ListTablesRequestObject
 	return ListTables200JSONResponse{Status: StatusSuccess, Data: out}, nil
 }
 
-func (s *StrictServer) CreateTable(ctx context.Context, request CreateTableRequestObject) (CreateTableResponseObject, error) {
+// CreateTenantTable creates a table under its owning tenant (ADR-36 phase 7):
+// the path tenant must exist (404) and the seating must relate to it per the
+// openness mode (400 ErrTableOutsideTenant).
+func (s *StrictServer) CreateTenantTable(ctx context.Context, request CreateTenantTableRequestObject) (CreateTenantTableResponseObject, error) {
 	userID, err := currentUserID(ctx)
 	if err != nil {
 		return nil, err
@@ -84,13 +93,13 @@ func (s *StrictServer) CreateTable(ctx context.Context, request CreateTableReque
 	// The typed Base58ID fields skip UnmarshalJSON when a field is absent, so
 	// zero values here mean "missing" (the service validates the rest).
 	if body.Id.IsZero() {
-		return CreateTable400JSONResponse{Status: StatusFail, Message: "id is required"}, nil
+		return CreateTenantTable400JSONResponse{Status: StatusFail, Message: "id is required"}, nil
 	}
 	if body.GameId.IsZero() {
-		return CreateTable400JSONResponse{Status: StatusFail, Message: "game_id is required"}, nil
+		return CreateTenantTable400JSONResponse{Status: StatusFail, Message: "game_id is required"}, nil
 	}
 	if len(rawGameState(body.GameState)) == 0 {
-		return CreateTable400JSONResponse{Status: StatusFail, Message: "game_state is required"}, nil
+		return CreateTenantTable400JSONResponse{Status: StatusFail, Message: "game_state is required"}, nil
 	}
 
 	hostClientToken := ""
@@ -99,14 +108,17 @@ func (s *StrictServer) CreateTable(ctx context.Context, request CreateTableReque
 	}
 
 	// Host player_id is embedded in game_state; ownership is tracked by userID.
-	table, err := s.api.TableService.CreateTable(ctx, body.Id, userID, body.GameId, hostClientToken, rawGameState(body.GameState))
-	if errors.Is(err, elo.ErrUnknownGame) || errors.Is(err, elo.ErrInvalidState) {
-		return CreateTable400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+	table, err := s.api.TableService.CreateTable(ctx, parseIDParam(request.Id), body.Id, userID, body.GameId, hostClientToken, rawGameState(body.GameState))
+	if errors.Is(err, elo.ErrTenantNotFound) {
+		return CreateTenantTable404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+	}
+	if errors.Is(err, elo.ErrTableOutsideTenant) || errors.Is(err, elo.ErrUnknownGame) || errors.Is(err, elo.ErrInvalidState) {
+		return CreateTenantTable400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return CreateTable201JSONResponse{Status: StatusSuccess, Data: tableSummaryFromElo(table)}, nil
+	return CreateTenantTable201JSONResponse{Status: StatusSuccess, Data: tableSummaryFromElo(table)}, nil
 }
 
 func (s *StrictServer) GetTable(ctx context.Context, request GetTableRequestObject) (GetTableResponseObject, error) {

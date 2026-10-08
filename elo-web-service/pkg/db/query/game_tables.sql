@@ -1,6 +1,6 @@
 -- name: CreateGameTable :one
-INSERT INTO game_tables (id, host_user_id, game_id, host_client_token, game_state)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO game_tables (id, host_user_id, game_id, host_client_token, game_state, tenant_id)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetGameTable :one
@@ -10,7 +10,11 @@ SELECT * FROM game_tables WHERE id = $1;
 SELECT * FROM game_tables WHERE id = $1 FOR UPDATE;
 
 -- name: ListGameTables :many
-SELECT * FROM game_tables WHERE expires_at > NOW() ORDER BY created_at DESC;
+-- The tenant's lobby (ADR-36 phase 7): only tables created under the tenant,
+-- still live.
+SELECT * FROM game_tables
+WHERE tenant_id = $1 AND expires_at > NOW()
+ORDER BY created_at DESC;
 
 -- name: UpdateGameTableState :one
 UPDATE game_tables

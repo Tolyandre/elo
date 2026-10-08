@@ -5,6 +5,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	apioauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
@@ -195,14 +197,37 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 	otherGame := createTestGame(t, pool, "Другая игра статистики")
 	svc := newMatchService(pool)
 
-	// member+guest: settles into the tenant's main arena (any_member), not
-	// into the global one (no «Синие люди» membership).
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	// member+guest: created under its owning tenant (ADR-36 phase 7); it
+	// settles into that tenant's main arena (any_member) and into the anchor
+	// arena too («Синие люди» is all).
+	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch member+guest: %v", err)
 	}
-	// guest-only: settles nowhere — yet "Частые игры" must count it.
-	if _, err := svc.AddMatch(ctx, otherGame, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Статист-второй"): 30}, time.Now(), newMatchOpts(t)); err != nil {
-		t.Fatalf("AddMatch guests: %v", err)
+	// A guest-only match is unrepresentable under either tenant: the create
+	// guard demands a current member of the creating tenant.
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, otherGame, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Статист-второй"): 30}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("AddMatch guests under BlueMen: err = %v, want ErrMatchOutsideTenant", err)
+	}
+	if _, err := svc.AddMatch(ctx, tenantID, otherGame, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Статист-третий"): 30}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("AddMatch guests under the tenant: err = %v, want ErrMatchOutsideTenant", err)
+	}
+
+	// The members_only tenant keeps the "recorded, settles nowhere" case
+	// alive: the create guard only demands one member of the creating tenant,
+	// and the arena mode then rejects the guest's rating. «Частые игры»
+	// counts the match regardless of settlement (tenant-independent).
+	closedID, closedClub, closedArena := createTenant(t, router, token, "Закрытое статистическое", "members_only", "open")
+	closedArenaID, err := idpkg.ParseTolerant(closedArena)
+	if err != nil {
+		t.Fatalf("parse closed arena id: %v", err)
+	}
+	closedMember := createBareTestPlayer(t, pool, "Закрытый член")
+	addClubMember(t, router, token, closedClub.String(), closedMember)
+	if _, err := svc.AddMatch(ctx, closedID, otherGame, map[idpkg.ID]float64{closedMember: 50, guest: 30}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch closed member+guest: %v", err)
+	}
+	if got := settlementCount(t, pool, closedArenaID, nil); got != 0 {
+		t.Fatalf("members_only arena settled %d rows for a guest match, want 0", got)
 	}
 
 	// The guest's tenant-scoped profile: one main-arena rating point (the
@@ -255,17 +280,23 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 		t.Fatalf("member tenant rating history = %d points, want the main-arena settlement", len(tenantStats.Data.RatingHistory))
 	}
 
+	// An outsiders-only match is unrepresentable since the create guard
+	// (ADR-36 phase 7): under either tenant nobody in it is a member.
 	outsider := createBareTestPlayer(t, pool, "Статист-посторонний")
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{outsider: 40, createBareTestPlayer(t, pool, "Статист-четвёртый"): 10}, time.Now(), newMatchOpts(t)); err != nil {
-		t.Fatalf("AddMatch outsiders: %v", err)
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{outsider: 40, createBareTestPlayer(t, pool, "Статист-пятый"): 10}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("AddMatch outsiders under BlueMen: err = %v, want ErrMatchOutsideTenant", err)
 	}
+	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{outsider: 40, createBareTestPlayer(t, pool, "Статист-четвёртый"): 10}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("AddMatch outsiders under the tenant: err = %v, want ErrMatchOutsideTenant", err)
+	}
+	// A player with no matches at all shows an empty profile in every scope.
 	code, outsiderBlue := getPlayerStats(t, router,
 		"/players/"+outsider.String()+"/stats?tenant="+blueMenTenantUUID)
 	if code != http.StatusOK {
 		t.Fatalf("outsider «Синие люди» stats: %d", code)
 	}
 	if len(outsiderBlue.Data.RatingHistory) != 0 {
-		t.Fatalf("outsider «Синие люди» rating history = %d points, want none (settles nowhere there)", len(outsiderBlue.Data.RatingHistory))
+		t.Fatalf("outsider «Синие люди» rating history = %d points, want none", len(outsiderBlue.Data.RatingHistory))
 	}
 	code, outsiderTenant := getPlayerStats(t, router,
 		"/players/"+outsider.String()+"/stats?tenant="+tenantID.String())
@@ -275,8 +306,8 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 	if len(outsiderTenant.Data.RatingHistory) != 0 {
 		t.Fatalf("outsider tenant rating history = %d points, want none", len(outsiderTenant.Data.RatingHistory))
 	}
-	if len(outsiderTenant.Data.TopGamesByMatches) != 1 {
-		t.Fatalf("outsider frequent games = %+v, want the arena-less game counted", outsiderTenant.Data.TopGamesByMatches)
+	if len(outsiderTenant.Data.TopGamesByMatches) != 0 {
+		t.Fatalf("outsider frequent games = %+v, want none", outsiderTenant.Data.TopGamesByMatches)
 	}
 
 	// The tenant's main arena is the one the ?tenant= resolves to (sanity

@@ -818,6 +818,7 @@ func (e MatchesMatchMode) Valid() bool {
 
 // Defines values for TenantsTenantArenaMembershipMode.
 const (
+	TenantsTenantArenaMembershipModeAll         TenantsTenantArenaMembershipMode = "all"
 	TenantsTenantArenaMembershipModeAnyMember   TenantsTenantArenaMembershipMode = "any_member"
 	TenantsTenantArenaMembershipModeMembersOnly TenantsTenantArenaMembershipMode = "members_only"
 )
@@ -825,6 +826,8 @@ const (
 // Valid indicates whether the value is a known member of the TenantsTenantArenaMembershipMode enum.
 func (e TenantsTenantArenaMembershipMode) Valid() bool {
 	switch e {
+	case TenantsTenantArenaMembershipModeAll:
+		return true
 	case TenantsTenantArenaMembershipModeAnyMember:
 		return true
 	case TenantsTenantArenaMembershipModeMembersOnly:
@@ -965,6 +968,7 @@ func (e PatchMarketJSONBodyStatus) Valid() bool {
 
 // Defines values for CreateTenantJSONBodyArenaMembershipMode.
 const (
+	CreateTenantJSONBodyArenaMembershipModeAll         CreateTenantJSONBodyArenaMembershipMode = "all"
 	CreateTenantJSONBodyArenaMembershipModeAnyMember   CreateTenantJSONBodyArenaMembershipMode = "any_member"
 	CreateTenantJSONBodyArenaMembershipModeMembersOnly CreateTenantJSONBodyArenaMembershipMode = "members_only"
 )
@@ -972,6 +976,8 @@ const (
 // Valid indicates whether the value is a known member of the CreateTenantJSONBodyArenaMembershipMode enum.
 func (e CreateTenantJSONBodyArenaMembershipMode) Valid() bool {
 	switch e {
+	case CreateTenantJSONBodyArenaMembershipModeAll:
+		return true
 	case CreateTenantJSONBodyArenaMembershipModeAnyMember:
 		return true
 	case CreateTenantJSONBodyArenaMembershipModeMembersOnly:
@@ -1001,6 +1007,7 @@ func (e CreateTenantJSONBodyTournamentsOpenness) Valid() bool {
 
 // Defines values for PatchTenantJSONBodyArenaMembershipMode.
 const (
+	PatchTenantJSONBodyArenaMembershipModeAll         PatchTenantJSONBodyArenaMembershipMode = "all"
 	PatchTenantJSONBodyArenaMembershipModeAnyMember   PatchTenantJSONBodyArenaMembershipMode = "any_member"
 	PatchTenantJSONBodyArenaMembershipModeMembersOnly PatchTenantJSONBodyArenaMembershipMode = "members_only"
 )
@@ -1008,6 +1015,8 @@ const (
 // Valid indicates whether the value is a known member of the PatchTenantJSONBodyArenaMembershipMode enum.
 func (e PatchTenantJSONBodyArenaMembershipMode) Valid() bool {
 	switch e {
+	case PatchTenantJSONBodyArenaMembershipModeAll:
+		return true
 	case PatchTenantJSONBodyArenaMembershipModeAnyMember:
 		return true
 	case PatchTenantJSONBodyArenaMembershipModeMembersOnly:
@@ -2182,6 +2191,9 @@ type TableSummary struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
+	// TenantId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TenantId Base58ID `json:"tenant_id"`
+
 	// Version Optimistic-lock counter; changes with every game_state write
 	Version int64 `json:"version"`
 }
@@ -2547,7 +2559,7 @@ type TablesUpdateTableStateRequest struct {
 
 // TenantsTenant defines model for tenants_Tenant.
 type TenantsTenant struct {
-	// ArenaMembershipMode Which matches count into the main arena.
+	// ArenaMembershipMode Which matches count into the main arena (ADR-36), evaluated at the match date against membership history. `all` («Все партии») — every rated match, membership irrelevant (coop matches still settle no rating, ADR-33); `any_member` («Есть участник сообщества») — at least one participant was a member at the match date; `members_only` («Только участники сообщества») — all were. The mode also gates tournament registration (with tournaments_openness) and bets.
 	ArenaMembershipMode TenantsTenantArenaMembershipMode `json:"arena_membership_mode"`
 
 	// ClubIds The clubs belonging to the tenant (ADR-36); a tenant holds one or many.
@@ -2567,7 +2579,7 @@ type TenantsTenant struct {
 	TournamentsOpenness TenantsTenantTournamentsOpenness `json:"tournaments_openness"`
 }
 
-// TenantsTenantArenaMembershipMode Which matches count into the main arena.
+// TenantsTenantArenaMembershipMode Which matches count into the main arena (ADR-36), evaluated at the match date against membership history. `all` («Все партии») — every rated match, membership irrelevant (coop matches still settle no rating, ADR-33); `any_member` («Есть участник сообщества») — at least one participant was a member at the match date; `members_only` («Только участники сообщества») — all were. The mode also gates tournament registration (with tournaments_openness) and bets.
 type TenantsTenantArenaMembershipMode string
 
 // TenantsTenantTournamentsOpenness Whether tournament registration is restricted to members.
@@ -2816,45 +2828,6 @@ type ListMatchesParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// AddMatchJSONBody defines parameters for AddMatch.
-type AddMatchJSONBody struct {
-	// CalculatorData Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id", which the schema marks as an entity id so the Go handler canonicalizes it at the boundary.
-	CalculatorData *map[string]interface{} `json:"calculator_data,omitempty"`
-
-	// CalculatorKind Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form.
-	CalculatorKind *string `json:"calculator_kind,omitempty"`
-
-	// CampArenaIds Optional camp arena IDs (ADR-27) this match belongs to. Each arena must exist, be a camp, and its window must contain the match date; the links become part of the camp's stats.
-	CampArenaIds *[]Base58ID `json:"camp_arena_ids,omitempty"`
-
-	// Date Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
-	Date *time.Time `json:"date,omitempty"`
-
-	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	GameId Base58ID `json:"game_id"`
-
-	// GameScore The shared game result — required for coop matches, rejected for competitive ones.
-	GameScore *float64 `json:"game_score,omitempty"`
-
-	// GameWon Whether the team/solo player beat the game — required for coop matches, rejected for competitive ones.
-	GameWon *bool `json:"game_won,omitempty"`
-
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id Base58ID `json:"id"`
-
-	// Mode The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
-	Mode *MatchesMatchMode `json:"mode,omitempty"`
-
-	// PlayerIds Participants without per-player scores — the player list of a coop match (at least one, ADR-33), instead of score. Rejected for competitive matches, where score carries the players.
-	PlayerIds *[]Base58ID `json:"player_ids,omitempty"`
-
-	// Score Map of player_id (string) to numeric score. Required for competitive matches (at least 2 players); must be omitted for coop matches (ADR-33).
-	Score *IDMap[float64] `json:"score,omitempty"`
-
-	// SkipTournamentLink Explicit opt-out from tournament bracket acceptance (ADR-26). When the match exactly fits a playing slot (same game, exactly the seated players) the server links it by default — the form checkbox is default-checked. Send true to keep the match out of the bracket; fitting is always verified server-side.
-	SkipTournamentLink *bool `json:"skip_tournament_link,omitempty"`
-}
-
 // GetMatchByIdParams defines parameters for GetMatchById.
 type GetMatchByIdParams struct {
 	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. Naming no existing tenant is a 404.
@@ -2940,6 +2913,12 @@ type CreateSettingsJSONBody struct {
 	WinReward     float64   `json:"win_reward"`
 }
 
+// ListTablesParams defines parameters for ListTables.
+type ListTablesParams struct {
+	// Tenant List only tables created under this tenant (ADR-36). Required — there is no cross-tenant lobby. Naming no existing tenant is a 404.
+	Tenant string `form:"tenant" json:"tenant"`
+}
+
 // DeleteTableParams defines parameters for DeleteTable.
 type DeleteTableParams struct {
 	// MatchId When provided, the server broadcasts a `saved` SSE event carrying this match id to the table's subscribers before deleting the table, so connected players can be redirected to the saved match. Omitted by the host when closing the table without saving (a `closed` event instead).
@@ -2971,6 +2950,7 @@ type PatchTagJSONBody struct {
 
 // CreateTenantJSONBody defines parameters for CreateTenant.
 type CreateTenantJSONBody struct {
+	// ArenaMembershipMode Which matches count into the main arena (ADR-36). `all` — every rated match; `any_member` — at least one participant was a member at the match date; `members_only` — all were.
 	ArenaMembershipMode CreateTenantJSONBodyArenaMembershipMode `json:"arena_membership_mode"`
 
 	// ClubIds Initial club composition (may be empty).
@@ -2990,6 +2970,7 @@ type CreateTenantJSONBodyTournamentsOpenness string
 
 // PatchTenantJSONBody defines parameters for PatchTenant.
 type PatchTenantJSONBody struct {
+	// ArenaMembershipMode Which matches count into the main arena (ADR-36). `all` — every rated match; `any_member` — at least one participant was a member at the match date; `members_only` — all were.
 	ArenaMembershipMode *PatchTenantJSONBodyArenaMembershipMode `json:"arena_membership_mode,omitempty"`
 	Icon                *string                                 `json:"icon,omitempty"`
 	Name                *string                                 `json:"name,omitempty"`
@@ -3063,6 +3044,45 @@ type CreateTenantMarketJSONBody struct {
 
 // CreateTenantMarketJSONBodyMarketType defines parameters for CreateTenantMarket.
 type CreateTenantMarketJSONBodyMarketType string
+
+// CreateTenantMatchJSONBody defines parameters for CreateTenantMatch.
+type CreateTenantMatchJSONBody struct {
+	// CalculatorData Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id", which the schema marks as an entity id so the Go handler canonicalizes it at the boundary.
+	CalculatorData *map[string]interface{} `json:"calculator_data,omitempty"`
+
+	// CalculatorKind Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form.
+	CalculatorKind *string `json:"calculator_kind,omitempty"`
+
+	// CampArenaIds Optional camp arena IDs (ADR-27) this match belongs to. Each arena must exist, be a camp, and its window must contain the match date; the links become part of the camp's stats.
+	CampArenaIds *[]Base58ID `json:"camp_arena_ids,omitempty"`
+
+	// Date Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
+	Date *time.Time `json:"date,omitempty"`
+
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId Base58ID `json:"game_id"`
+
+	// GameScore The shared game result — required for coop matches, rejected for competitive ones.
+	GameScore *float64 `json:"game_score,omitempty"`
+
+	// GameWon Whether the team/solo player beat the game — required for coop matches, rejected for competitive ones.
+	GameWon *bool `json:"game_won,omitempty"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// Mode The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
+	Mode *MatchesMatchMode `json:"mode,omitempty"`
+
+	// PlayerIds Participants without per-player scores — the player list of a coop match (at least one, ADR-33), instead of score. Rejected for competitive matches, where score carries the players.
+	PlayerIds *[]Base58ID `json:"player_ids,omitempty"`
+
+	// Score Map of player_id (string) to numeric score. Required for competitive matches (at least 2 players); must be omitted for coop matches (ADR-33).
+	Score *IDMap[float64] `json:"score,omitempty"`
+
+	// SkipTournamentLink Explicit opt-out from tournament bracket acceptance (ADR-26). When the match exactly fits a playing slot (same game, exactly the seated players) the server links it by default — the form checkbox is default-checked. Send true to keep the match out of the bracket; fitting is always verified server-side.
+	SkipTournamentLink *bool `json:"skip_tournament_link,omitempty"`
+}
 
 // ListTournamentBracketPlansParams defines parameters for ListTournamentBracketPlans.
 type ListTournamentBracketPlansParams struct {
@@ -3162,9 +3182,6 @@ type PlaceBetJSONRequestBody PlaceBetJSONBody
 // CreateMarketGuaranteeJSONRequestBody defines body for CreateMarketGuarantee for application/json ContentType.
 type CreateMarketGuaranteeJSONRequestBody CreateMarketGuaranteeJSONBody
 
-// AddMatchJSONRequestBody defines body for AddMatch for application/json ContentType.
-type AddMatchJSONRequestBody AddMatchJSONBody
-
 // UpdateMatchJSONRequestBody defines body for UpdateMatch for application/json ContentType.
 type UpdateMatchJSONRequestBody UpdateMatchJSONBody
 
@@ -3179,9 +3196,6 @@ type DeleteSettingsJSONRequestBody DeleteSettingsJSONBody
 
 // CreateSettingsJSONRequestBody defines body for CreateSettings for application/json ContentType.
 type CreateSettingsJSONRequestBody CreateSettingsJSONBody
-
-// CreateTableJSONRequestBody defines body for CreateTable for application/json ContentType.
-type CreateTableJSONRequestBody = TablesCreateTableRequest
 
 // UpdateTableStateJSONRequestBody defines body for UpdateTableState for application/json ContentType.
 type UpdateTableStateJSONRequestBody = TablesUpdateTableStateRequest
@@ -3209,6 +3223,12 @@ type SetTenantClubsJSONRequestBody SetTenantClubsJSONBody
 
 // CreateTenantMarketJSONRequestBody defines body for CreateTenantMarket for application/json ContentType.
 type CreateTenantMarketJSONRequestBody CreateTenantMarketJSONBody
+
+// CreateTenantMatchJSONRequestBody defines body for CreateTenantMatch for application/json ContentType.
+type CreateTenantMatchJSONRequestBody CreateTenantMatchJSONBody
+
+// CreateTenantTableJSONRequestBody defines body for CreateTenantTable for application/json ContentType.
+type CreateTenantTableJSONRequestBody = TablesCreateTableRequest
 
 // CreateTenantTournamentJSONRequestBody defines body for CreateTenantTournament for application/json ContentType.
 type CreateTenantTournamentJSONRequestBody = TournamentInput
@@ -4108,9 +4128,6 @@ type ServerInterface interface {
 	// ListMatches List matches with cursor-based pagination
 	// (GET /matches)
 	ListMatches(c *gin.Context, params ListMatchesParams)
-	// AddMatch Add a new match
-	// (POST /matches)
-	AddMatch(c *gin.Context)
 	// GetMatchById Get a match by ID
 	// (GET /matches/{id})
 	GetMatchById(c *gin.Context, id string, params GetMatchByIdParams)
@@ -4153,12 +4170,9 @@ type ServerInterface interface {
 	// ListAllSettings Get all Elo settings entries (historical and future)
 	// (GET /settings/all)
 	ListAllSettings(c *gin.Context)
-	// ListTables List all active game tables
+	// ListTables List the tenant's active game tables (the «Сейчас играют» lobby)
 	// (GET /tables)
-	ListTables(c *gin.Context)
-	// CreateTable Create a new game table
-	// (POST /tables)
-	CreateTable(c *gin.Context)
+	ListTables(c *gin.Context, params ListTablesParams)
 	// DeleteTable Delete a game table (host only)
 	// (DELETE /tables/{id})
 	DeleteTable(c *gin.Context, id string, params DeleteTableParams)
@@ -4210,6 +4224,12 @@ type ServerInterface interface {
 	// CreateTenantMarket Create a new betting market owned by the tenant
 	// (POST /tenants/{id}/markets)
 	CreateTenantMarket(c *gin.Context, id string)
+	// CreateTenantMatch Add a new match owned by the tenant
+	// (POST /tenants/{id}/matches)
+	CreateTenantMatch(c *gin.Context, id string)
+	// CreateTenantTable Create a game table owned by the tenant
+	// (POST /tenants/{id}/tables)
+	CreateTenantTable(c *gin.Context, id string)
 	// CreateTenantTournament Create a tournament owned by the tenant (status = registration)
 	// (POST /tenants/{id}/tournaments)
 	CreateTenantTournament(c *gin.Context, id string)
@@ -5374,19 +5394,6 @@ func (siw *ServerInterfaceWrapper) ListMatches(c *gin.Context) {
 	siw.Handler.ListMatches(c, params)
 }
 
-// AddMatch operation middleware
-func (siw *ServerInterfaceWrapper) AddMatch(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.AddMatch(c)
-}
-
 // GetMatchById operation middleware
 func (siw *ServerInterfaceWrapper) GetMatchById(c *gin.Context) {
 
@@ -5691,6 +5698,20 @@ func (siw *ServerInterfaceWrapper) ListAllSettings(c *gin.Context) {
 // ListTables operation middleware
 func (siw *ServerInterfaceWrapper) ListTables(c *gin.Context) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTablesParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5698,20 +5719,7 @@ func (siw *ServerInterfaceWrapper) ListTables(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListTables(c)
-}
-
-// CreateTable operation middleware
-func (siw *ServerInterfaceWrapper) CreateTable(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateTable(c)
+	siw.Handler.ListTables(c, params)
 }
 
 // DeleteTable operation middleware
@@ -6143,6 +6151,56 @@ func (siw *ServerInterfaceWrapper) CreateTenantMarket(c *gin.Context) {
 	}
 
 	siw.Handler.CreateTenantMarket(c, id)
+}
+
+// CreateTenantMatch operation middleware
+func (siw *ServerInterfaceWrapper) CreateTenantMatch(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateTenantMatch(c, id)
+}
+
+// CreateTenantTable operation middleware
+func (siw *ServerInterfaceWrapper) CreateTenantTable(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateTenantTable(c, id)
 }
 
 // CreateTenantTournament operation middleware
@@ -6686,7 +6744,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/markets/:id/guarantees", wrapper.CreateMarketGuarantee)
 	router.GET(options.BaseURL+"/markets/:id/probability-history", wrapper.GetMarketProbabilityHistory)
 	router.GET(options.BaseURL+"/matches", wrapper.ListMatches)
-	router.POST(options.BaseURL+"/matches", wrapper.AddMatch)
 	router.GET(options.BaseURL+"/matches/:id", wrapper.GetMatchById)
 	router.PUT(options.BaseURL+"/matches/:id", wrapper.UpdateMatch)
 	router.GET(options.BaseURL+"/matches/:id/markets", wrapper.GetMarketsByMatchId)
@@ -6702,7 +6759,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/settings", wrapper.CreateSettings)
 	router.GET(options.BaseURL+"/settings/all", wrapper.ListAllSettings)
 	router.GET(options.BaseURL+"/tables", wrapper.ListTables)
-	router.POST(options.BaseURL+"/tables", wrapper.CreateTable)
 	router.DELETE(options.BaseURL+"/tables/:id", wrapper.DeleteTable)
 	router.GET(options.BaseURL+"/tables/:id", wrapper.GetTable)
 	router.POST(options.BaseURL+"/tables/:id/join", wrapper.JoinTable)
@@ -6720,6 +6776,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PUT(options.BaseURL+"/tenants/:id/clubs", wrapper.SetTenantClubs)
 	router.GET(options.BaseURL+"/tenants/:id/feed", wrapper.ListTenantFeed)
 	router.POST(options.BaseURL+"/tenants/:id/markets", wrapper.CreateTenantMarket)
+	router.POST(options.BaseURL+"/tenants/:id/matches", wrapper.CreateTenantMatch)
+	router.POST(options.BaseURL+"/tenants/:id/tables", wrapper.CreateTenantTable)
 	router.POST(options.BaseURL+"/tenants/:id/tournaments", wrapper.CreateTenantTournament)
 	router.GET(options.BaseURL+"/tournaments", wrapper.ListTournaments)
 	router.GET(options.BaseURL+"/tournaments/:id", wrapper.GetTournament)
@@ -9180,90 +9238,6 @@ func (response ListMatches404JSONResponse) VisitListMatchesResponse(w http.Respo
 	return err
 }
 
-type AddMatchRequestObject struct {
-	Body *AddMatchJSONRequestBody
-}
-
-type AddMatchResponseObject interface {
-	VisitAddMatchResponse(w http.ResponseWriter) error
-}
-
-type AddMatch200JSONResponse struct {
-	Data struct {
-		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-		Id Base58ID `json:"id"`
-	} `json:"data"`
-	Status string `json:"status"`
-}
-
-func (response AddMatch200JSONResponse) VisitAddMatchResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AddMatch400JSONResponse ApiError
-
-func (response AddMatch400JSONResponse) VisitAddMatchResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AddMatch401JSONResponse ApiError
-
-func (response AddMatch401JSONResponse) VisitAddMatchResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AddMatch403JSONResponse ApiError
-
-func (response AddMatch403JSONResponse) VisitAddMatchResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AddMatch409JSONResponse ApiError
-
-func (response AddMatch409JSONResponse) VisitAddMatchResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetMatchByIdRequestObject struct {
 	Id     string `json:"id"`
 	Params GetMatchByIdParams
@@ -10051,6 +10025,7 @@ func (response ListAllSettings200JSONResponse) VisitListAllSettingsResponse(w ht
 }
 
 type ListTablesRequestObject struct {
+	Params ListTablesParams
 }
 
 type ListTablesResponseObject interface {
@@ -10074,55 +10049,16 @@ func (response ListTables200JSONResponse) VisitListTablesResponse(w http.Respons
 	return err
 }
 
-type CreateTableRequestObject struct {
-	Body *CreateTableJSONRequestBody
-}
+type ListTables404JSONResponse ApiError
 
-type CreateTableResponseObject interface {
-	VisitCreateTableResponse(w http.ResponseWriter) error
-}
-
-type CreateTable201JSONResponse struct {
-	Data   TableSummary `json:"data"`
-	Status string       `json:"status"`
-}
-
-func (response CreateTable201JSONResponse) VisitCreateTableResponse(w http.ResponseWriter) error {
+func (response ListTables404JSONResponse) VisitListTablesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTable400JSONResponse ApiError
-
-func (response CreateTable400JSONResponse) VisitCreateTableResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTable401JSONResponse ApiError
-
-func (response CreateTable401JSONResponse) VisitCreateTableResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -11282,6 +11218,173 @@ func (response CreateTenantMarket403JSONResponse) VisitCreateTenantMarketRespons
 type CreateTenantMarket404JSONResponse ApiError
 
 func (response CreateTenantMarket404JSONResponse) VisitCreateTenantMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMatchRequestObject struct {
+	Id   string `json:"id"`
+	Body *CreateTenantMatchJSONRequestBody
+}
+
+type CreateTenantMatchResponseObject interface {
+	VisitCreateTenantMatchResponse(w http.ResponseWriter) error
+}
+
+type CreateTenantMatch200JSONResponse struct {
+	Data struct {
+		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		Id Base58ID `json:"id"`
+	} `json:"data"`
+	Status string `json:"status"`
+}
+
+func (response CreateTenantMatch200JSONResponse) VisitCreateTenantMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMatch400JSONResponse ApiError
+
+func (response CreateTenantMatch400JSONResponse) VisitCreateTenantMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMatch401JSONResponse ApiError
+
+func (response CreateTenantMatch401JSONResponse) VisitCreateTenantMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMatch403JSONResponse ApiError
+
+func (response CreateTenantMatch403JSONResponse) VisitCreateTenantMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMatch404JSONResponse ApiError
+
+func (response CreateTenantMatch404JSONResponse) VisitCreateTenantMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMatch409JSONResponse ApiError
+
+func (response CreateTenantMatch409JSONResponse) VisitCreateTenantMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTableRequestObject struct {
+	Id   string `json:"id"`
+	Body *CreateTenantTableJSONRequestBody
+}
+
+type CreateTenantTableResponseObject interface {
+	VisitCreateTenantTableResponse(w http.ResponseWriter) error
+}
+
+type CreateTenantTable201JSONResponse struct {
+	Data   TableSummary `json:"data"`
+	Status string       `json:"status"`
+}
+
+func (response CreateTenantTable201JSONResponse) VisitCreateTenantTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTable400JSONResponse ApiError
+
+func (response CreateTenantTable400JSONResponse) VisitCreateTenantTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTable401JSONResponse ApiError
+
+func (response CreateTenantTable401JSONResponse) VisitCreateTenantTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTable404JSONResponse ApiError
+
+func (response CreateTenantTable404JSONResponse) VisitCreateTenantTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -12616,9 +12719,6 @@ type StrictServerInterface interface {
 	// ListMatches List matches with cursor-based pagination
 	// (GET /matches)
 	ListMatches(ctx context.Context, request ListMatchesRequestObject) (ListMatchesResponseObject, error)
-	// AddMatch Add a new match
-	// (POST /matches)
-	AddMatch(ctx context.Context, request AddMatchRequestObject) (AddMatchResponseObject, error)
 	// GetMatchById Get a match by ID
 	// (GET /matches/{id})
 	GetMatchById(ctx context.Context, request GetMatchByIdRequestObject) (GetMatchByIdResponseObject, error)
@@ -12661,12 +12761,9 @@ type StrictServerInterface interface {
 	// ListAllSettings Get all Elo settings entries (historical and future)
 	// (GET /settings/all)
 	ListAllSettings(ctx context.Context, request ListAllSettingsRequestObject) (ListAllSettingsResponseObject, error)
-	// ListTables List all active game tables
+	// ListTables List the tenant's active game tables (the «Сейчас играют» lobby)
 	// (GET /tables)
 	ListTables(ctx context.Context, request ListTablesRequestObject) (ListTablesResponseObject, error)
-	// CreateTable Create a new game table
-	// (POST /tables)
-	CreateTable(ctx context.Context, request CreateTableRequestObject) (CreateTableResponseObject, error)
 	// DeleteTable Delete a game table (host only)
 	// (DELETE /tables/{id})
 	DeleteTable(ctx context.Context, request DeleteTableRequestObject) (DeleteTableResponseObject, error)
@@ -12718,6 +12815,12 @@ type StrictServerInterface interface {
 	// CreateTenantMarket Create a new betting market owned by the tenant
 	// (POST /tenants/{id}/markets)
 	CreateTenantMarket(ctx context.Context, request CreateTenantMarketRequestObject) (CreateTenantMarketResponseObject, error)
+	// CreateTenantMatch Add a new match owned by the tenant
+	// (POST /tenants/{id}/matches)
+	CreateTenantMatch(ctx context.Context, request CreateTenantMatchRequestObject) (CreateTenantMatchResponseObject, error)
+	// CreateTenantTable Create a game table owned by the tenant
+	// (POST /tenants/{id}/tables)
+	CreateTenantTable(ctx context.Context, request CreateTenantTableRequestObject) (CreateTenantTableResponseObject, error)
 	// CreateTenantTournament Create a tournament owned by the tenant (status = registration)
 	// (POST /tenants/{id}/tournaments)
 	CreateTenantTournament(ctx context.Context, request CreateTenantTournamentRequestObject) (CreateTenantTournamentResponseObject, error)
@@ -13978,37 +14081,6 @@ func (sh *strictHandler) ListMatches(ctx *gin.Context, params ListMatchesParams)
 	}
 }
 
-// AddMatch operation middleware
-func (sh *strictHandler) AddMatch(ctx *gin.Context) {
-	var request AddMatchRequestObject
-
-	var body AddMatchJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.AddMatch(ctx, request.(AddMatchRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AddMatch")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(AddMatchResponseObject); ok {
-		if err := validResponse.VisitAddMatchResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetMatchById operation middleware
 func (sh *strictHandler) GetMatchById(ctx *gin.Context, id string, params GetMatchByIdParams) {
 	var request GetMatchByIdRequestObject
@@ -14398,8 +14470,10 @@ func (sh *strictHandler) ListAllSettings(ctx *gin.Context) {
 }
 
 // ListTables operation middleware
-func (sh *strictHandler) ListTables(ctx *gin.Context) {
+func (sh *strictHandler) ListTables(ctx *gin.Context, params ListTablesParams) {
 	var request ListTablesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ListTables(ctx, request.(ListTablesRequestObject))
@@ -14414,37 +14488,6 @@ func (sh *strictHandler) ListTables(ctx *gin.Context) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(ListTablesResponseObject); ok {
 		if err := validResponse.VisitListTablesResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateTable operation middleware
-func (sh *strictHandler) CreateTable(ctx *gin.Context) {
-	var request CreateTableRequestObject
-
-	var body CreateTableJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateTable(ctx, request.(CreateTableRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateTable")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(CreateTableResponseObject); ok {
-		if err := validResponse.VisitCreateTableResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -14947,6 +14990,72 @@ func (sh *strictHandler) CreateTenantMarket(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(CreateTenantMarketResponseObject); ok {
 		if err := validResponse.VisitCreateTenantMarketResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTenantMatch operation middleware
+func (sh *strictHandler) CreateTenantMatch(ctx *gin.Context, id string) {
+	var request CreateTenantMatchRequestObject
+
+	request.Id = id
+
+	var body CreateTenantMatchJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTenantMatch(ctx, request.(CreateTenantMatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTenantMatch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateTenantMatchResponseObject); ok {
+		if err := validResponse.VisitCreateTenantMatchResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTenantTable operation middleware
+func (sh *strictHandler) CreateTenantTable(ctx *gin.Context, id string) {
+	var request CreateTenantTableRequestObject
+
+	request.Id = id
+
+	var body CreateTenantTableJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTenantTable(ctx, request.(CreateTenantTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTenantTable")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateTenantTableResponseObject); ok {
+		if err := validResponse.VisitCreateTenantTableResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

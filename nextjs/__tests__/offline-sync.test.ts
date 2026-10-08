@@ -66,6 +66,7 @@ describe('syncOffline', () => {
                 clientId: matchId,
                 createdAt: '2026-06-01T11:00:00Z',
                 status: 'pending',
+                tenantId: '018f6b00-0000-7000-8000-000000000101' as Base58ID,
                 gameId,
                 score: { [playerId]: 10, [SERVER_PLAYER_ID]: 5 },
             }],
@@ -83,6 +84,7 @@ describe('syncOffline', () => {
         expect(api.createGame).toHaveBeenCalledWith({ id: gameId, name: 'Каркассон' });
         expect(api.createPlayer).toHaveBeenCalledWith({ id: playerId, name: 'Вася' });
         expect(api.addMatch).toHaveBeenCalledWith({
+            tenant: '018f6b00-0000-7000-8000-000000000101' as Base58ID,
             id: matchId,
             game_id: gameId,
             score: { [playerId]: 10, [SERVER_PLAYER_ID]: 5 },

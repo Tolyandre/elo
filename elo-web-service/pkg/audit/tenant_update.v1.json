@@ -13,8 +13,8 @@
       "additionalProperties": false,
       "required": ["from", "to"],
       "properties": {
-        "from": { "type": "string", "enum": ["any_member", "members_only"] },
-        "to": { "type": "string", "enum": ["any_member", "members_only"] }
+        "from": { "type": "string", "enum": ["all", "any_member", "members_only"] },
+        "to": { "type": "string", "enum": ["all", "any_member", "members_only"] }
       }
     },
     "tournaments_openness": {

@@ -49,7 +49,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 	scores := fmt.Sprintf(`%q:10, %q:2, %q:1, %q:0`, *p1, *p2, *p3, *p4)
 	skippedID := short(newID(t))
 	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%s}, "skip_tournament_link": true}`, skippedID, short(gameID), scores)
-	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
 	}
 	w := doJSON(t, router, http.MethodGet, "/matches/"+skippedID+"?tenant="+blueMenTenantUUID, "", "")
@@ -74,7 +74,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 	strangerID := short(newID(t))
 	body = fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%q:10, %q:2, %q:1, %q:0}}`,
 		strangerID, short(gameID), *p1, *p2, *p3, short(stranger))
-	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post stranger match: %d %s", w.Code, w.Body.String())
 	}
 	w = doJSON(t, router, http.MethodGet, "/matches/"+strangerID+"?tenant="+blueMenTenantUUID, "", "")
@@ -90,7 +90,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 	// (strict cut 4–3–2–1).
 	fittingID := short(newID(t))
 	body = fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%s}}`, fittingID, short(gameID), scores)
-	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post fitting match: %d %s", w.Code, w.Body.String())
 	}
 	br = getBracket(t, router, short(tid))
@@ -142,7 +142,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 		mid := newID(t)
 		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
 			short(mid), short(gameID), mdate, strings.Join(scores, ","))
-		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
 		}
 		return short(mid)
@@ -273,7 +273,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	// TestTournament_EditLinkChange below.
 	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
 		short(newID(t)), short(gameID), matchDate(2, 0), strings.Join([]string{sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
-	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, skipBody); w.Code != http.StatusOK {
 		t.Fatalf("post skipped: %d %s", w.Code, w.Body.String())
 	}
 
@@ -336,7 +336,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 		mid := newID(t)
 		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
 			short(mid), short(gameID), mdate, strings.Join(scores, ","))
-		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
 		}
 		return short(mid)
@@ -352,7 +352,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	m1id := newID(t)
 	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
 		short(m1id), short(gameID), matchDate(4, 0), strings.Join([]string{sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)}, ","))
-	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, skipBody); w.Code != http.StatusOK {
 		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
 	}
 	m1 := short(m1id)
@@ -530,7 +530,7 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	// Posted with the skip flag: the organizer forgot the checkbox.
 	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%q:10, %q:10, %q:1, %q:0}, "skip_tournament_link": true}`,
 		mid, short(gameID), matchDate(0, 0), seat(0), seat(1), seat(2), seat(3))
-	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
 	}
 
@@ -702,7 +702,7 @@ func TestTournament_RulingOverridesAndGuards(t *testing.T) {
 		mid := newID(t)
 		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
 			short(mid), short(gameID), mdate, strings.Join(scores, ","))
-		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
 		}
 		return short(mid)
@@ -946,7 +946,7 @@ func TestTournament_MinScoreGate(t *testing.T) {
 		mid := newID(t)
 		matchBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
 			short(mid), short(gameID), mdate, strings.Join(scores, ","))
-		if w := doJSON(t, router, http.MethodPost, "/matches", admin, matchBody); w.Code != http.StatusOK {
+		if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, matchBody); w.Code != http.StatusOK {
 			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
 		}
 		return short(mid)

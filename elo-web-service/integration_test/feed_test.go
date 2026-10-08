@@ -73,7 +73,7 @@ func TestArena_Feed_CompositionAndPagination(t *testing.T) {
 
 	// Warm-up match — the feed's oldest event.
 	warmupDate := time.Now().Add(-2 * time.Hour)
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, warmupDate, newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, warmupDate, newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -99,7 +99,7 @@ func TestArena_Feed_CompositionAndPagination(t *testing.T) {
 	// The resolving match: A wins — settles the market in the same instant
 	// (resolved_at = match date), exercising the (date, type, id) tiebreak.
 	triggerDate := time.Now()
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, triggerDate, newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, triggerDate, newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 
@@ -195,11 +195,11 @@ func TestArena_Feed_TournamentOnlyMatches(t *testing.T) {
 	// Two real matches: the first linked to the tournament arena, the second not.
 	inDate := time.Now().Add(-time.Hour)
 	outDate := time.Now().Add(-30 * time.Minute)
-	inMatch, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, inDate, newMatchOpts(t))
+	inMatch, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, inDate, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("linked AddMatch: %v", err)
 	}
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 3, playerB: 8}, outDate, newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 3, playerB: 8}, outDate, newMatchOpts(t)); err != nil {
 		t.Fatalf("unlinked AddMatch: %v", err)
 	}
 
@@ -361,13 +361,13 @@ func TestArena_Feed_MarketFilters(t *testing.T) {
 	// The resolving matches, all after the markets started: game1 settles
 	// MW1, the first game2 match (exactly C/D) settles MW2, the second —
 	// wsTarget's first win — settles WS.
-	if _, err := matchSvc.AddMatch(ctx, game1, map[idpkg.ID]float64{targetA: 10, targetB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, game1, map[idpkg.ID]float64{targetA: 10, targetB: 2}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("mw1 trigger match: %v", err)
 	}
-	if _, err := matchSvc.AddMatch(ctx, game2, map[idpkg.ID]float64{targetC: 8, targetD: 3}, time.Now().Add(time.Minute), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, game2, map[idpkg.ID]float64{targetC: 8, targetD: 3}, time.Now().Add(time.Minute), newMatchOpts(t)); err != nil {
 		t.Fatalf("mw2 trigger match: %v", err)
 	}
-	if _, err := matchSvc.AddMatch(ctx, game2, map[idpkg.ID]float64{wsTarget: 8, targetB: 3}, time.Now().Add(2*time.Minute), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, game2, map[idpkg.ID]float64{wsTarget: 8, targetB: 3}, time.Now().Add(2*time.Minute), newMatchOpts(t)); err != nil {
 		t.Fatalf("ws trigger match: %v", err)
 	}
 
@@ -605,7 +605,7 @@ func TestArena_Feed_MarketLifecycleOrdering(t *testing.T) {
 	}
 
 	// The feed's oldest event: a match on A/B predating every market.
-	matchOld, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 6, playerB: 4}, time.Now().Add(-4*time.Hour), newMatchOpts(t))
+	matchOld, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 6, playerB: 4}, time.Now().Add(-4*time.Hour), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("old AddMatch: %v", err)
 	}
@@ -655,7 +655,7 @@ func TestArena_Feed_MarketLifecycleOrdering(t *testing.T) {
 		t.Fatalf("CreateMarket resolved: %v", err)
 	}
 	matchResolveDate := time.Now().Add(2 * time.Minute)
-	matchResolved, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, matchResolveDate, newMatchOpts(t))
+	matchResolved, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, matchResolveDate, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("resolving AddMatch: %v", err)
 	}

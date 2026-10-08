@@ -1,80 +1,28 @@
 # ─── Path items ──────────────────────────────────────────────────────────────
 
-MatchesCollection:
-  get:
-    operationId: ListMatches
+# Matches are created under their owning tenant (ADR-36 phase 7): the path
+# tenant must exist and at least one participant must be a current member of
+# it — the same predicate the tenant feed and the match edit apply. The match
+# settles into the tenant's main arena per its openness mode.
+TenantMatchesCollection:
+  post:
+    operationId: CreateTenantMatch
     tags: [matches]
-    summary: List matches with cursor-based pagination
+    summary: Add a new match owned by the tenant
+    description: >-
+      Every match is created under a tenant (ADR-36). The path tenant must
+      exist — a missing tenant is a 404; a match with no current member of the
+      tenant among its participants is a 400 (ErrMatchOutsideTenant, the same
+      guard the edit applies). The tenant is not part of the request body and
+      cannot be changed later.
+    security:
+      - cookieAuth: []
     parameters:
-      - name: game_id
-        in: query
-        schema:
-          type: string
-        description: Filter by game ID
-      - name: player_id
-        in: query
-        schema:
-          type: string
-        description: Filter by player ID
-      - name: club_id
-        in: query
-        schema:
-          type: string
-        description: Filter by club ID; use "__no_club__" for players without a club
-      - name: tournament_id
-        in: query
-        schema:
-          type: string
-        description: Filter to matches counted for the tournament's bracket
-      - name: tenant
-        in: query
+      - name: id
+        in: path
         required: true
         schema:
           type: string
-        description: >-
-          Scope the per-player settlement columns (rating staked/earned/after)
-          to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 —
-          reads are tenant-scoped, there is no global default. Continuation
-          requests must pass the same tenant — the cursor token does not carry
-          it. Naming no existing tenant is a 404.
-      - name: next
-        in: query
-        schema:
-          type: string
-        description: Cursor token from previous page's "next" field
-      - name: limit
-        in: query
-        schema:
-          type: integer
-          minimum: 1
-          maximum: 100
-          default: 30
-        description: Number of matches per page
-    responses:
-      "200":
-        description: Paginated match list
-        content:
-          application/json:
-            schema:
-              $ref: '#/MatchesPage'
-      "400":
-        description: Bad request
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-      "404":
-        description: Tenant not found (the ?tenant= parameter names no existing tenant)
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-  post:
-    operationId: AddMatch
-    tags: [matches]
-    summary: Add a new match
-    security:
-      - cookieAuth: []
     requestBody:
       required: true
       content:
@@ -179,7 +127,9 @@ MatchesCollection:
                   required: [id]
               required: [status, data]
       "400":
-        description: Bad request
+        description: >-
+          Bad request, or no participant is a current member of the tenant
+          (the match would never belong to it)
         content:
           application/json:
             schema:
@@ -196,8 +146,84 @@ MatchesCollection:
           application/json:
             schema:
               $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
       "409":
         description: History change conflict
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+MatchesCollection:
+  get:
+    operationId: ListMatches
+    tags: [matches]
+    summary: List matches with cursor-based pagination
+    parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: string
+        description: Filter by game ID
+      - name: player_id
+        in: query
+        schema:
+          type: string
+        description: Filter by player ID
+      - name: club_id
+        in: query
+        schema:
+          type: string
+        description: Filter by club ID; use "__no_club__" for players without a club
+      - name: tournament_id
+        in: query
+        schema:
+          type: string
+        description: Filter to matches counted for the tournament's bracket
+      - name: tenant
+        in: query
+        required: true
+        schema:
+          type: string
+        description: >-
+          Scope the per-player settlement columns (rating staked/earned/after)
+          to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 —
+          reads are tenant-scoped, there is no global default. Continuation
+          requests must pass the same tenant — the cursor token does not carry
+          it. Naming no existing tenant is a 404.
+      - name: next
+        in: query
+        schema:
+          type: string
+        description: Cursor token from previous page's "next" field
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of matches per page
+    responses:
+      "200":
+        description: Paginated match list
+        content:
+          application/json:
+            schema:
+              $ref: '#/MatchesPage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found (the ?tenant= parameter names no existing tenant)
         content:
           application/json:
             schema:

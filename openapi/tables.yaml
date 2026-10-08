@@ -1,14 +1,25 @@
 # ─── Path items ──────────────────────────────────────────────────────────────
-# Generic live game tables (ADR-16). A table is created by the host with the
-# initial state of one game (game_id pins it), joined by connected players,
-# watched read-only by anyone. When the game ends the host saves a match and
-# deletes the table; the table's SSE channel carries the saved match id.
+# Generic live game tables (ADR-16). A table belongs to the tenant it was
+# created under (ADR-36 phase 7): the lobby lists only that tenant's tables.
+# A table is created by the host with the initial state of one game (game_id
+# pins it), joined by connected players, watched read-only by anyone. When the
+# game ends the host saves a match and deletes the table; the table's SSE
+# channel carries the saved match id.
 
 TablesCollection:
   get:
     operationId: ListTables
     tags: [tables]
-    summary: List all active game tables
+    summary: List the tenant's active game tables (the «Сейчас играют» lobby)
+    parameters:
+      - name: tenant
+        in: query
+        required: true
+        schema:
+          type: string
+        description: >-
+          List only tables created under this tenant (ADR-36). Required —
+          there is no cross-tenant lobby. Naming no existing tenant is a 404.
     responses:
       "200":
         description: List of tables
@@ -24,12 +35,34 @@ TablesCollection:
                   items:
                     $ref: '#/TableSummary'
               required: [status, data]
+      "404":
+        description: Tenant not found (the ?tenant= parameter names no existing tenant)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# Tables are created under their owning tenant (ADR-36 phase 7). The seating
+# (the game state's players) must relate to the tenant: at least one current
+# member among the seated players, or — under members_only — only members
+# (the same rule the match form applies). The owner is immutable afterwards.
+TenantTablesCollection:
   post:
-    operationId: CreateTable
+    operationId: CreateTenantTable
     tags: [tables]
-    summary: Create a new game table
+    summary: Create a game table owned by the tenant
+    description: >-
+      Every table belongs to a tenant (ADR-36). The path tenant must exist —
+      a missing tenant is a 404; seating with no relation to the tenant is a
+      400 (ErrTableOutsideTenant). The owner cannot be changed later.
     security:
       - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
     requestBody:
       required: true
       content:
@@ -50,13 +83,21 @@ TablesCollection:
                   $ref: '#/TableSummary'
               required: [status, data]
       "400":
-        description: Bad request (invalid state or unknown game)
+        description: >-
+          Bad request (invalid state, unknown game) or seating unrelated to
+          the tenant
         content:
           application/json:
             schema:
               $ref: './common.yaml#/ApiError'
       "401":
         description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found
         content:
           application/json:
             schema:
@@ -392,6 +433,9 @@ TableSummary:
   properties:
     id:
       $ref: './common.yaml#/Base58ID'
+    tenant_id:
+      $ref: './common.yaml#/Base58ID'
+      description: The tenant the table belongs to (ADR-36); fixed at creation.
     game_id:
       $ref: './common.yaml#/Base58ID'
     host_user_id:
@@ -418,7 +462,7 @@ TableSummary:
     expires_at:
       type: string
       format: date-time
-  required: [id, game_id, host_user_id, host_client_token, game_state, connected_player_ids, version, created_at, expires_at]
+  required: [id, tenant_id, game_id, host_user_id, host_client_token, game_state, connected_player_ids, version, created_at, expires_at]
 
 CreateTableRequest:
   type: object

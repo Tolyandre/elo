@@ -70,6 +70,7 @@ export function makeTable(
 ): TableSummary {
     return {
         id: pid("t1"),
+        tenant_id: pid("tenant1"),
         game_id: GAME_ID_SKULL_KING,
         host_user_id: pid("u1"),
         host_client_token: "",

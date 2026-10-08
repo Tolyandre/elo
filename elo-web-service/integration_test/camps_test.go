@@ -140,7 +140,7 @@ func TestCamp_CRUDAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse camp id: %v", err)
 	}
-	linked, err := svc.AddMatch(context.Background(), gameID, map[idpkg.ID]float64{p1: 10, p2: 5}, mid,
+	linked, err := svc.AddMatch(context.Background(), blueMenTenantID, gameID, map[idpkg.ID]float64{p1: 10, p2: 5}, mid,
 		elo.AddMatchOpts{ID: newID(t), CampArenaIDs: []idpkg.ID{campCanonical}})
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
@@ -224,7 +224,7 @@ func TestCamp_MatchLinkingAndDrain(t *testing.T) {
 
 	// In-window link: camp drained synchronously, players tab filled.
 	matchTime := time.Now()
-	if _, err := mSvc.AddMatch(ctx, gameRec.ID, map[idpkg.ID]float64{p1: 10, p2: 5}, matchTime,
+	if _, err := mSvc.AddMatch(ctx, blueMenTenantID, gameRec.ID, map[idpkg.ID]float64{p1: 10, p2: 5}, matchTime,
 		elo.AddMatchOpts{ID: newID(t), CampArenaIDs: []idpkg.ID{camp.ID}}); err != nil {
 		t.Fatalf("AddMatch in window: %v", err)
 	}
@@ -262,17 +262,17 @@ func TestCamp_MatchLinkingAndDrain(t *testing.T) {
 	}
 
 	// Unknown camp id → 400.
-	if _, err := mSvc.AddMatch(ctx, gameRec.ID, map[idpkg.ID]float64{p1: 10, p2: 5}, matchTime,
+	if _, err := mSvc.AddMatch(ctx, blueMenTenantID, gameRec.ID, map[idpkg.ID]float64{p1: 10, p2: 5}, matchTime,
 		elo.AddMatchOpts{ID: newID(t), CampArenaIDs: []idpkg.ID{newID(t)}}); !errors.Is(err, elo.ErrCampArenaInvalid) {
 		t.Fatalf("unknown camp id: got %v, want ErrCampArenaInvalid", err)
 	}
 	// Non-camp arena id → 400.
-	if _, err := mSvc.AddMatch(ctx, gameRec.ID, map[idpkg.ID]float64{p1: 10, p2: 5}, matchTime,
+	if _, err := mSvc.AddMatch(ctx, blueMenTenantID, gameRec.ID, map[idpkg.ID]float64{p1: 10, p2: 5}, matchTime,
 		elo.AddMatchOpts{ID: newID(t), CampArenaIDs: []idpkg.ID{gameArena.ID}}); !errors.Is(err, elo.ErrCampArenaInvalid) {
 		t.Fatalf("non-camp arena id: got %v, want ErrCampArenaInvalid", err)
 	}
 	// Out-of-window date → 400.
-	if _, err := mSvc.AddMatch(ctx, gameRec.ID, map[idpkg.ID]float64{p1: 10, p2: 5}, start.Add(-time.Hour),
+	if _, err := mSvc.AddMatch(ctx, blueMenTenantID, gameRec.ID, map[idpkg.ID]float64{p1: 10, p2: 5}, start.Add(-time.Hour),
 		elo.AddMatchOpts{ID: newID(t), CampArenaIDs: []idpkg.ID{camp.ID}, ClientDate: true}); !errors.Is(err, elo.ErrCampArenaInvalid) {
 		t.Fatalf("out-of-window date: got %v, want ErrCampArenaInvalid", err)
 	}
@@ -319,7 +319,7 @@ func TestCamp_MatchEditRelinksCamps(t *testing.T) {
 	mSvc := newMatchService(pool)
 	matchTime := time.Now().Add(-time.Hour)
 	matchID := newID(t)
-	if _, err := mSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{p1: 10, p2: 5}, matchTime,
+	if _, err := mSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{p1: 10, p2: 5}, matchTime,
 		elo.AddMatchOpts{ID: matchID, CampArenaIDs: []idpkg.ID{campA.ID}, ActorUserID: actor}); err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}

@@ -41,6 +41,10 @@ anymore:
 - Forms no longer need per-failure branching (`offline`, `isNetworkFailure`):
   the submit always succeeds locally, and server rejections surface later as
   error badges on the queued item.
+- **A pending match carries its community** (2026-10, ADR-36 phase 7):
+  `PendingMatch.tenantId` is captured at submit time, and the sync engine
+  creates the match under it (`POST /tenants/{id}/matches`); items queued
+  before the field existed fall back to the tenant in force at sync.
 - Skull King table mode needs the match to exist server-side before teardown
   (`DeleteTable` broadcasts the match id to connected players), so the page
   waits for the sync to remove the item from the persisted store before

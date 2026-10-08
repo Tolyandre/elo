@@ -33,6 +33,12 @@ vi.mock("@/app/meContext", () => ({
     useMe: () => mocks.me,
 }));
 
+vi.mock("@/app/tenantScopeContext", () => ({
+    // The indicator is tenant-scoped (ADR-36 phase 7): the lobby read names
+    // the current tenant, and the fixture tables below carry tenant1.
+    useTenantScope: () => ({ ready: true, tenantId: pid("tenant1") }),
+}));
+
 vi.mock("@/hooks/useTableSSE", () => ({
     useTablesLobbySSE: () => mocks.tick,
 }));

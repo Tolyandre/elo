@@ -557,7 +557,8 @@ Feeds from the tournaments context (already preloaded for the match form).
 - «Журнал» tab via the shared admin-page-tabs pattern: the audit feed
   filtered to the tournament (ADR-14 component reuse).
 
-**Main page (`app/page.tsx`).** Above the global arena, the «Сейчас»
+**Main page (`app/page.tsx`).** Above the tenant's main arena (the
+global arena at the time of writing; ADR-36 phase 7), the «Сейчас»
 block of plain links: active camps (window contains today — ADR-27's
 preloaded camp list) and tournaments with status `registration`/`running`.
 Links only, no tables. The nav item becomes «Турниры» (camps live under

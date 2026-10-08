@@ -28,12 +28,18 @@ import {
     newOfflineId,
 } from "@/lib/offline/types";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useTenantScope } from "../tenantScopeContext";
 import { parseSwMessage } from "@/lib/sw-messages";
 import { emitDataChange } from "@/lib/live-data";
 
 const STORAGE_KEY = "offline-pending-v1";
 
 export type SubmitMatchResult = { id: string };
+
+// The current tenant, mirrored at module scope so the module-level syncApi
+// can fall back to it for legacy pending matches that predate the captured
+// tenantId (ADR-36 phase 7). The OfflineProvider keeps it fresh.
+const tenantFallbackRef: { current: Base58ID | null } = { current: null };
 
 type  OfflineState = {
     pendingMatches: PendingMatch[];
@@ -184,12 +190,22 @@ const syncApi: SyncApi = {
         return { ok: true, data: null };
     },
     async addMatch(body): Promise<SyncCallResult<{ id: Base58ID }>> {
-        // The generated POST /matches body type narrows calculator_data to
+        // Creation is tenant-scoped (ADR-36 phase 7): the create is path-scoped
+        // to the owning tenant captured at submit time. A legacy item without
+        // one falls back to the tenant in force right now; with neither there
+        // is nothing to address the create to — the item is marked error
+        // (user-editable) instead of firing a doomed request.
+        const tenant = body.tenant ?? tenantFallbackRef.current;
+        if (!tenant) {
+            return { ok: false, status: 400, message: "Не указано сообщество — запишите партию заново" };
+        }
+        // The generated create body type narrows calculator_data to
         // Record<string, never> (an openapi-fetch artifact); the sync engine
         // carries the opaque calculator payload as Record<string, unknown>.
-        const { data, error, response } = await client.POST("/matches", {
+        const { data, error, response } = await client.POST("/tenants/{id}/matches", {
+            params: { path: { id: tenant } },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            body: body as any,
+            body: { ...body, tenant: undefined } as any,
         });
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: { id: data.data.id } };
@@ -204,6 +220,11 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     const [apiReachable, setApiReachable] = useState<boolean | null>(null);
     const [dataFromCache, setDataFromCache] = useState(false);
     const isOnline = useOnlineStatus();
+    // The current tenant for the legacy-item fallback (see tenantFallbackRef).
+    const { tenantId } = useTenantScope();
+    useEffect(() => {
+        tenantFallbackRef.current = tenantId;
+    }, [tenantId]);
     // Single source of truth for offline behaviour and the cloud-off indicator.
     const offline = !isOnline || apiReachable === false;
     const pathname = usePathname();
@@ -374,11 +395,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
 
     const addPendingMatch = useCallback(
-        ({ gameId, score, campArenaIds, skipTournamentLink, clientId, calculatorKind, calculatorData, mode, playerIds, gameScore, gameWon }: { gameId: Base58ID; score: Record<string, number>; campArenaIds?: Base58ID[]; skipTournamentLink?: boolean; clientId?: Base58ID; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null; mode?: MatchMode; playerIds?: Base58ID[]; gameScore?: number; gameWon?: boolean }) => {
+        ({ tenantId, gameId, score, campArenaIds, skipTournamentLink, clientId, calculatorKind, calculatorData, mode, playerIds, gameScore, gameWon }: { tenantId?: Base58ID; gameId: Base58ID; score: Record<string, number>; campArenaIds?: Base58ID[]; skipTournamentLink?: boolean; clientId?: Base58ID; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null; mode?: MatchMode; playerIds?: Base58ID[]; gameScore?: number; gameWon?: boolean }) => {
             const match: PendingMatch = {
                 clientId: clientId ?? newOfflineId(),
                 createdAt: new Date().toISOString(),
                 status: "pending",
+                // The community the match was recorded under (ADR-36 phase
+                // 7); the sync create is path-scoped to it.
+                tenantId,
                 gameId,
                 score,
                 campArenaIds: campArenaIds ?? [],
@@ -528,6 +552,9 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             // The sync engine sends games → players → matches, so dependencies on
             // other pending entities need no special-casing here either.
             const match = addPendingMatch({
+                // The community the match is recorded under (ADR-36 phase 7);
+                // the sync create is path-scoped to it.
+                tenantId: tenantId ?? undefined,
                 gameId: payload.game_id,
                 score: payload.score,
                 campArenaIds: payload.camp_arena_ids,
@@ -541,7 +568,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             });
             return { id: match.clientId };
         },
-        [addPendingMatch],
+        [addPendingMatch, tenantId],
     );
 
     const errorCount =

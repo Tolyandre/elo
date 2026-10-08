@@ -130,6 +130,7 @@ type GameTable struct {
 	GameID             id.ID           `json:"game_id"`
 	Version            int64           `json:"version"`
 	HostClientToken    string          `json:"host_client_token"`
+	TenantID           id.ID           `json:"tenant_id"`
 }
 
 type GameTag struct {

@@ -136,7 +136,10 @@ function renderForm() {
 beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    tenantScope.tenant = null;
+    // The form renders under /new, which is guarded by a resolved tenant
+    // (ADR-36) — the default scope mirrors that: a community with the open
+    // «Есть участник сообщества» rule.
+    tenantScope.tenant = { id: pid("tDefault"), name: "Синие люди", arena_membership_mode: "all" as const };
     tenantScope.memberIds = [];
     vi.mocked(createTablePromise).mockResolvedValue(makeTable("tNew"));
 });
@@ -207,7 +210,8 @@ describe("CreateTableForm", () => {
         });
 
         expect(createTablePromise).toHaveBeenCalledTimes(1);
-        const [gameId, state] = vi.mocked(createTablePromise).mock.calls[0] as [Base58ID, TableGameState];
+        const [tenant, gameId, state] = vi.mocked(createTablePromise).mock.calls[0] as [Base58ID, Base58ID, TableGameState];
+        expect(tenant).toBe(pid("tDefault"));
         expect(gameId).toBe(GAME_ID_SKULL_KING);
         // The roster order is the seating order, names resolved for display.
         expect(state.phase).toBe("waiting-for-bids");
@@ -241,8 +245,8 @@ describe("CreateTableForm", () => {
             view.createButton().click();
         });
 
-        expect(vi.mocked(createTablePromise).mock.calls[0][0]).toBe(GAME_ID_IAWW);
-        const state = vi.mocked(createTablePromise).mock.calls[0][1] as TableGameState;
+        expect(vi.mocked(createTablePromise).mock.calls[0][1]).toBe(GAME_ID_IAWW);
+        const state = vi.mocked(createTablePromise).mock.calls[0][2] as TableGameState;
         expect(state.phase).toBe("scoring");
         view.unmount();
     });
@@ -269,13 +273,14 @@ describe("CreateTableForm tenant membership rules (ADR-36)", () => {
     const membersOnlyTenant = { id: pid("t1"), name: "Синие люди", arena_membership_mode: "members_only" as const };
     const anyMemberTenant = { id: pid("t1"), name: "Синие люди", arena_membership_mode: "any_member" as const };
 
-    it("without a tenant no restriction is passed and nothing blocks", () => {
+    it("without a tenant creation is blocked (the table must belong to a community)", () => {
+        tenantScope.tenant = null;
         const view = renderForm();
         expect(view.byTestId("allowed").textContent).toBe("all");
         act(() => {
             view.byTestId("pick-three").click();
         });
-        expect(view.createButton().disabled).toBe(false);
+        expect(view.createButton().disabled).toBe(true);
         view.unmount();
     });
 

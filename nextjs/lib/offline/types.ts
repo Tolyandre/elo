@@ -51,6 +51,13 @@ export type PendingGame = PendingBase & {
 };
 
 export type PendingMatch = PendingBase & {
+    /**
+     * The community the match was recorded under (ADR-36 phase 7) — captured
+     * at submit time and sent as the create path tenant on sync. Legacy items
+     * from before the field existed lack it; sync falls back to the current
+     * tenant for them.
+     */
+    tenantId?: Base58ID;
     /** Server game id, or clientId of a pending game. */
     gameId: Base58ID;
     /**

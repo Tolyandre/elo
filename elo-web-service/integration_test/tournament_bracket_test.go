@@ -434,7 +434,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 		mid := newID(t)
 		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
 			short(mid), short(gameID), mdate, strings.Join(scores, ","))
-		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
 		}
 		return short(mid)
@@ -709,7 +709,7 @@ func TestTournament_WBLBRunWithMerge(t *testing.T) {
 				mdate := time.Now().UTC().Add(-time.Duration(mday) * 24 * time.Hour).Truncate(time.Second).Format(time.RFC3339)
 				body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
 					mid, gameShort, mdate, strings.Join(scores, ","))
-				if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+				if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 					t.Fatalf("driver match: %d %s", w.Code, w.Body.String())
 				}
 				mday++

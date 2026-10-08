@@ -40,7 +40,7 @@ func TestAddMatch_PersistsCalculatorData(t *testing.T) {
 	svc := newMatchService(pool)
 
 	data, _ := json.Marshal(validSKState(playerA, playerB))
-	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
+	created, err := svc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
 		ClientDate: true,
 		ID:         newID(t),
 		Calculator: &elo.CalculatorInput{Kind: "skull-king", Version: 1, Data: data},
@@ -91,7 +91,7 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 	}
 	raw, _ := json.Marshal(doc)
 
-	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 17, playerB: 0}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
+	created, err := svc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 17, playerB: 0}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
 		ClientDate: true,
 		ID:         newID(t),
 		Calculator: &elo.CalculatorInput{Kind: "iaww", Version: 2, Data: raw},
@@ -152,7 +152,7 @@ func TestUpdateMatch_LeavesCalculatorUntouchedWhenOptsNil(t *testing.T) {
 	svc := newMatchService(pool)
 
 	data, _ := json.Marshal(validSKState(playerA, playerB))
-	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
+	created, err := svc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
 		ClientDate: true,
 		ID:         newID(t),
 		Calculator: &elo.CalculatorInput{Kind: "skull-king", Version: 1, Data: data},

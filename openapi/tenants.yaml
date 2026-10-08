@@ -49,7 +49,12 @@ TenantsCollection:
                 type: string
               arena_membership_mode:
                 type: string
-                enum: [any_member, members_only]
+                enum: [all, any_member, members_only]
+                description: >-
+                  Which matches count into the main arena (ADR-36). `all` —
+                  every rated match; `any_member` — at least one participant
+                  was a member at the match date; `members_only` — all were.
+                default: any_member
               tournaments_openness:
                 type: string
                 enum: [members_only, open]
@@ -173,7 +178,11 @@ TenantItem:
                 type: string
               arena_membership_mode:
                 type: string
-                enum: [any_member, members_only]
+                enum: [all, any_member, members_only]
+                description: >-
+                  Which matches count into the main arena (ADR-36). `all` —
+                  every rated match; `any_member` — at least one participant
+                  was a member at the match date; `members_only` — all were.
               tournaments_openness:
                 type: string
                 enum: [members_only, open]
@@ -391,8 +400,15 @@ Tenant:
       description: The clubs belonging to the tenant (ADR-36); a tenant holds one or many.
     arena_membership_mode:
       type: string
-      enum: [any_member, members_only]
-      description: Which matches count into the main arena.
+      enum: [all, any_member, members_only]
+      description: >-
+        Which matches count into the main arena (ADR-36), evaluated at the
+        match date against membership history. `all` («Все партии») — every
+        rated match, membership irrelevant (coop matches still settle no
+        rating, ADR-33); `any_member` («Есть участник сообщества») — at least
+        one participant was a member at the match date; `members_only`
+        («Только участники сообщества») — all were. The mode also gates
+        tournament registration (with tournaments_openness) and bets.
     tournaments_openness:
       type: string
       enum: [members_only, open]

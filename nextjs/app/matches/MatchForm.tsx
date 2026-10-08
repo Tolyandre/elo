@@ -124,8 +124,9 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
 
     // The community the match is created under (ADR-36): the feed shows the
     // match only when the roster satisfies the tenant's openness rule —
-    // any_member wants at least one member, members_only only members. The
-    // rules bind creation only; editing a saved match stays unrestricted.
+    // any_member wants at least one member, members_only only members, all
+    // («Все партии») accepts any roster. The rules bind creation only;
+    // editing a saved match stays unrestricted (the server re-checks both).
     const { tenant } = useTenantScope();
     const memberIds = useTenantMemberIds();
     const membershipIssue =

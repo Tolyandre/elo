@@ -10,6 +10,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
@@ -53,7 +55,7 @@ func getFavoriteGames(t *testing.T, router interface {
 func addMatchDaysAgo(t *testing.T, ctx context.Context, pool *pgxpool.Pool, game idpkg.ID, daysAgo int, scores map[idpkg.ID]float64) {
 	t.Helper()
 	date := time.Now().UTC().AddDate(0, 0, -daysAgo)
-	if _, err := newMatchService(pool).AddMatch(ctx, game, scores, date, newMatchOpts(t)); err != nil {
+	if _, err := newMatchService(pool).AddMatch(ctx, blueMenTenantID, game, scores, date, newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch %v %d days ago: %v", game, daysAgo, err)
 	}
 }
@@ -128,9 +130,13 @@ func TestListFavoriteGames_ClubRecentAndPopular(t *testing.T) {
 	old := createTestGame(t, pool, "Old")
 	addMatchDaysAgo(t, ctx, pool, old, 9, map[idpkg.ID]float64{me: 10, mate: 5})
 	addMatchDaysAgo(t, ctx, pool, old, 10, map[idpkg.ID]float64{mate: 10, g2: 5})
-	// Outsiders only — must appear in neither section.
-	outside := createTestGame(t, pool, "Outside")
-	addMatchDaysAgo(t, ctx, pool, outside, 1, map[idpkg.ID]float64{g1: 10, g2: 5})
+	// An outsiders-only match is unrepresentable since the create guard
+	// (ADR-36 phase 7): recording it under «Синие люди» is rejected — no
+	// member among the participants — so no game of theirs can ever leak
+	// into the favorites.
+	if _, err := newMatchService(pool).AddMatch(ctx, blueMenTenantID, createTestGame(t, pool, "Outside"), map[idpkg.ID]float64{g1: 10, g2: 5}, time.Now().UTC().AddDate(0, 0, -1), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
+		t.Fatalf("outsiders-only match: err = %v, want ErrMatchOutsideTenant", err)
+	}
 
 	code, recent, popular := getFavoriteGames(t, router, myToken)
 	if code != http.StatusOK {

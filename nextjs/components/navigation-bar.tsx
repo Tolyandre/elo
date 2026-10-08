@@ -28,17 +28,16 @@ import { Check, ChevronDown, CircleHelp, LogOut, LayoutGrid, Menu, Settings, Sli
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
-  const isMobile = useIsMobile()
-  const me = useMe();
-  const pathname = usePathname();
-  const { tenant, setTenant } = useTenantScope();
-  const { tenants } = useTenants();
+    const isMobile = useIsMobile()
+    const me = useMe();
+    const pathname = usePathname();
+    const { tenant, ready: tenantReady, setTenant } = useTenantScope();
+    const { tenants } = useTenants();
 
-  // «Главная» is / — the tenant's main arena (ADR-36), and the nav item IS the
-  // tenant: its name links to the tenant's main page, the chevron next to it
-  // opens the switcher (with a single tenant there is nothing to switch to,
-  // so the chevron stays hidden). From any other route the Link is a normal
-  // cross-route client navigation. On / itself the router would drop a
+  // The nav item is the tenant's main page (ADR-36), and the chevron next to
+  // it opens the switcher (with a single tenant there is nothing to switch
+  // to, so the chevron stays hidden). From any other route the Link is a
+  // normal cross-route client navigation. On / itself the router would drop a
   // query-only change (a static-export no-op), so clearing the arena state
   // goes through the History API instead; the arena view derives everything
   // from the query and falls back to its defaults. The tenant survives the
@@ -53,6 +52,9 @@ export function NavigationBar() {
     }, "push");
   }
   const tenantHomeHref = tenant ? `/?tenant=${tenant.id}` : "/";
+  // The nav item IS the current community (ADR-36): its name links to the
+  // tenant's main page. Before the tenant scope resolves it shows a skeleton
+  // — never the retired global-arena «Главная» fallback.
 
   return (
     <NavigationMenu viewport={isMobile.isMobile} delayDuration={0} className="max-w-none">
@@ -63,8 +65,22 @@ export function NavigationBar() {
               icon+name pair: flex-row here lets tailwind-merge win over it. */}
           <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "min-w-0 flex-row gap-1 px-1.5 sm:px-2")}>
             <Link href={tenantHomeHref} onClick={goHome} aria-label="На главную сообщества" className="min-w-0">
-              {tenant ? <TenantIcon icon={tenant.icon} className="h-4 w-4" /> : <Users className="h-4 w-4 shrink-0" />}
-              <span className="truncate max-w-[8rem] sm:max-w-[12rem]">{tenant?.name ?? "Главная"}</span>
+              {!tenantReady ? (
+                // Scope still resolving (initial loads): a quiet skeleton in
+                // place of the name.
+                <>
+                  <Users className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                  <span className="truncate max-w-[6rem] sm:max-w-[8rem]">
+                    <span className="block h-4 w-16 animate-pulse rounded bg-muted-foreground/20" aria-hidden="true" />
+                    <span className="sr-only">Загрузка сообщества…</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  {tenant ? <TenantIcon icon={tenant.icon} className="h-4 w-4" /> : <Users className="h-4 w-4 shrink-0" />}
+                  <span className="truncate max-w-[8rem] sm:max-w-[12rem]">{tenant?.name ?? "Выберите сообщество"}</span>
+                </>
+              )}
             </Link>
           </NavigationMenuLink>
           {tenants.length > 1 && (

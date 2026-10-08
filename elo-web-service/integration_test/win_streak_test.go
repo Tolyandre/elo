@@ -33,7 +33,7 @@ func TestWinStreak_EmptyGameListMeansAnyGame(t *testing.T) {
 
 	// Warm-up match to initialise bet limits (keeps the fixture close to the
 	// other market tests even though this one places no bets).
-	_, err := matchSvc.AddMatch(ctx, game1, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t))
+	_, err := matchSvc.AddMatch(ctx, blueMenTenantID, game1, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up match: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestWinStreak_EmptyGameListMeansAnyGame(t *testing.T) {
 	outcomeYes := marketOutcomeID(t, ctx, marketSvc, market.ID, "yes", idpkg.ID(""))
 
 	// The winning match is played in a game the market never named.
-	_, err = matchSvc.AddMatch(ctx, game2, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, blueMenTenantID, game2, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("trigger match: %v", err)
 	}

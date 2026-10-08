@@ -4,12 +4,15 @@ import { getTableClientToken } from "@/lib/table-client";
 import type { TableGameState, TableSubmitInput, TableSummary } from "./types";
 import type { Base58ID } from "@/lib/id";
 
-export async function listTablesPromise(): Promise<TableSummary[]> {
-    return (await unwrap(client.GET("/tables"))).data;
+/** The tenant's lobby (ADR-36 phase 7): only tables created under the tenant. */
+export async function listTablesPromise(tenant: Base58ID): Promise<TableSummary[]> {
+    return (await unwrap(client.GET("/tables", { params: { query: { tenant } } }))).data;
 }
 
-export async function createTablePromise(gameId: Base58ID, gameState: TableGameState): Promise<TableSummary> {
-    return (await unwrap(client.POST("/tables", {
+/** Creation is tenant-scoped (ADR-36 phase 7): the seating must relate to the tenant per its openness mode. */
+export async function createTablePromise(tenant: Base58ID, gameId: Base58ID, gameState: TableGameState): Promise<TableSummary> {
+    return (await unwrap(client.POST("/tenants/{id}/tables", {
+        params: { path: { id: tenant } },
         body: { id: newId(), game_id: gameId, host_client_token: getTableClientToken(), game_state: gameState },
     }))).data;
 }

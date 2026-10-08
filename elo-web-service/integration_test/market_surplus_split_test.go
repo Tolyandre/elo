@@ -37,7 +37,7 @@ func TestMarketSurplusSplit_ExposureAccrual(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match, then fund everyone above its recalculation.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 	for _, p := range []idpkg.ID{buyerA, buyerB, g1, g2} {
@@ -87,7 +87,7 @@ func TestMarketSurplusSplit_ExposureAccrual(t *testing.T) {
 
 	// "Other" wins: nobody holds it, so paid = 0 and the whole collected pot
 	// is surplus.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 2, playerB: 3, playerC: 10}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 2, playerB: 3, playerC: 10}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 

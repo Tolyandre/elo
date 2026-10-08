@@ -128,9 +128,10 @@ func main() {
 	router.GET("/users", strictWrapper.ListUsers)
 	router.PATCH("/users/:userId", append(editorAuth(), strictWrapper.PatchUser)...)
 
-	// Matches
+	// Matches. Creation is tenant-scoped (ADR-36 phase 7): POST under the
+	// owning tenant (registered with the other tenant routes); reads and edits
+	// stay on the flat routes with ?tenant=.
 	router.GET("/matches", strictWrapper.ListMatches)
-	router.POST("/matches", append(editorAuth(), strictWrapper.AddMatch)...)
 	router.GET("/matches/:id", strictWrapper.GetMatchById)
 	router.GET("/matches/:id/markets", strictWrapper.GetMarketsByMatchId)
 	router.PUT("/matches/:id", append(editorAuth(), strictWrapper.UpdateMatch)...)
@@ -174,7 +175,6 @@ func main() {
 	noStore := func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.Next() }
 	tbl := router.Group("/tables", noStore)
 	tbl.GET("", strictWrapper.ListTables)
-	tbl.POST("", append(playerAuth(), strictWrapper.CreateTable)...)
 	tbl.GET("/:id", strictWrapper.GetTable)
 	tbl.PATCH("/:id/state", append(playerAuth(), strictWrapper.UpdateTableState)...)
 	tbl.POST("/:id/join", append(playerAuth(), strictWrapper.JoinTable)...)
@@ -208,6 +208,11 @@ func main() {
 	router.PUT("/tenants/:id/clubs", append(editorAuth(), strictWrapper.SetTenantClubs)...)
 	router.POST("/tenants/:id/tournaments", append(editorAuth(), strictWrapper.CreateTenantTournament)...)
 	router.POST("/tenants/:id/markets", append(editorAuth(), strictWrapper.CreateTenantMarket)...)
+	router.POST("/tenants/:id/matches", append(editorAuth(), strictWrapper.CreateTenantMatch)...)
+	// A table stays player-gated like its join/submit siblings: any linked
+	// player may host one (the saved match at the end is editor-gated as
+	// before).
+	router.POST("/tenants/:id/tables", append(playerAuth(), strictWrapper.CreateTenantTable)...)
 
 	// Tags — shared game-tag vocabulary (many-to-many via /games/:id/tags).
 	router.GET("/tags", strictWrapper.ListTags)

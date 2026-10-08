@@ -86,7 +86,7 @@ func TestTournament_DeadlineAutoCancel(t *testing.T) {
 	p2 := createTestPlayer(t, pool, "Поздний2")
 	mid := short(newID(t))
 	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%q:10, %q:2}}`, mid, short(gameID), short(p1), short(p2))
-	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post match: %d %s", w.Code, w.Body.String())
 	}
 	w := doJSON(t, router, http.MethodGet, "/matches/"+mid+"?tenant="+blueMenTenantUUID, "", "")

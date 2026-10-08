@@ -168,7 +168,7 @@ export function ArenaView() {
       {explicitId != null && <BackButton href="/arenas" />}
       <div className="space-y-4">
         <PageHeader
-          title={arena?.name ?? "Главная"}
+          title={arena?.name ?? tenant?.name ?? "Сообщество"}
           icon={arena?.camp ? <Tent className="h-6 w-6 shrink-0" /> : undefined}
           action={
             <div className="flex items-center gap-2">

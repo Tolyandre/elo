@@ -399,7 +399,9 @@ type Querier interface {
 	// this arena's settlement data, for an explicit id set selected by
 	// ListArenaFeedEvents.
 	ListFeedMatchesWithPlayers(ctx context.Context, arg ListFeedMatchesWithPlayersParams) ([]ListFeedMatchesWithPlayersRow, error)
-	ListGameTables(ctx context.Context) ([]GameTable, error)
+	// The tenant's lobby (ADR-36 phase 7): only tables created under the tenant,
+	// still live.
+	ListGameTables(ctx context.Context, tenantID id.ID) ([]GameTable, error)
 	ListGameTags(ctx context.Context) ([]ListGameTagsRow, error)
 	// Games carrying a BGG reference whose box art has not been fetched yet.
 	// The both-NULL predicate means a row enriched with only one URL (BGG has a
@@ -513,14 +515,16 @@ type Querier interface {
 	// One page of the tenant feed (GET /tenants/{id}/feed, ADR-36): the
 	// community's activity, membership-scoped — deliberately NOT
 	// arena-attribution-scoped, so a tournament match appears even when it does
-	// not count into the tenant's main arena rating. Match events go to any
-	// current member's matches — of any club of the tenant (coop included:
-	// community life, not just rating); market events to the markets the tenant
-	// OWNS (a member's bet on another tenant's market is that tenant's news).
-	// The player/club/game filters apply to both branches (the arena feed's
-	// matching rule). Parameters and cursor are the arena
-	// feed's minus the arena and the include flags; the tenant itself is the
-	// feed's identity.
+	// not count into the tenant's main arena rating. Under arena_membership_mode
+	// 'all' the match branch widens to every match — the arena counts matches the
+	// membership predicate would hide, and the feed must not be narrower than the
+	// rating (ADR-36 phase 7). Match events go to any current member's matches —
+	// of any club of the tenant (coop included: community life, not just rating);
+	// market events to the markets the tenant OWNS (a member's bet on another
+	// tenant's market is that tenant's news). The player/club/game filters apply
+	// to both branches (the arena feed's matching rule). Parameters and cursor
+	// are the arena feed's minus the arena and the include flags; the tenant
+	// itself is the feed's identity.
 	ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEventsParams) ([]ListTenantFeedEventsRow, error)
 	// Tenant queries (ADR-36). A tenant is a separate community entity: name,
 	// openness settings, one main arena (arenas.tenant_id), and one or many
@@ -591,11 +595,11 @@ type Querier interface {
 	SlotHasMatches(ctx context.Context, slotID id.ID) (bool, error)
 	// Whether the participants count into the tenant's main arena under its
 	// CURRENT openness mode, evaluated at @date against stint history (ADR-36):
-	// any_member — at least one participant was a member of any club of the
-	// tenant at @date; members_only — all were. The Go settlement gate consults
-	// this before settling a match into the tenant's arena (the SQL-side twin,
-	// tenant_arena_contains_match, probes match_scores itself and lives in
-	// migration 069).
+	// all — every match (membership irrelevant); any_member — at least one
+	// participant was a member of any club of the tenant at @date; members_only —
+	// all were. The Go settlement gate consults this before settling a match into
+	// the tenant's arena (the SQL-side twin, tenant_arena_contains_match, probes
+	// match_scores itself and lives in migration 069).
 	TenantContainsPlayers(ctx context.Context, arg TenantContainsPlayersParams) (bool, error)
 	// Whether ANY of the players currently has an active stint in any club of
 	// the tenant (ADR-36) — the tenant-feed membership predicate: a match lands

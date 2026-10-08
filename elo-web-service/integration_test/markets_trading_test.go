@@ -48,7 +48,7 @@ func TestPlaceBet_ExpectedProbabilityValidation(t *testing.T) {
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Warm-up match so the players have a bet limit.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 

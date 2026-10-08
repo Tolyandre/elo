@@ -17,7 +17,7 @@ const addGameTablePlayer = `-- name: AddGameTablePlayer :one
 UPDATE game_tables
 SET connected_player_ids = array_append(connected_player_ids, $2)
 WHERE id = $1 AND NOT ($2 = ANY(connected_player_ids))
-RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token
+RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token, tenant_id
 `
 
 type AddGameTablePlayerParams struct {
@@ -38,14 +38,15 @@ func (q *Queries) AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayer
 		&i.GameID,
 		&i.Version,
 		&i.HostClientToken,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const createGameTable = `-- name: CreateGameTable :one
-INSERT INTO game_tables (id, host_user_id, game_id, host_client_token, game_state)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token
+INSERT INTO game_tables (id, host_user_id, game_id, host_client_token, game_state, tenant_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token, tenant_id
 `
 
 type CreateGameTableParams struct {
@@ -54,6 +55,7 @@ type CreateGameTableParams struct {
 	GameID          id.ID           `json:"game_id"`
 	HostClientToken string          `json:"host_client_token"`
 	GameState       json.RawMessage `json:"game_state"`
+	TenantID        id.ID           `json:"tenant_id"`
 }
 
 func (q *Queries) CreateGameTable(ctx context.Context, arg CreateGameTableParams) (GameTable, error) {
@@ -63,6 +65,7 @@ func (q *Queries) CreateGameTable(ctx context.Context, arg CreateGameTableParams
 		arg.GameID,
 		arg.HostClientToken,
 		arg.GameState,
+		arg.TenantID,
 	)
 	var i GameTable
 	err := row.Scan(
@@ -75,6 +78,7 @@ func (q *Queries) CreateGameTable(ctx context.Context, arg CreateGameTableParams
 		&i.GameID,
 		&i.Version,
 		&i.HostClientToken,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -98,7 +102,7 @@ func (q *Queries) DeleteGameTable(ctx context.Context, argID id.ID) error {
 }
 
 const getGameTable = `-- name: GetGameTable :one
-SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token FROM game_tables WHERE id = $1
+SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token, tenant_id FROM game_tables WHERE id = $1
 `
 
 func (q *Queries) GetGameTable(ctx context.Context, argID id.ID) (GameTable, error) {
@@ -114,12 +118,13 @@ func (q *Queries) GetGameTable(ctx context.Context, argID id.ID) (GameTable, err
 		&i.GameID,
 		&i.Version,
 		&i.HostClientToken,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getGameTableForUpdate = `-- name: GetGameTableForUpdate :one
-SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token FROM game_tables WHERE id = $1 FOR UPDATE
+SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token, tenant_id FROM game_tables WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetGameTableForUpdate(ctx context.Context, argID id.ID) (GameTable, error) {
@@ -135,6 +140,7 @@ func (q *Queries) GetGameTableForUpdate(ctx context.Context, argID id.ID) (GameT
 		&i.GameID,
 		&i.Version,
 		&i.HostClientToken,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -151,11 +157,15 @@ func (q *Queries) GetNearestGameTableExpiry(ctx context.Context) (time.Time, err
 }
 
 const listGameTables = `-- name: ListGameTables :many
-SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token FROM game_tables WHERE expires_at > NOW() ORDER BY created_at DESC
+SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token, tenant_id FROM game_tables
+WHERE tenant_id = $1 AND expires_at > NOW()
+ORDER BY created_at DESC
 `
 
-func (q *Queries) ListGameTables(ctx context.Context) ([]GameTable, error) {
-	rows, err := q.db.Query(ctx, listGameTables)
+// The tenant's lobby (ADR-36 phase 7): only tables created under the tenant,
+// still live.
+func (q *Queries) ListGameTables(ctx context.Context, tenantID id.ID) ([]GameTable, error) {
+	rows, err := q.db.Query(ctx, listGameTables, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +183,7 @@ func (q *Queries) ListGameTables(ctx context.Context) ([]GameTable, error) {
 			&i.GameID,
 			&i.Version,
 			&i.HostClientToken,
+			&i.TenantID,
 		); err != nil {
 			return nil, err
 		}
@@ -188,7 +199,7 @@ const setGameTableHost = `-- name: SetGameTableHost :one
 UPDATE game_tables
 SET host_user_id = $2, host_client_token = $3
 WHERE id = $1
-RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token
+RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token, tenant_id
 `
 
 type SetGameTableHostParams struct {
@@ -210,6 +221,7 @@ func (q *Queries) SetGameTableHost(ctx context.Context, arg SetGameTableHostPara
 		&i.GameID,
 		&i.Version,
 		&i.HostClientToken,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -218,7 +230,7 @@ const updateGameTableState = `-- name: UpdateGameTableState :one
 UPDATE game_tables
 SET game_state = $3, version = version + 1
 WHERE id = $1 AND version = $2
-RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token
+RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at, game_id, version, host_client_token, tenant_id
 `
 
 type UpdateGameTableStateParams struct {
@@ -240,6 +252,7 @@ func (q *Queries) UpdateGameTableState(ctx context.Context, arg UpdateGameTableS
 		&i.GameID,
 		&i.Version,
 		&i.HostClientToken,
+		&i.TenantID,
 	)
 	return i, err
 }

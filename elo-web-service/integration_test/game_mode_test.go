@@ -149,7 +149,7 @@ func TestGameMode_CoopMatchLifecycle(t *testing.T) {
 	player := createTestPlayer(t, pool, "КоопИгрок")
 	matchID := newID(t)
 	body := coopMatchBody(matchID, game, []idpkg.ID{player}, `"game_score":45,"game_won":true`)
-	if w := doJSON(t, router, http.MethodPost, "/matches", editorToken, body); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", editorToken, body); w.Code != http.StatusOK {
 		t.Fatalf("coop AddMatch: %d %s", w.Code, w.Body.String())
 	}
 
@@ -237,7 +237,7 @@ func TestGameMode_CoopMatchLifecycle(t *testing.T) {
 	// A later competitive match on a normal game still settles normally.
 	competitiveGame := createGameWithMode(t, router, editorToken, "ОбычнИгра", "")
 	other := createTestPlayer(t, pool, "ОбычнИгрок")
-	if w := doJSON(t, router, http.MethodPost, "/matches", editorToken, fmt.Sprintf(
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", editorToken, fmt.Sprintf(
 		`{"id":%q,"game_id":%q,"score":{%q:5,%q:3}}`,
 		newID(t).String(), competitiveGame.String(), player.String(), other.String(),
 	)); w.Code != http.StatusOK {
@@ -274,12 +274,12 @@ func TestGameMode_MixedGameModeToggle(t *testing.T) {
 
 	// Mixed + explicit coop → coop.
 	coopOnMixed := newID(t)
-	if w := doJSON(t, router, http.MethodPost, "/matches", editorToken, coopMatchBody(coopOnMixed, mixed, []idpkg.ID{playerA, playerB}, `"game_score":30,"game_won":false`)); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", editorToken, coopMatchBody(coopOnMixed, mixed, []idpkg.ID{playerA, playerB}, `"game_score":30,"game_won":false`)); w.Code != http.StatusOK {
 		t.Fatalf("mixed coop AddMatch: %d %s", w.Code, w.Body.String())
 	}
 	// Mixed without mode → competitive, settles normally.
 	competitiveOnMixed := newID(t)
-	if w := doJSON(t, router, http.MethodPost, "/matches", editorToken, fmt.Sprintf(
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", editorToken, fmt.Sprintf(
 		`{"id":%q,"game_id":%q,"score":{%q:7,%q:4}}`,
 		competitiveOnMixed.String(), mixed.String(), playerA.String(), playerB.String(),
 	)); w.Code != http.StatusOK {
@@ -323,7 +323,7 @@ func TestGameMode_MixedGameModeToggle(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if w := doJSON(t, router, http.MethodPost, "/matches", editorToken, c.body); w.Code != c.want {
+			if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", editorToken, c.body); w.Code != c.want {
 				t.Fatalf("got %d %s, want %d", w.Code, w.Body.String(), c.want)
 			}
 		})
@@ -331,7 +331,7 @@ func TestGameMode_MixedGameModeToggle(t *testing.T) {
 
 	// Converting a competitive match to coop on edit drops its settlements.
 	conv := newID(t)
-	if w := doJSON(t, router, http.MethodPost, "/matches", editorToken, fmt.Sprintf(
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", editorToken, fmt.Sprintf(
 		`{"id":%q,"game_id":%q,"score":{%q:6,%q:2}}`,
 		conv.String(), mixed.String(), playerA.String(), playerB.String(),
 	)); w.Code != http.StatusOK {
@@ -396,7 +396,7 @@ func TestGameMode_MarketAndTournamentExclusion(t *testing.T) {
 
 	// A coop match the target "wins" — it must not resolve the market…
 	coopMatch := newID(t)
-	if _, err := matchSvc.AddMatch(ctx, mixed, nil, time.Now(), elo.AddMatchOpts{
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, mixed, nil, time.Now(), elo.AddMatchOpts{
 		ID:          coopMatch,
 		Mode:        "coop",
 		PlayerIDs:   []idpkg.ID{target, other},
@@ -415,7 +415,7 @@ func TestGameMode_MarketAndTournamentExclusion(t *testing.T) {
 	}
 
 	// …while the competitive match on the same game does.
-	if _, err := matchSvc.AddMatch(ctx, mixed, map[idpkg.ID]float64{target: 9, other: 4}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, mixed, map[idpkg.ID]float64{target: 9, other: 4}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("competitive AddMatch: %v", err)
 	}
 	m, err = marketSvc.Queries.GetMarket(ctx, market.ID)

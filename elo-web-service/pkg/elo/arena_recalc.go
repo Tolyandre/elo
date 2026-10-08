@@ -14,25 +14,29 @@ import (
 // Marks and drains
 // ---------------------------------------------------------------------------
 
-// MarkAndDrainAfterMatchWrite refreshes «Синие люди»'s main arena's
-// precalculated stats (its settlements are already maintained transactionally
-// by the match settlement path), marks the affected other arenas for an
-// incremental recalculation from fromDate, and recalculates them synchronously
-// in the caller's transaction (ADR-24: match writes update all arenas).
-func (s *ArenaService) MarkAndDrainAfterMatchWrite(ctx context.Context, q *db.Queries, affected []id.ID, fromDate time.Time) error {
+// MarkAndDrainAfterMatchWrite refreshes the arena whose settlements the match
+// write just maintained transactionally (the sweep anchor, or — since ADR-36
+// phase 7 — nothing, when the creating tenant's main arena is a replay
+// arena), marks the affected other arenas for an incremental recalculation
+// from fromDate, and recalculates them synchronously in the caller's
+// transaction (ADR-24: match writes update all arenas). settledArena zero
+// means nothing was settled transactionally: every affected arena replays.
+func (s *ArenaService) MarkAndDrainAfterMatchWrite(ctx context.Context, q *db.Queries, affected []id.ID, fromDate time.Time, settledArena id.ID) error {
 	// The stats are aggregates over the arena's match set; the arena's match
 	// set just changed even though its settlements were replayed elsewhere, so
 	// recompute them here.
-	if err := q.DeleteArenaStats(ctx, BlueMenArenaID); err != nil {
-		return fmt.Errorf("delete main arena stats: %w", err)
-	}
-	if err := q.InsertArenaStats(ctx, BlueMenArenaID); err != nil {
-		return fmt.Errorf("insert main arena stats: %w", err)
+	if !settledArena.IsZero() {
+		if err := q.DeleteArenaStats(ctx, settledArena); err != nil {
+			return fmt.Errorf("delete settled arena stats: %w", err)
+		}
+		if err := q.InsertArenaStats(ctx, settledArena); err != nil {
+			return fmt.Errorf("insert settled arena stats: %w", err)
+		}
 	}
 
 	ids := make([]id.ID, 0, len(affected))
 	for _, aid := range affected {
-		if aid != BlueMenArenaID {
+		if aid != settledArena {
 			ids = append(ids, aid)
 		}
 	}
@@ -80,9 +84,12 @@ func (s *ArenaService) MarkAllStaleFull(ctx context.Context, q *db.Queries) erro
 // drainDueArenas recalculates every arena whose stale mark is due (mark older
 // than the debounce, or drained synchronously by a match write). Runs in the
 // caller's transaction. A plain arena replays its match rows only — the
-// settlement path just handled the markets inline. «Синие люди»'s arena is
-// skipped: its settlements are maintained transactionally. A queued FULL mark
-// on another main arena (a settings or composition change, ADR-36 phase 6)
+// settlement path just handled the markets inline. The sweep-anchor arena
+// (the converted global arena, ADR-36 phase 7) joins the drain only with an
+// incremental mark — that is how a match created under another tenant reaches
+// it (nothing settled it transactionally); a FULL mark on it is left to the
+// worker/boot, whose drain re-settles it sweep-only. A queued FULL mark on
+// another main arena (a settings or composition change, ADR-36 phase 6)
 // drains with the market re-chaining sweep — replaying it without the sweep
 // would clear the mark and leave its market settlements on the old chains.
 func (s *ArenaService) drainDueArenas(ctx context.Context, q *db.Queries, now time.Time) error {
@@ -91,8 +98,8 @@ func (s *ArenaService) drainDueArenas(ctx context.Context, q *db.Queries, now ti
 		return fmt.Errorf("list stale arenas: %w", err)
 	}
 	for _, r := range rows {
-		if r.ID == BlueMenArenaID {
-			continue // maintained transactionally by the settlement path
+		if r.ID == BlueMenArenaID && !r.RecalcFrom.Valid {
+			continue // full marks drain sweep-only via the worker/boot path
 		}
 		arena, err := arenaFromStaleRow(r)
 		if err != nil {

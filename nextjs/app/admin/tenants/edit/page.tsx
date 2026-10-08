@@ -262,12 +262,13 @@ function TenantSettingsContent() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="all">{MEMBERSHIP_MODE_LABELS.all}</SelectItem>
                                         <SelectItem value="any_member">{MEMBERSHIP_MODE_LABELS.any_member}</SelectItem>
                                         <SelectItem value="members_only">{MEMBERSHIP_MODE_LABELS.members_only}</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    Смена правила пересчитывает рейтинг сообщества с самого начала.
+                                    «Все партии» — рейтинг считает всё записанное; «Есть участник сообщества» — партии с хотя бы одним участником; «Только участники» — партии, где играют лишь участники. Смена правила пересчитывает рейтинг сообщества с самого начала.
                                 </p>
                             </div>
                             <div className="flex-1 min-w-0 space-y-1.5">

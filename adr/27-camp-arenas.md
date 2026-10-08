@@ -201,7 +201,8 @@ tournament arenas keep `kind=tournaments`). OpenAPI changes regenerate
   `campArenaIds` (`lib/offline/types.ts`, `OfflineContext.tsx`).
 - **Match card** (`match-card.tsx`): the tournament-name badges after the
   player list become camp-arena badges (`match.camps`).
-- **Main page** (`app/page.tsx`): above the global arena, a compact
+- **Main page** (`app/page.tsx`): above the tenant's main arena (the
+  global arena at the time of writing; ADR-36 phase 7), a compact
   «Сейчас» block of plain links to active camps (window contains today;
   from the preloaded camp list) — the tournaments links are appended here
   by ADR-26's UI phase.

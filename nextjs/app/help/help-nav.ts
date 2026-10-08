@@ -9,10 +9,17 @@ export interface HelpArticle {
     description: string;
 }
 
-// The five documentation articles. Shared by the help sidebar (help-shell)
+// The documentation articles. Shared by the help sidebar (help-shell)
 // and the /help landing cards. Routes must stay static (ADR-25) and be
 // listed in lib/offline/routes.ts.
 export const HELP_ARTICLES: HelpArticle[] = [
+    {
+        href: "/help/tenants",
+        title: "Сообщества и клубы",
+        navTitle: "Сообщества и клубы",
+        description:
+            "Что такое сообщество и клуб, как членство определяется клубами, как работает открытость (все партии / есть участник / только участники) и что остаётся общим.",
+    },
     {
         href: "/help/elo",
         title: "Рейтинг Эло в настольных играх",
@@ -25,7 +32,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         title: "Арены и лиги",
         navTitle: "Арены и лиги",
         description:
-            "Глобальная и игровые арены, лиги и условия перехода между ними, как устроен рейтинг новичков и когда он сойдётся с эло.",
+            "Главная арена сообщества и игровые арены, лиги и условия перехода между ними, как устроен рейтинг новичков и когда он сойдётся с эло.",
     },
     {
         href: "/help/markets",

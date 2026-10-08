@@ -118,10 +118,10 @@ func TestListRecentPlayers_ClubCoPlayersAndCreations(t *testing.T) {
 	game := createTestGame(t, pool, "Chess")
 	matchSvc := newMatchService(pool)
 	day1 := time.Now().UTC().AddDate(0, 0, -1)
-	if _, err := matchSvc.AddMatch(ctx, game, map[idpkg.ID]float64{me: 10, guest1: 5}, day1, newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{me: 10, guest1: 5}, day1, newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch day1: %v", err)
 	}
-	if _, err := matchSvc.AddMatch(ctx, game, map[idpkg.ID]float64{mate: 10, guest2: 5}, time.Now().UTC().AddDate(0, 0, -3), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{mate: 10, guest2: 5}, time.Now().UTC().AddDate(0, 0, -3), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch day3: %v", err)
 	}
 
@@ -206,7 +206,7 @@ func TestListRecentPlayers_Limit15(t *testing.T) {
 			name := string(rune('0'+day)) + string(rune('a'+i))
 			scores[createTestPlayer(t, pool, name)] = float64(5 - i)
 		}
-		if _, err := matchSvc.AddMatch(ctx, game, scores, time.Now().UTC().AddDate(0, 0, -day), newMatchOpts(t)); err != nil {
+		if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, game, scores, time.Now().UTC().AddDate(0, 0, -day), newMatchOpts(t)); err != nil {
 			t.Fatalf("AddMatch day %d: %v", day, err)
 		}
 	}

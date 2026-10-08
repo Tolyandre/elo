@@ -36,6 +36,14 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	playerA, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-0000000000e1", Name: "PathA"})
 	playerB, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-0000000000e2", Name: "PathB"})
 	gameRow, _ := q.AddGame(ctx, db.AddGameParams{ID: "00000000-0000-0000-0000-0000000000e3", NameEn: pgText("PathGame"), GameMode: elo.GameModeCompetitive})
+	// The create guard (ADR-36 phase 7) requires a current member of the
+	// tenant the match is recorded under — both join «Синие люди».
+	if err := addBlueMenStint(ctx, pool, playerA.ID); err != nil {
+		t.Fatalf("add stint: %v", err)
+	}
+	if err := addBlueMenStint(ctx, pool, playerB.ID); err != nil {
+		t.Fatalf("add stint: %v", err)
+	}
 
 	marketSvc := elo.NewMarketService(pool)
 	matchSvc := newMatchService(pool)
@@ -69,7 +77,7 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	}
 
 	// A match that resolves the market gives /matches/{id}/markets a row.
-	match, err := matchSvc.AddMatch(ctx, gameRow.ID, map[idpkg.ID]float64{playerA.ID: 10, playerB.ID: 2}, time.Now(), newMatchOpts(t))
+	match, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameRow.ID, map[idpkg.ID]float64{playerA.ID: 10, playerB.ID: 2}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("add resolving match: %v", err)
 	}

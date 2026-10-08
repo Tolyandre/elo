@@ -56,6 +56,7 @@ type TablePlayer struct {
 // player/viewer mode (empty string on legacy tables — nothing enforces it).
 type TableSummary struct {
 	ID                 id.ID           `json:"id"`
+	TenantID           id.ID           `json:"tenant_id"`
 	GameID             id.ID           `json:"game_id"`
 	HostUserID         id.ID           `json:"host_user_id"`
 	HostClientToken    string          `json:"host_client_token"`
@@ -104,8 +105,14 @@ var tableGames = map[id.ID]tableGame{
 // ─── Service interface ────────────────────────────────────────────────────────
 
 type ITableService interface {
-	ListTables(ctx context.Context) ([]TableSummary, error)
-	CreateTable(ctx context.Context, tableID, hostUserID, gameID id.ID, hostClientToken string, initialState json.RawMessage) (TableSummary, error)
+	// ListTables lists the tenant's live tables — the «Сейчас играют» lobby
+	// is tenant-scoped (ADR-36 phase 7). An unknown tenant is
+	// ErrTenantNotFound.
+	ListTables(ctx context.Context, tenantID id.ID) ([]TableSummary, error)
+	// CreateTable creates the table under the tenant (the owner is immutable).
+	// The seating must relate to the tenant per its openness mode
+	// (validateSeatingTenant).
+	CreateTable(ctx context.Context, tenantID, tableID, hostUserID, gameID id.ID, hostClientToken string, initialState json.RawMessage) (TableSummary, error)
 	GetTable(ctx context.Context, tableID id.ID) (TableSummary, error)
 	UpdateTableState(ctx context.Context, tableID, hostUserID id.ID, expectedVersion int64, newState json.RawMessage) (TableSummary, error)
 	JoinTable(ctx context.Context, tableID, playerID id.ID) (TableSummary, error)
@@ -167,6 +174,7 @@ func (s *TableService) toSummary(row db.GameTable) (TableSummary, error) {
 	}
 	return TableSummary{
 		ID:                 row.ID,
+		TenantID:           row.TenantID,
 		GameID:             row.GameID,
 		HostUserID:         row.HostUserID,
 		HostClientToken:    row.HostClientToken,
@@ -261,8 +269,16 @@ func (s *TableService) broadcastInvites(row db.GameTable, summary TableSummary, 
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-func (s *TableService) ListTables(ctx context.Context) ([]TableSummary, error) {
-	rows, err := s.Queries.ListGameTables(ctx)
+func (s *TableService) ListTables(ctx context.Context, tenantID id.ID) ([]TableSummary, error) {
+	// An unknown tenant is a 404, not an empty lobby (ADR-36: reads name an
+	// existing tenant).
+	if _, err := s.Queries.GetTenantByID(ctx, tenantID); err != nil {
+		if db.IsNoRows(err) {
+			return nil, ErrTenantNotFound
+		}
+		return nil, err
+	}
+	rows, err := s.Queries.ListGameTables(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +293,42 @@ func (s *TableService) ListTables(ctx context.Context) ([]TableSummary, error) {
 	return result, nil
 }
 
-func (s *TableService) CreateTable(ctx context.Context, tableID, hostUserID, gameID id.ID, hostClientToken string, initialState json.RawMessage) (TableSummary, error) {
+// validateSeatingTenant checks the seating against the tenant's openness mode
+// (ADR-36 phase 7) — the same rule the match and table forms apply
+// client-side, now enforced at creation: members_only seats members only,
+// any_member demands at least one current member, all accepts anyone. Later
+// joins and submissions are deliberately unguarded — a live game must never
+// break mid-play.
+func validateSeatingTenant(ctx context.Context, q *db.Queries, tenant db.Tenant, playerIDs []id.ID) error {
+	if tenant.ArenaMembershipMode == ArenaMembershipAll || len(playerIDs) == 0 {
+		return nil
+	}
+	if tenant.ArenaMembershipMode == ArenaMembershipMembersOnly {
+		for _, pid := range playerIDs {
+			member, err := q.PlayerIsTenantMember(ctx, db.PlayerIsTenantMemberParams{TenantID: &tenant.ID, PlayerID: pid})
+			if err != nil {
+				return fmt.Errorf("check tenant membership: %w", err)
+			}
+			if !member {
+				return ErrTableOutsideTenant
+			}
+		}
+		return nil
+	}
+	hasMember, err := q.TenantHasActiveMemberAmong(ctx, db.TenantHasActiveMemberAmongParams{
+		TenantID:  tenant.ID,
+		PlayerIds: playerIDs,
+	})
+	if err != nil {
+		return fmt.Errorf("check tenant membership: %w", err)
+	}
+	if !hasMember {
+		return ErrTableOutsideTenant
+	}
+	return nil
+}
+
+func (s *TableService) CreateTable(ctx context.Context, tenantID, tableID, hostUserID, gameID id.ID, hostClientToken string, initialState json.RawMessage) (TableSummary, error) {
 	if _, err := parseID(tableID); err != nil {
 		return TableSummary{}, fmt.Errorf("invalid table id: %w", err)
 	}
@@ -289,25 +340,41 @@ func (s *TableService) CreateTable(ctx context.Context, tableID, hostUserID, gam
 	if err != nil {
 		return TableSummary{}, err
 	}
-	row, err := s.Queries.CreateGameTable(ctx, db.CreateGameTableParams{
-		ID:              tableID,
-		HostUserID:      hostUserID,
-		GameID:          gameID,
-		HostClientToken: hostClientToken,
-		GameState:       normalized,
+	// The tenant's row is re-read and the seating checked inside the write
+	// transaction, so a concurrent openness change cannot slip past the guard
+	// (the same discipline the match create/edit guards follow).
+	summary, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (db.GameTable, error) {
+		tenant, err := q.GetTenantByID(ctx, tenantID)
+		if db.IsNoRows(err) {
+			return db.GameTable{}, ErrTenantNotFound
+		}
+		if err != nil {
+			return db.GameTable{}, fmt.Errorf("get tenant: %w", err)
+		}
+		if err := validateSeatingTenant(ctx, q, tenant, game.playerIDs(normalized)); err != nil {
+			return db.GameTable{}, err
+		}
+		return q.CreateGameTable(ctx, db.CreateGameTableParams{
+			ID:              tableID,
+			HostUserID:      hostUserID,
+			GameID:          gameID,
+			HostClientToken: hostClientToken,
+			GameState:       normalized,
+			TenantID:        tenantID,
+		})
 	})
 	if err != nil {
 		return TableSummary{}, err
 	}
-	summary, err := s.toSummary(row)
+	summary2, err := s.toSummary(summary)
 	if err != nil {
 		return TableSummary{}, err
 	}
 	// Reschedule cleanup timer to account for the new table's expiry
 	go s.ScheduleNextCleanup(context.Background())
 	s.broadcastLobby()
-	s.broadcastInvites(row, summary, hostUserID)
-	return summary, nil
+	s.broadcastInvites(summary, summary2, hostUserID)
+	return summary2, nil
 }
 
 func (s *TableService) GetTable(ctx context.Context, tableID id.ID) (TableSummary, error) {

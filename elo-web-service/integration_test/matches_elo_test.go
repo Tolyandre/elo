@@ -25,7 +25,7 @@ func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 	gameID := createTestGame(t, pool, "Catan")
 
 	svc := newMatchService(pool)
-	_, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{p1: 10, p2: 5, p3: 1}, time.Now(), newMatchOpts(t))
+	_, err := svc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{p1: 10, p2: 5, p3: 1}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestAddMatch_EloOrderPreserved(t *testing.T) {
 	gameID := createTestGame(t, pool, "Chess")
 
 	svc := newMatchService(pool)
-	_, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{winner: 10, loser: 1}, time.Now(), newMatchOpts(t))
+	_, err := svc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{winner: 10, loser: 1}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. Warm-up match: gives players a bet limit of K/(1+1) ≈ 16.
-	_, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, tWarmup, newMatchOpts(t))
+	_, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, tWarmup, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	}
 
 	// 4. M2 with a future domain date triggers resolution; resolved_at = tFuture > placed_at ✓.
-	m2, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, tFuture, newMatchOpts(t))
+	m2, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, tFuture, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}

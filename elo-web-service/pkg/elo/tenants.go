@@ -83,7 +83,7 @@ func (s *TenantService) GetTenant(ctx context.Context, tenantID id.ID) ([]db.Get
 // always set together for a tenant.
 func validateTenantSettings(arenaMembershipMode, tournamentsOpenness string) error {
 	switch arenaMembershipMode {
-	case ArenaMembershipAnyMember, ArenaMembershipMembersOnly:
+	case ArenaMembershipAll, ArenaMembershipAnyMember, ArenaMembershipMembersOnly:
 	default:
 		return ErrTenantSettingsInvalid
 	}

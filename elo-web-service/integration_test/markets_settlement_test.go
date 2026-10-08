@@ -52,7 +52,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Give players enough bet limit by adding a warm-up match first
-	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	}
 
 	// Add a match where playerA wins (higher score)
-	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch (trigger): %v", err)
 	}
@@ -144,7 +144,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. M1
-	m1, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, t1, newMatchOpts(t))
+	m1, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, t1, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M1 AddMatch: %v", err)
 	}
@@ -181,13 +181,13 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	}
 
 	// 3. M2 triggers market resolution (playerA wins)
-	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, t2, newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, t2, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
 
 	// 4. M3 after settlement
-	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 7, playerB: 8}, t3, newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 7, playerB: 8}, t3, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M3 AddMatch: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Warm-up match so players have a bet limit > 0.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -311,7 +311,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	}
 
 	// 4. Trigger resolution: playerA (YES) wins.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 
@@ -395,7 +395,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 		t.Fatalf("CreateMarket: %v", err)
 	}
 
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -420,7 +420,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	amountA, amountB := readBetCost(t, pool, market.ID, playerA), readBetCost(t, pool, market.ID, playerB)
 
 	// Resolve YES (playerA wins).
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 

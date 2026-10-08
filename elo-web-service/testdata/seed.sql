@@ -4,13 +4,14 @@
 -- (seeded there as «Синие люди», alongside «Весёлые карточные игры»);
 -- migration 068 creates the «Синие люди» tenant
 -- (00000000-0000-0000-0000-000000000101) and attaches both of its clubs to
--- it. These statements are no-ops on migrated databases and make fresh dev
--- databases match the migrated shape.
+-- it, and migration 075 flips its openness to «Все партии» (all). These
+-- statements are no-ops on migrated databases and make fresh dev databases
+-- match the migrated shape.
 INSERT INTO clubs (id, name) VALUES ('00000000-0000-0000-0000-000000000001', 'Синие люди')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO tenants (id, name, icon, arena_membership_mode, tournaments_openness)
-VALUES ('00000000-0000-0000-0000-000000000101', 'Синие люди', 'blue-figure', 'any_member', 'open')
+VALUES ('00000000-0000-0000-0000-000000000101', 'Синие люди', 'blue-figure', 'all', 'open')
 ON CONFLICT (id) DO NOTHING;
 
 UPDATE clubs

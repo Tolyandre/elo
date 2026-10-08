@@ -33,7 +33,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -142,7 +142,7 @@ func TestMarketGuarantees_SettlementWithFees(t *testing.T) {
 	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -185,7 +185,7 @@ func TestMarketGuarantees_SettlementWithFees(t *testing.T) {
 	feeB := readBetFee(t, pool, market.ID, playerB)
 
 	// playerA wins: 1 winning share pays 1.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 
@@ -239,7 +239,7 @@ func TestMarketGuarantees_ReservedRiskBlocksBets(t *testing.T) {
 	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 

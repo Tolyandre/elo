@@ -46,7 +46,7 @@ func TestRecalculateAllArenas_NoDriftOnUnchangedHistory(t *testing.T) {
 	// M1, then a match_winner market (starts after M1 so only M2 can resolve
 	// it), bets on both sides, M2 resolves the market, M3 afterwards — the
 	// interleaving where a stale-read ordering bug would show up.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, t1, newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, t1, newMatchOpts(t)); err != nil {
 		t.Fatalf("M1 AddMatch: %v", err)
 	}
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
@@ -74,10 +74,10 @@ func TestRecalculateAllArenas_NoDriftOnUnchangedHistory(t *testing.T) {
 	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, outcomeOther, 1); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, t2, newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, t2, newMatchOpts(t)); err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 7, playerB: 8}, t3, newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{playerA: 7, playerB: 8}, t3, newMatchOpts(t)); err != nil {
 		t.Fatalf("M3 AddMatch: %v", err)
 	}
 
@@ -118,7 +118,7 @@ func TestTenantSettingsChange_RecalculatesFromNewStartingRating(t *testing.T) {
 	svc := newMatchService(pool)
 	member := createTestPlayer(t, pool, "Синий рейтинговый")
 	opponent := createBareTestPlayer(t, pool, "Рейтинговый гость")
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, opponent: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, opponent: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
 

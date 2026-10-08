@@ -216,7 +216,7 @@ func TestSSE_Events_MatchAddedAndTableLobby(t *testing.T) {
 		"game_id": gameID,
 		"score":   map[string]float64{string(hostPlayer): 5, string(playerB): 3},
 	})
-	req, _ := http.NewRequest(http.MethodPost, "/matches", strings.NewReader(string(body)))
+	req, _ := http.NewRequest(http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
@@ -272,7 +272,7 @@ func TestSSE_Events_MatchRecorded(t *testing.T) {
 		"game_id": gameID,
 		"score":   map[string]float64{string(playerA): 5, string(playerB): 3},
 	})
-	req, _ := http.NewRequest(http.MethodPost, "/matches", strings.NewReader(string(body)))
+	req, _ := http.NewRequest(http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+editorToken)
 	w := httptest.NewRecorder()
@@ -319,7 +319,7 @@ func TestSSE_Events_AnonymousMeSkipped(t *testing.T) {
 		"game_id": gameID,
 		"score":   map[string]float64{string(playerA): 5, string(playerB): 3},
 	})
-	req, _ := http.NewRequest(http.MethodPost, "/matches", strings.NewReader(string(body)))
+	req, _ := http.NewRequest(http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+editorToken)
 	w := httptest.NewRecorder()
@@ -397,7 +397,7 @@ func TestTables_CreateTableInvitesLinkedUsers(t *testing.T) {
 		"rounds":             [][]any{nil},
 	})
 	tableID := newID(t)
-	if _, err := svc.CreateTable(context.Background(), tableID, idpkg.ID(hostUserID), elo.GameIDSkullKing, "test-device", state); err != nil {
+	if _, err := svc.CreateTable(context.Background(), blueMenTenantID, tableID, idpkg.ID(hostUserID), elo.GameIDSkullKing, "test-device", state); err != nil {
 		t.Fatalf("CreateTable: %v", err)
 	}
 
@@ -451,7 +451,7 @@ func createTableHTTP(t *testing.T, router *gin.Engine, hostToken string, tableID
 	t.Helper()
 	wire := string(tableID.Base58())
 	body, _ := json.Marshal(map[string]any{"id": wire, "game_id": string(gameID.Base58()), "host_client_token": "creator-device", "game_state": gameState})
-	req, _ := http.NewRequest(http.MethodPost, "/tables", strings.NewReader(string(body)))
+	req, _ := http.NewRequest(http.MethodPost, "/tenants/"+blueMenTenantUUID+"/tables", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+hostToken)
 	w := httptest.NewRecorder()

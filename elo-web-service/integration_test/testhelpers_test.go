@@ -224,10 +224,11 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.PATCH("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchPlayer)
 	r.DELETE("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeletePlayer)
 	// Matches: needed by the calculator-data idcodec roundtrip test and any
-	// future match-level integration test.
+	// future match-level integration test. Creation is tenant-scoped
+	// (ADR-36 phase 7).
 	r.GET("/matches", strictWrapper.ListMatches)
 	r.GET("/matches/:id", strictWrapper.GetMatchById)
-	r.POST("/matches", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddMatch)
+	r.POST("/tenants/:id/matches", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateTenantMatch)
 	r.GET("/matches/:id/markets", strictWrapper.GetMarketsByMatchId)
 	r.PUT("/matches/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateMatch)
 	// Games and clubs: needed by the audit-log integration test (ADR-14).
@@ -304,8 +305,10 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	tblPlayerAuth := []gin.HandlerFunc{o.DeserializeUser(), a.RequirePlayerID()}
 	tbl := r.Group("/tables", noStore)
 	tbl.GET("", strictWrapper.ListTables)
-	tbl.POST("", append(tblPlayerAuth, strictWrapper.CreateTable)...)
 	tbl.GET("/:id", strictWrapper.GetTable)
+	// Table creation is tenant-scoped (ADR-36 phase 7), player-gated like the
+	// rest of the table group.
+	r.POST("/tenants/:id/tables", append(append([]gin.HandlerFunc{noStore}, tblPlayerAuth...), strictWrapper.CreateTenantTable)...)
 	tbl.PATCH("/:id/state", append(tblPlayerAuth, strictWrapper.UpdateTableState)...)
 	tbl.POST("/:id/join", append(tblPlayerAuth, strictWrapper.JoinTable)...)
 	tbl.POST("/:id/submit", append(tblPlayerAuth, strictWrapper.SubmitTable)...)

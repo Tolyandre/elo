@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { listTablesPromise, TableSummary } from "@/app/api";
 import { useMe } from "@/app/meContext";
+import { useTenantScope } from "@/app/tenantScopeContext";
 import { useTablesLobbySSE } from "@/hooks/useTableSSE";
 import { gameAppByTable } from "@/lib/game-apps";
 import { tablePlayerNames, tableStatus } from "./active-tables";
@@ -11,20 +12,22 @@ import { tablePlayerNames, tableStatus } from "./active-tables";
 /**
  * Header indicator for tables this user participates in (host, connected
  * player, or a player the host picked into the game), shown next to the
- * offline-mode icon. One icon PER TABLE — several tables of the same game may
- * run at once, so same-game icons get a small ordinal badge — linking into
- * that exact table via the ?id= deep-link, which resumes/joins it on the
- * game page. Viewers see nothing.
+ * offline-mode icon. Scoped to the current tenant's tables (ADR-36 phase 7 —
+ * the same source as the «Сейчас играют» lobby). One icon PER TABLE — several
+ * tables of the same game may run at once, so same-game icons get a small
+ * ordinal badge — linking into that exact table via the ?id= deep-link, which
+ * resumes/joins it on the game page. Viewers see nothing.
  */
 export function TableIndicator() {
     const me = useMe();
+    const { ready: scopeReady, tenantId } = useTenantScope();
     const [tables, setTables] = useState<TableSummary[]>([]);
     const tick = useTablesLobbySSE(me.isAuthenticated);
 
     useEffect(() => {
-        if (!me.isAuthenticated) return;
+        if (!me.isAuthenticated || !scopeReady || !tenantId) return;
         let cancelled = false;
-        listTablesPromise()
+        listTablesPromise(tenantId)
             .then((list) => {
                 if (!cancelled) setTables(list);
             })
@@ -32,17 +35,19 @@ export function TableIndicator() {
         return () => {
             cancelled = true;
         };
-    }, [me.isAuthenticated, tick]);
+    }, [me.isAuthenticated, scopeReady, tenantId, tick]);
 
     // Participating = hosting, joined (connected_player_ids), or picked into
     // the game by the host (game_state.players) — the icon must show as soon
-    // as such a table exists, before the player enters it.
+    // as such a table exists, before the player enters it. Rows of other
+    // tenants (a switch still in flight) never render.
     const mine = tables.filter(
         (t) =>
-            (me.id !== undefined && t.host_user_id === me.id) ||
-            (me.playerId !== undefined &&
-                (t.connected_player_ids.includes(me.playerId) ||
-                    t.game_state.players.some((p) => p.id === me.playerId))),
+            t.tenant_id === tenantId &&
+            ((me.id !== undefined && t.host_user_id === me.id) ||
+                (me.playerId !== undefined &&
+                    (t.connected_player_ids.includes(me.playerId) ||
+                        t.game_state.players.some((p) => p.id === me.playerId)))),
     );
     if (mine.length === 0) return null;
 

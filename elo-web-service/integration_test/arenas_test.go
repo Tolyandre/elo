@@ -85,7 +85,7 @@ func TestArena_GameArenaUpdatedOnMatchWrite(t *testing.T) {
 	p2 := createTestPlayer(t, pool, "Арена2")
 	p3 := createTestPlayer(t, pool, "Арена3")
 	svc := newMatchService(pool)
-	if _, err := svc.AddMatch(ctx, idpkg.ID(gameID), map[idpkg.ID]float64{p1: 100, p2: 50, p3: 10}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, idpkg.ID(gameID), map[idpkg.ID]float64{p1: 100, p2: 50, p3: 10}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
 
@@ -332,7 +332,7 @@ func TestArena_GlobalArenaBacksPlayersPage(t *testing.T) {
 	p2 := createTestPlayer(t, pool, "Глобал2")
 
 	svc := newMatchService(pool)
-	if _, err := svc.AddMatch(ctx, createTestGame(t, pool, "Глобальная игра"), map[idpkg.ID]float64{p1: 60, p2: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, createTestGame(t, pool, "Глобальная игра"), map[idpkg.ID]float64{p1: 60, p2: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
 
@@ -401,14 +401,14 @@ func TestArena_EliteHintCountsRecentMatches(t *testing.T) {
 
 	now := time.Now()
 	for i := 1; i <= 5; i++ {
-		if _, err := svc.AddMatch(ctx, idpkg.ID(gameID), map[idpkg.ID]float64{p1: 100, p2: 50},
+		if _, err := svc.AddMatch(ctx, blueMenTenantID, idpkg.ID(gameID), map[idpkg.ID]float64{p1: 100, p2: 50},
 			now.Add(-time.Duration(i)*time.Minute), newMatchOpts(t)); err != nil {
 			t.Fatalf("AddMatch: %v", err)
 		}
 	}
 	// One more match inside the 6-month window only (100 days ago):
 	// cnt60=5, cnt180=6 → deficit = max(20−6, 3−5) = 14 (the bug reported the raw 20).
-	if _, err := svc.AddMatch(ctx, idpkg.ID(gameID), map[idpkg.ID]float64{p1: 100, p2: 50},
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, idpkg.ID(gameID), map[idpkg.ID]float64{p1: 100, p2: 50},
 		now.AddDate(0, 0, -100), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch backdated: %v", err)
 	}
@@ -463,7 +463,7 @@ func TestArena_Feed_FiltersAndCursor(t *testing.T) {
 
 	svc := newMatchService(pool)
 	for i := range 3 {
-		if _, err := svc.AddMatch(context.Background(), gameID, map[idpkg.ID]float64{p1: 100, p2: 50, p3: 10 + float64(i)}, time.Now().Add(-time.Duration(i)*time.Hour), newMatchOpts(t)); err != nil {
+		if _, err := svc.AddMatch(context.Background(), blueMenTenantID, gameID, map[idpkg.ID]float64{p1: 100, p2: 50, p3: 10 + float64(i)}, time.Now().Add(-time.Duration(i)*time.Hour), newMatchOpts(t)); err != nil {
 			t.Fatalf("AddMatch %d: %v", i, err)
 		}
 	}

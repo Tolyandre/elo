@@ -36,13 +36,15 @@ sensible defaults when the URL carries no state.
 
 ### `/` is the real main page
 
-`app/page.tsx` renders the global arena directly. The arena view moved into a
-client component (`app/arenas/view/arena-view.tsx`) rendered by both `/` and
-`/arenas/view?id=…`; the id-less global arena and the main page are the same
-thing on both routes. No redirects anywhere: exported `redirect()` shells are
-gone, the PWA start_url lands on real content, and «Главная» in the
-navigation bar is a plain `<Link href="/">` — cross-route, therefore a normal
-SPA navigation from every other page.
+`app/page.tsx` renders the tenant's main arena directly (ADR-36 phase 7: the
+main page is the current community's page; in the global-arena phrasing this
+ADR was written with, that arena was the global one). The arena view moved
+into a client component (`app/arenas/view/arena-view.tsx`) rendered by both
+`/` and `/arenas/view?id=…`; the id-less main arena and the main page are the
+same thing on both routes. No redirects anywhere: exported `redirect()`
+shells are gone, the PWA start_url lands on real content, and the tenant item
+in the navigation bar is a plain `<Link href="/">` — cross-route, therefore a
+normal SPA navigation from every other page.
 
 ### Query state through the History API, not the router
 

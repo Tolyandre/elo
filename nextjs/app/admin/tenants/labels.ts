@@ -3,6 +3,7 @@
 import type { Tenant } from "@/app/api";
 
 export const MEMBERSHIP_MODE_LABELS: Record<Tenant["arena_membership_mode"], string> = {
+    all: "Все партии",
     any_member: "Есть участник сообщества",
     members_only: "Только участники сообщества",
 };

@@ -385,7 +385,7 @@ func TestGameTables_UnknownGameRejected(t *testing.T) {
 		"game_id":    string(newID(t).Base58()),
 		"game_state": iawwTableState(newID(t), newID(t), "A", "B"),
 	})
-	req, _ := http.NewRequest(http.MethodPost, "/tables", strings.NewReader(string(body)))
+	req, _ := http.NewRequest(http.MethodPost, "/tenants/"+blueMenTenantUUID+"/tables", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+hostToken)
 	w := httptest.NewRecorder()
@@ -529,7 +529,7 @@ func TestGameTables_JoinSignalsLobby(t *testing.T) {
 		"rounds":             [][]any{nil},
 	})
 	tableID := newID(t)
-	if _, err := svc.CreateTable(context.Background(), tableID, idpkg.ID(hostUserID), elo.GameIDSkullKing, "test-device", state); err != nil {
+	if _, err := svc.CreateTable(context.Background(), blueMenTenantID, tableID, idpkg.ID(hostUserID), elo.GameIDSkullKing, "test-device", state); err != nil {
 		t.Fatalf("CreateTable: %v", err)
 	}
 	// Drain the create-time lobby signal so the next frame is the join's.
@@ -736,5 +736,169 @@ func TestGameTables_IawwPartialSubmits(t *testing.T) {
 		"cells": []map[string]any{},
 	}); w.Code != http.StatusConflict {
 		t.Errorf("submit after done: %d, want 409", w.Code)
+	}
+}
+
+// createTableUnderTenantHTTP posts a table create under an explicit tenant
+// path and returns the raw recorder (the tenant-scoping tests assert on
+// non-201 outcomes too).
+func createTableUnderTenantHTTP(t *testing.T, router *gin.Engine, hostToken, tenantID string, tableID, gameID idpkg.ID, gameState map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	wire := string(tableID.Base58())
+	body, _ := json.Marshal(map[string]any{"id": wire, "game_id": string(gameID.Base58()), "host_client_token": "creator-device", "game_state": gameState})
+	req, _ := http.NewRequest(http.MethodPost, "/tenants/"+tenantID+"/tables", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+hostToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+// lobbyTablesHTTP fetches the tenant lobby and returns the wire ids.
+func lobbyTablesHTTP(t *testing.T, router *gin.Engine, tenantID string) []string {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, "/tables?tenant="+tenantID, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /tables?tenant=%s: %d %s", tenantID, w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data []struct {
+			Id string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode lobby: %v", err)
+	}
+	ids := make([]string, 0, len(resp.Data))
+	for _, t2 := range resp.Data {
+		ids = append(ids, t2.Id)
+	}
+	return ids
+}
+
+// TestGameTables_TenantScoped pins the table tenancy (ADR-36 phase 7): a
+// table is created under its owning tenant (the summary carries tenant_id),
+// the lobby lists only that tenant's tables, an unknown tenant is a 404, and
+// the seating must relate to the tenant per its openness mode — at least one
+// current member under any_member/all, members only under members_only. The
+// owner is immutable and later joins stay unguarded (a live game must not
+// break mid-play).
+func TestGameTables_TenantScoped(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	q := db.New(pool)
+	hostToken, hostUserID := createTestUserWithID(t, pool, false)
+	router := setupRouter(pool)
+
+	hostPlayer := createTestPlayer(t, pool, "TsHost")
+	linkPlayer(t, q, hostUserID, hostPlayer)
+
+	token, _ := createTestUserWithID(t, pool, true)
+	tenantA, clubA, _ := createTenant(t, router, token, "Столы", "any_member", "open")
+	tenantB, _, _ := createTenant(t, router, token, "Столы-Б", "any_member", "open")
+	tenantAID := tenantA.String()
+	tenantBID := tenantB.String()
+
+	memberA := createBareTestPlayer(t, pool, "Ts-член")
+	addClubMember(t, router, token, clubA.String(), memberA)
+	guest := createBareTestPlayer(t, pool, "Ts-гость")
+
+	// A member of the tenant sits at the table: created, and the summary
+	// carries the owning tenant.
+	w := createTableUnderTenantHTTP(t, router, hostToken, tenantAID, newID(t), elo.GameIDIAWW, iawwTableState(memberA, guest, "Ts-член", "Ts-гость"))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create under tenant A: %d %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		Data struct {
+			Id       string `json:"id"`
+			TenantId string `json:"tenant_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create summary: %v", err)
+	}
+	if created.Data.TenantId != short(tenantA) {
+		t.Fatalf("tenant_id = %q, want tenant A (%s)", created.Data.TenantId, short(tenantA))
+	}
+
+	// The lobby is tenant-scoped: tenant A sees the table, tenant B does not.
+	if got := lobbyTablesHTTP(t, router, tenantAID); len(got) != 1 || got[0] != created.Data.Id {
+		t.Fatalf("tenant A lobby = %v, want the one table", got)
+	}
+	if got := lobbyTablesHTTP(t, router, tenantBID); len(got) != 0 {
+		t.Fatalf("tenant B lobby = %v, want none", got)
+	}
+	if got := lobbyTablesHTTP(t, router, blueMenTenantUUID); len(got) != 0 {
+		t.Fatalf("BlueMen lobby = %v, want none", got)
+	}
+	// An unknown tenant is a 404, not an empty lobby.
+	req, _ := http.NewRequest(http.MethodGet, "/tables?tenant="+newID(t).String(), nil)
+	w404 := httptest.NewRecorder()
+	router.ServeHTTP(w404, req)
+	if w404.Code != http.StatusNotFound {
+		t.Fatalf("GET /tables for unknown tenant: %d, want 404", w404.Code)
+	}
+
+	// Seating with no relation to the tenant is rejected: no member of
+	// tenant A among the players.
+	w = createTableUnderTenantHTTP(t, router, hostToken, tenantAID, newID(t), elo.GameIDIAWW, iawwTableState(guest, createBareTestPlayer(t, pool, "Ts-второй"), "Ts-гость", "Ts-второй"))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("create with guest-only seating: %d %s, want 400", w.Code, w.Body.String())
+	}
+
+	// members_only: every seated player must be a member — one guest is a 400,
+	// members only is fine.
+	closed, closedClub, _ := createTenant(t, router, token, "Столы закрытые", "members_only", "open")
+	closedID := closed.String()
+	closedMember := createBareTestPlayer(t, pool, "Ts-закрытый")
+	addClubMember(t, router, token, closedClub.String(), closedMember)
+	w = createTableUnderTenantHTTP(t, router, hostToken, closedID, newID(t), elo.GameIDIAWW, iawwTableState(closedMember, guest, "Ts-закрытый", "Ts-гость"))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("members_only with a guest: %d %s, want 400", w.Code, w.Body.String())
+	}
+	w = createTableUnderTenantHTTP(t, router, hostToken, closedID, newID(t), elo.GameIDIAWW, iawwTableState(closedMember, createBareTestPlayer(t, pool, "Ts-закрытый-б"), "Ts-закрытый", "Ts-закрытый-б"))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("members_only with a non-member second player: %d %s, want 400", w.Code, w.Body.String())
+	}
+	secondMember := createBareTestPlayer(t, pool, "Ts-закрытый-в")
+	addClubMember(t, router, token, closedClub.String(), secondMember)
+	w = createTableUnderTenantHTTP(t, router, hostToken, closedID, newID(t), elo.GameIDIAWW, iawwTableState(closedMember, secondMember, "Ts-закрытый", "Ts-закрытый-в"))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("members_only members-only seating: %d %s, want 201", w.Code, w.Body.String())
+	}
+
+	// The «Все партии» tenant (Синие люди) accepts any seating.
+	var membersOnlyTable struct {
+		Data struct {
+			Id string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &membersOnlyTable); err != nil {
+		t.Fatalf("decode members-only summary: %v", err)
+	}
+	w = createTableUnderTenantHTTP(t, router, hostToken, blueMenTenantUUID, newID(t), elo.GameIDIAWW, iawwTableState(guest, createBareTestPlayer(t, pool, "Ts-гость-б"), "Ts-гость", "Ts-гость-б"))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("all-mode create with guest seating: %d %s, want 201", w.Code, w.Body.String())
+	}
+
+	// An unknown tenant is a 404.
+	w = createTableUnderTenantHTTP(t, router, hostToken, newID(t).String(), newID(t), elo.GameIDIAWW, iawwTableState(memberA, guest, "Ts-член", "Ts-гость"))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("create under unknown tenant: %d, want 404", w.Code)
+	}
+
+	// Later joins stay unguarded (ADR-36 phase 7): a guest joins the
+	// members_only table without a check — a live game must not break
+	// mid-play.
+	req, _ = http.NewRequest(http.MethodPost, "/tables/"+membersOnlyTable.Data.Id+"/join", nil)
+	req.Header.Set("Authorization", "Bearer "+hostToken)
+	wJoin := httptest.NewRecorder()
+	router.ServeHTTP(wJoin, req)
+	if wJoin.Code != http.StatusOK {
+		t.Fatalf("join: %d %s", wJoin.Code, wJoin.Body.String())
 	}
 }

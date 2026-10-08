@@ -1,8 +1,9 @@
 Необходимо упростить поиск и отображение игроков своих клубов.
 
-> Extended by ADR-36: a club can become a tenant with its own main arena,
-> openness settings and membership history; the grouping below remains the
-> behavior of a plain group club.
+> Extended by ADR-36: the community (tenant) is a separate entity that owns
+> a main arena, openness settings and one or many clubs; a club keeps its
+> membership stint history and stays pure player grouping — the behavior
+> below is that of a plain group club.
 
 ## Выпадающий список выбора игроков
 

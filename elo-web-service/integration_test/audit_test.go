@@ -188,7 +188,7 @@ func TestAuditMatchCreateAndUpdate(t *testing.T) {
 	matchID := string(newID(t))
 	matchDate := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	createBody := fmt.Sprintf(`{"id":%q,"game_id":%q,"date":%q,"score":{%q:10,%q:5}}`, matchID, gameID, matchDate, playerA, playerB)
-	if w := doJSON(t, router, http.MethodPost, "/matches", alice, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/"+blueMenTenantUUID+"/matches", alice, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create match: %d %s", w.Code, w.Body.String())
 	}
 

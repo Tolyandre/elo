@@ -64,6 +64,16 @@ Tenant columns, NOT NULL — every tenant carries both:
 - `arena_membership_mode` — which matches count into the main arena,
   evaluated **at the match date** against the membership stint history of
   the tenant's clubs:
+  - `all` («Все партии», phase 7) — every rated match, membership
+    irrelevant. «Синие люди»'s mode since migration 075 (before that
+    `any_member`): the community counts everything it ever recorded — the
+    historical behavior of the arena it inherited from the global one. The
+    member-less exception disappears from its rating: previously recorded
+    matches without members re-enter at the recalculation the migration
+    queues. Coop matches stay out in every mode (ADR-33 — they settle no
+    rating and are community news only). Under `all` the tenant feed widens
+    to match the arena: it shows every match, not just current members'
+    (the feed must not be narrower than the rating).
   - `any_member` («Есть участник сообщества») — at least one participant was
     a member of any club of the tenant; friends playing along accumulate
     rating in the arena and are listed in its ranking;
@@ -71,8 +81,9 @@ Tenant columns, NOT NULL — every tenant carries both:
     members of (possibly different) clubs of the tenant. Former members keep
     their settlement history (player page, point-in-time ranks), but the
     arena lists and ranks only current members.
-  - «Синие люди» is created with `any_member`: member-less historical
-    matches deliberately leave the rating at the next recalculation.
+  - New tenants are created with `any_member` (the conservative default —
+    strangers do not enter the rating until the admin decides otherwise);
+    «Все партии» is an explicit choice.
 - `tournaments_openness` — `members_only` (registration restricted to
   current members) or `open`; «Синие люди» starts with `open` (today's
   behavior).
@@ -116,11 +127,52 @@ one: from the attribution phase on its unconditional filter stays on the row
 for mechanical reasons (schema flavor, the games-tab exclusion) but no
 longer decides membership — tenant rules do, and member-less matches leave
 its rating at the next recalculation (backdated edit, correction, market
-replay, or an openness/composition change). A fresh tenant arena is
+replay, or an openness/composition change; since phase 7 a member-less match
+cannot even be created — see the settlement section below — so only
+historical rows are affected). A fresh tenant arena is
 filter-less, so it is matched by the tenant predicate alone. The
 transactional settlement path consults the same rule before settling a match
-into the global arena (`TenantContainsPlayers` in matches/players; a
-rejected match still records its score rows — it just settles no rating).
+into the tenant's arena (`TenantContainsPlayers` in matches/players; under
+`all` it passes for everyone).
+
+### Matches and tables: tenant-scoped creation and settlement (phase 7)
+
+Matches have no `tenant_id` column — the read match set is not
+arena-filtered, and arena attribution decides per arena. Creation, though,
+names a tenant: **`POST /tenants/{id}/matches`** replaced the flat
+`POST /matches` (phase 7 — the same move tournaments and markets made in
+phase 3). The path tenant must exist (404) and **at least one participant
+must be a current member of it** (400 `ErrMatchOutsideTenant`) — the same
+predicate the tenant feed selects by and the match edit enforces, so create
+and edit align: a match is always created *for* a community it relates to.
+Offline-created matches capture the tenant at submit time
+(`PendingMatch.tenantId`) and the sync engine posts under it; legacy pending
+items without one fall back to the tenant in force at sync.
+
+Settlement keeps one performance-critical fast path. The **sweep anchor** —
+the arena whose settlement chain the transactional sweep
+(`RecalculateFrom`, used by edits, backdated creates and market deletes)
+re-settles — is the converted global arena («Синие люди»'s main arena). A
+match created under the anchor's tenant settles into it transactionally, as
+before. A match created under any **other** tenant writes its score rows,
+runs the market side (resolution/expiry are arena-independent), and lets the
+affected-arena drain replay that tenant's main arena from the match date in
+the same transaction — exactly the treatment every other non-anchor arena
+gets; the anchor itself, if the match counts into it (e.g. its mode is
+`all`), is replay-driven too via the same drain. `BlueMenArenaID` remains
+only the named anchor constant, not a runtime route: match settlement
+resolves the creating tenant's main arena from the path tenant.
+
+Game tables belong to a tenant too (`game_tables.tenant_id`, NOT NULL since
+076; pre-tenancy rows backfilled to «Синие люди»). Creates are tenant-scoped
+— **`POST /tenants/{id}/tables`** replaced the flat `POST /tables` — and the
+**seating is validated server-side at creation** against the tenant's
+openness rule (the same rule the match form applies client-side):
+`members_only` seats members only, `any_member` demands at least one current
+member, `all` accepts anyone. Later joins and submissions stay
+host-token-guarded only — a live game must never break mid-play. The lobby
+read is tenant-scoped: `GET /tables?tenant=` (required) lists only that
+tenant's live tables; `TableSummary` carries `tenant_id`.
 
 ### Tournaments and markets
 
@@ -147,14 +199,15 @@ participant list and at self-registration (withdrawal stays open), 403.
 `GET /tenants/{id}/feed` is the community's feed, **membership-scoped by
 design, not arena-attribution-scoped**: match events go to any current
 member's matches — of any club of the tenant (coop included), so friends'
-matches appear through the member they play with; correction events to
-corrections of current members; market events to the markets the tenant
-OWNS (a member's bet on another tenant's market is that tenant's news). A
-tournament match therefore appears in the tenant feed even when it does not
-count into the main arena rating; a tournament's own arena keeps counting
-all tournament matches regardless of openness. Match payloads carry
-settlement columns from the tenant's main arena. Clubs carry no feed — the
-community, not the club, is the feed's identity.
+matches appear through the member they play with; market events to the
+markets the tenant OWNS (a member's bet on another tenant's market is that
+tenant's news). A tournament match therefore appears in the tenant feed even
+when it does not count into the main arena rating; a tournament's own arena
+keeps counting all tournament matches regardless of openness. Match payloads
+carry settlement columns from the tenant's main arena. Clubs carry no
+feed — the community, not the club, is the feed's identity. Under `all`
+(phase 7) the match branch widens: every match is a feed event — the feed
+must not be narrower than the arena's rating.
 
 ### Tenant lifecycle
 
@@ -188,6 +241,24 @@ is tenant-scoped: opened with `?tenant=`, its rating, chart and
 Elo-per-game tables come from the tenant's main arena («Частые игры» counts
 every stored match, tenant-independent), and a note names the community the
 rating is from.
+
+**The global-arena concept is retired from the UI (phase 7).** The main
+page is the tenant's page, full stop: the nav item that used to say
+«Главная» is the current community — its icon and name, with the switcher
+beside it, and a quiet skeleton while the tenant scope resolves (never a
+global-arena fallback; a resolved-but-tenantless session reads «Выберите
+сообщество» and the chooser dialog opens). The arena view's page title falls
+back to the tenant's name, not «Главная». What remains deliberately
+**not** tenant-scoped: administration (`/admin`), the arena pages
+(`/arenas` — per-game, tag-filtered and camp arenas are community-crossing
+by design), the help pages, and — confirmed exceptions — the shared tools
+and references: calculators, the game catalog, and personal settings
+(«Мои настройки»). A market or tournament view opened by id belongs to its
+owning tenant implicitly. The «Сейчас играют» lobby and the header table
+icons render the current tenant's tables only (the feed-guard pattern:
+nothing loads before the tenant scope resolves, and a tenant switch
+refetches). A `/help/tenants` page documents communities, clubs and the
+openness rules for users.
 
 ## Migration plan
 
@@ -232,6 +303,18 @@ Staged forward, each phase shippable:
    the match-edit style; the admin journal tab on `/admin/tenants` shows the
    tenant's own events, and the admin list links each tenant to its main
    page (`/?tenant=`).
+7. **Refinements (this phase).** The third openness mode `all` («Все
+   партии») with «Синие люди» flipped to it (075 — the row is marked stale
+   so the worker re-interprets the whole history). Match and table creation
+   become tenant-scoped (`POST /tenants/{id}/matches`,
+   `POST /tenants/{id}/tables`; the flat creates are gone) with the ≥1
+   current member create guard aligning creation with edits, and the
+   settlement path resolving the creating tenant's main arena from the path
+   tenant (the anchor-arena parameterization described above). Game tables
+   gain `tenant_id` (076), the tenant-scoped lobby read, and the create-time
+   seating rule. The frontend retires the last global-arena UI («Главная» →
+   the tenant switcher item with a resolving skeleton), scopes the tables
+   lobby and header icons, and gains the `/help/tenants` page.
 
 ## Consequences
 
@@ -288,10 +371,12 @@ Staged forward, each phase shippable:
   match form validates the roster against the tenant's openness rule at
   creation (any_member: at least one member, else the match would never reach
   the feed; members_only: members only, enforced by restricting the player
-  pickers to the member set), the table form applies the same rules to its
-  seating, and the market form takes its tenant from the URL — a members_only
+  pickers to the member set; all: no restriction), the table form applies the
+  same rules to its seating, and the market form takes its tenant from the
+  URL — a members_only
   tenant's markets may target members only (the server already restricts
-  their bets). The main page's market cards render only the current tenant's
+  their bets). (Phase 7 adds the server-side twins: the create endpoints
+  enforce the rules these forms preview.) The main page's market cards render only the current tenant's
   markets, consistent with the feed. Arena responses carry `tenant_id` (the
   API mapping had omitted it), so the arena view's edit pencil correctly
   stays off the system-managed main arena. Match edits are tenant-scoped
@@ -301,4 +386,23 @@ Staged forward, each phase shippable:
   replay stays the settling side's job; the edit page carries `?tenant=` in
   its URL and does not work tenantless.
 - The dev seed keeps its default club as the «Синие люди» tenant's club and
-  seeds the tenant itself (with its `blue-figure` icon, phase 6).
+  seeds the tenant itself (with its `blue-figure` icon, phase 6; with its
+  `all` openness, phase 7).
+- **Phase 7 makes creation and settlement tenant-generic.** A match can no
+  longer exist outside a community: creation under a tenant demands a
+  current member among the participants (the create-side twin of the edit
+  guard), and the settlement path settles into the creating tenant's main
+  arena — transactionally when that arena is the sweep anchor, through the
+  replay otherwise. The safety valve "recorded but settles nowhere" narrows:
+  it survives only under `members_only` (a member-plus-guest match is
+  accepted and settles nothing); under `all` every accepted match settles.
+  The member-less matches that the `any_member` era left unrated re-enter
+  «Синие люди»'s rating when migration 075 flips the mode — that rewrite is
+  the point of «Все партии», and the audit trail records the settings
+  change.
+- **Phase 7 scopes the tables world.** The «Сейчас играют» lobby, the
+  header table icons and the table create form all work against the current
+  tenant; a table created under one community is invisible to another. The
+  server rejects, at creation only, a seating that does not relate to the
+  tenant (400) — the flow mirrors the match form's client rule, and live
+  games stay unguarded after creation by design.

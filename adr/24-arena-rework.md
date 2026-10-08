@@ -10,6 +10,14 @@ settlement discriminator; the unified ledger keeps `match` / `market` /
 `market_guarantor`), and bet limits are no longer a stored `players.bet_limit`
 column — they are derived at read time from the market's tenant main arena.
 
+**Update (ADR-36 phases 2–7):** the global arena became «Синие люди»'s main
+arena; per-tenant attribution, tenant-scoped reads and the background
+recalculation supersede the global-arena statements in this ADR's body —
+reads named "served from the global arena" are tenant-scoped (a required
+`?tenant=` names the arena), and the arena whose settlement chain the
+transactional sweep maintains is the anchor arena (the converted global
+one). See ADR-36 for the authoritative wording.
+
 ## Problem
 
 - Per-game arenas are not configurable, and an arena spanning several games
