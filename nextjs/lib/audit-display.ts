@@ -26,6 +26,7 @@ export type MatchUpdateRow =
 
 /** One row of the expanded tenant-settings diff (ADR-36). */
 export type TenantUpdateRow =
+    | { kind: "name"; old: string | null; new: string | null }
     | { kind: "membership-mode"; old: string; new: string }
     | { kind: "tournaments-openness"; old: string; new: string }
     | { kind: "starting-rating"; old: number; new: number }
@@ -52,8 +53,6 @@ export function auditSummary(entry: AuditEntry, resolveName?: AuditNameResolver)
             return `создал ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
         case "updated":
             return `изменил ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
-        case "renamed":
-            return `переименовал ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
         case "deleted":
             return `удалил ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
     }
@@ -87,14 +86,11 @@ function detailsName(entry: AuditEntry): string | undefined {
     return undefined;
 }
 
-/** Whether the row expands into a details section (chevron affordance). */
+/** Whether the row expands into a details section (chevron affordance): any
+ * update that carries a field diff. Legacy updated rows with the plain
+ * entity shape (name only) have nothing to expand. */
 export function auditIsExpandable(entry: AuditEntry): boolean {
-    return (
-        entry.action === "renamed" ||
-        (entry.action === "updated" && entry.entity_type === "match") ||
-        (entry.action === "updated" && entry.entity_type === "tenant") ||
-        (entry.action === "updated" && entry.entity_type === "user")
-    );
+    return entry.action === "updated" && entry.details !== null && entry.details.kind !== "entity";
 }
 
 /** Match-edit diff as display rows: date, game, then players, then calculator. */
@@ -126,8 +122,9 @@ export function formatScore(value: number | null | undefined): string {
     return String(value);
 }
 
-/** Tenant-settings diff as display rows: openness pair, arena settings, icon, clubs. */
+/** Tenant-settings diff as display rows: name, openness pair, arena settings, icon, clubs. */
 export function tenantUpdateRows(changes: {
+    name?: { from: string | null; to: string | null } | null;
     arena_membership_mode?: { from: string; to: string } | null;
     tournaments_openness?: { from: string; to: string } | null;
     starting_rating?: { from: number; to: number } | null;
@@ -136,6 +133,9 @@ export function tenantUpdateRows(changes: {
     clubs?: { added_club_ids: Base58ID[]; removed_club_ids: Base58ID[] } | null;
 }): TenantUpdateRow[] {
     const rows: TenantUpdateRow[] = [];
+    if (changes.name) {
+        rows.push({ kind: "name", old: changes.name.from, new: changes.name.to });
+    }
     if (changes.arena_membership_mode) {
         rows.push({ kind: "membership-mode", old: changes.arena_membership_mode.from, new: changes.arena_membership_mode.to });
     }

@@ -105,14 +105,14 @@ func TestAuditGameLifecycleAndRename(t *testing.T) {
 
 	page := listAudit(t, router, "?entity_type=game")
 	if len(page.Data) != 2 {
-		t.Fatalf("expected 2 game events (created, renamed), got %d: %+v", len(page.Data), page.Data)
+		t.Fatalf("expected 2 game events (created, updated with the rename diff), got %d: %+v", len(page.Data), page.Data)
 	}
-	// Latest first: the rename precedes the created event.
-	if page.Data[0].Action != "renamed" || page.Data[1].Action != "created" {
-		t.Errorf("order = [%s, %s], want [renamed, created]", page.Data[0].Action, page.Data[1].Action)
+	// Latest first: the update precedes the created event.
+	if page.Data[0].Action != "updated" || page.Data[1].Action != "created" {
+		t.Errorf("order = [%s, %s], want [updated, created]", page.Data[0].Action, page.Data[1].Action)
 	}
 	if page.Data[1].ActorName != "Алиса" || page.Data[0].ActorName != "Боб" {
-		t.Errorf("actors = [%s created, %s renamed], want [Алиса, Боб]", page.Data[1].ActorName, page.Data[0].ActorName)
+		t.Errorf("actors = [%s created, %s updated], want [Алиса, Боб]", page.Data[1].ActorName, page.Data[0].ActorName)
 	}
 
 	var createdDetails struct {
@@ -125,15 +125,26 @@ func TestAuditGameLifecycleAndRename(t *testing.T) {
 		t.Errorf("created details name = %q, want %q", createdDetails.Name, "Старое имя")
 	}
 
-	var renameDetails struct {
-		OldName string `json:"old_name"`
-		NewName string `json:"new_name"`
+	// The rename rides the field diff: display name and alias both moved.
+	var updateDetails struct {
+		Name *struct {
+			From *string `json:"from"`
+			To   *string `json:"to"`
+		} `json:"name"`
+		Alias *struct {
+			From *string `json:"from"`
+			To   *string `json:"to"`
+		} `json:"alias"`
 	}
-	if err := json.Unmarshal(page.Data[0].Details, &renameDetails); err != nil {
-		t.Fatalf("rename details: %v (%s)", err, page.Data[0].Details)
+	if err := json.Unmarshal(page.Data[0].Details, &updateDetails); err != nil {
+		t.Fatalf("update details: %v (%s)", err, page.Data[0].Details)
 	}
-	if renameDetails.OldName != "Старое имя" || renameDetails.NewName != "Новое имя" {
-		t.Errorf("rename details = %+v, want Старое имя → Новое имя", renameDetails)
+	if updateDetails.Name == nil || updateDetails.Name.From == nil || *updateDetails.Name.From != "Старое имя" ||
+		updateDetails.Name.To == nil || *updateDetails.Name.To != "Новое имя" {
+		t.Errorf("name diff = %+v, want Старое имя → Новое имя", updateDetails.Name)
+	}
+	if updateDetails.Alias == nil || updateDetails.Alias.From != nil || updateDetails.Alias.To == nil || *updateDetails.Alias.To != "Новое имя" {
+		t.Errorf("alias diff = %+v, want null → Новое имя", updateDetails.Alias)
 	}
 
 	// Delete captures the name; the game has no matches so the delete succeeds.
@@ -289,11 +300,24 @@ func TestAuditPlayerAndClubEvents(t *testing.T) {
 	if len(playerPage.Data) != 3 {
 		t.Fatalf("expected 3 player events, got %+v", playerPage.Data)
 	}
-	wantActions := []string{"deleted", "renamed", "created"}
+	wantActions := []string{"deleted", "updated", "created"}
 	for i, want := range wantActions {
 		if playerPage.Data[i].Action != want {
 			t.Errorf("player event %d = %s, want %s", i, playerPage.Data[i].Action, want)
 		}
+	}
+	var playerNameDiff struct {
+		Name *struct {
+			From *string `json:"from"`
+			To   *string `json:"to"`
+		} `json:"name"`
+	}
+	if err := json.Unmarshal(playerPage.Data[1].Details, &playerNameDiff); err != nil {
+		t.Fatalf("player update details: %v (%s)", err, playerPage.Data[1].Details)
+	}
+	if playerNameDiff.Name == nil || playerNameDiff.Name.From == nil || *playerNameDiff.Name.From != "Старый" ||
+		playerNameDiff.Name.To == nil || *playerNameDiff.Name.To != "Новый" {
+		t.Errorf("player name diff = %+v, want Старый → Новый", playerNameDiff.Name)
 	}
 
 	clubID := string(newID(t))
@@ -310,9 +334,9 @@ func TestAuditPlayerAndClubEvents(t *testing.T) {
 
 	clubPage := listAudit(t, router, "?entity_type=club&entity_id="+clubID)
 	if len(clubPage.Data) != 3 {
-		t.Fatalf("expected 3 club events (renamed, icon, created), got %+v", clubPage.Data)
+		t.Fatalf("expected 3 club events (rename diff, icon, created), got %+v", clubPage.Data)
 	}
-	wantClubActions := []string{"renamed", "updated", "created"}
+	wantClubActions := []string{"updated", "updated", "created"}
 	for i, want := range wantClubActions {
 		if clubPage.Data[i].Action != want {
 			t.Errorf("club event %d = %s, want %s", i, clubPage.Data[i].Action, want)
@@ -330,12 +354,18 @@ func TestAuditPlayerAndClubEvents(t *testing.T) {
 	if iconChange.Icon == nil || iconChange.Icon.From != nil || iconChange.Icon.To == nil || *iconChange.Icon.To != "clover" {
 		t.Errorf("club icon diff = %+v, want null → clover", iconChange.Icon)
 	}
-	var rename struct {
-		OldName string `json:"old_name"`
-		NewName string `json:"new_name"`
+	var clubNameDiff struct {
+		Name *struct {
+			From *string `json:"from"`
+			To   *string `json:"to"`
+		} `json:"name"`
 	}
-	if err := json.Unmarshal(clubPage.Data[0].Details, &rename); err != nil || rename.OldName != "Клуб Один" || rename.NewName != "Клуб Два" {
-		t.Errorf("club rename details = %s, want Клуб Один → Клуб Два", clubPage.Data[0].Details)
+	if err := json.Unmarshal(clubPage.Data[0].Details, &clubNameDiff); err != nil {
+		t.Fatalf("club rename details: %v (%s)", err, clubPage.Data[0].Details)
+	}
+	if clubNameDiff.Name == nil || clubNameDiff.Name.From == nil || *clubNameDiff.Name.From != "Клуб Один" ||
+		clubNameDiff.Name.To == nil || *clubNameDiff.Name.To != "Клуб Два" {
+		t.Errorf("club name diff = %+v, want Клуб Один → Клуб Два", clubNameDiff.Name)
 	}
 }
 

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/player-update.v1.json",
+  "title": "Audit player-update details (v1)",
+  "description": "What changed in one player update — the name. A no-op update produces no player-update row.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

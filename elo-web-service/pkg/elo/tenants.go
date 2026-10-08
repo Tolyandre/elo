@@ -204,7 +204,7 @@ func (s *TenantService) UpdateTenantName(ctx context.Context, tenantID id.ID, na
 			return err
 		}
 		if old.Name != name {
-			if err := recordAuditEvent(ctx, q, actor, audit.EntityTenant, audit.ActionRenamed, tenantID, audit.KindRename, audit.NewRenameDetails(old.Name, name)); err != nil {
+			if err := recordAuditEvent(ctx, q, actor, audit.EntityTenant, audit.ActionUpdated, tenantID, audit.KindTenantUpdate, audit.NewTenantNameChange(old.Name, name)); err != nil {
 				return err
 			}
 			// The main arena is named after the tenant at creation; keep it in

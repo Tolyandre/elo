@@ -2,12 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://elo/audit/tenant-update.v1.json",
   "title": "Audit tenant-update details (v1)",
-  "description": "What changed in one tenant settings/composition update (ADR-36): the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing produces no tenant-update row.",
+  "description": "What changed in one tenant settings/composition update (ADR-36): the name, the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing produces no tenant-update row.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "leagues_changed"],
   "properties": {
     "schema_version": { "const": 1 },
+    "name": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
     "arena_membership_mode": {
       "type": ["object", "null"],
       "additionalProperties": false,

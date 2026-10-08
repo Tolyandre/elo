@@ -5,16 +5,18 @@ import type { components } from "../api-types.gen";
 import type { Base58ID } from "@/lib/id";
 
 export type AuditEntityType = "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament" | "tenant" | "user";
-export type AuditAction = "created" | "updated" | "renamed" | "deleted";
+export type AuditAction = "created" | "updated" | "deleted";
 
 /** Details narrowed into a discriminated union by action/entity_type. */
 export type AuditEntryDetails =
     | { kind: "entity"; name: string }
-    | { kind: "rename"; oldName: string; newName: string }
     | { kind: "match-update"; changes: components["schemas"]["AuditMatchUpdateDetails"] }
     | { kind: "tenant-update"; changes: components["schemas"]["AuditTenantUpdateDetails"] }
     | { kind: "user-update"; changes: components["schemas"]["AuditUserUpdateDetails"] }
     | { kind: "club-update"; changes: components["schemas"]["AuditClubUpdateDetails"] }
+    | { kind: "game-update"; changes: components["schemas"]["AuditGameUpdateDetails"] }
+    | { kind: "player-update"; changes: components["schemas"]["AuditPlayerUpdateDetails"] }
+    | { kind: "tag-update"; changes: components["schemas"]["AuditTagUpdateDetails"] }
     | { kind: "arena-camp-config"; changes: components["schemas"]["AuditArenaCampConfigDetails"] }
     | { kind: "camp-link"; op: string; matchId: string }
     | { kind: "tournament-config"; changes: components["schemas"]["AuditTournamentConfigDetails"] }
@@ -43,9 +45,7 @@ export type AuditPage = {
 function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
     let details: AuditEntryDetails | null = null;
     if (e.details) {
-        if (e.action === "renamed" && "old_name" in e.details) {
-            details = { kind: "rename", oldName: e.details.old_name, newName: e.details.new_name };
-        } else if (e.action === "updated" && "player_changes" in e.details) {
+        if (e.action === "updated" && "player_changes" in e.details) {
             details = { kind: "match-update", changes: e.details };
         } else if (e.action === "updated" && "leagues_changed" in e.details) {
             details = { kind: "tenant-update", changes: e.details };
@@ -53,6 +53,15 @@ function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
             details = { kind: "user-update", changes: e.details };
         } else if (e.action === "updated" && "players_changed" in e.details) {
             details = { kind: "club-update", changes: e.details };
+        } else if (e.action === "updated" && e.entity_type === "game" &&
+                   // Legacy updated rows carry the entity shape (a string
+                   // name); field diffs carry the name as an object.
+                   !("name" in e.details && typeof e.details.name === "string")) {
+            details = { kind: "game-update", changes: e.details as components["schemas"]["AuditGameUpdateDetails"] };
+        } else if (e.action === "updated" && e.entity_type === "player") {
+            details = { kind: "player-update", changes: e.details as components["schemas"]["AuditPlayerUpdateDetails"] };
+        } else if (e.action === "updated" && e.entity_type === "tag") {
+            details = { kind: "tag-update", changes: e.details as components["schemas"]["AuditTagUpdateDetails"] };
         } else if ("origin_kind" in e.details) {
             details = { kind: "slot-link", changes: e.details as components["schemas"]["AuditSlotLinkDetails"] };
         } else if ("before_player_ids" in e.details || "after_player_ids" in e.details) {

@@ -32,21 +32,21 @@ describe("auditSummary", () => {
 
     it("user permission updates read 'изменил пользователя' and expand to the diff", () => {
         expect(auditSummary(entry({ entity_type: "user", action: "updated" }))).toBe("изменил пользователя");
-        expect(auditIsExpandable(entry({ entity_type: "user", action: "updated" }))).toBe(true);
+        expect(auditIsExpandable(entry({ entity_type: "user", action: "updated", details: { kind: "user-update", changes: { schema_version: 1, allow_editing: { from: false, to: true } } } }))).toBe(true);
     });
 
-    it("renames keep the old→new pair for the expanded section", () => {
-        const e = entry({ action: "renamed", details: { kind: "rename", oldName: "Было", newName: "Стало" } });
-        expect(auditSummary(e)).toBe("переименовал игру");
+    it("updates (renames included) expand into the field diff and show the current name", () => {
+        const e = entry({ action: "updated", details: { kind: "game-update", changes: { schema_version: 1, name: { from: "Было", to: "Стало" } } } });
         expect(auditIsExpandable(e)).toBe(true);
+        expect(auditSummary(e)).toBe("изменил игру");
     });
 
     it("inlines the context-resolved current name on every action", () => {
         const resolveName: AuditNameResolver = (type, id) => (id === "eid" ? `Имя ${type}` : undefined);
         expect(auditSummary(entry({ entity_type: "tenant", action: "updated" }), resolveName))
             .toBe("изменил сообщество «Имя tenant»");
-        expect(auditSummary(entry({ action: "renamed", details: { kind: "rename", oldName: "Было", newName: "Стало" } }), resolveName))
-            .toBe("переименовал игру «Имя game»");
+        expect(auditSummary(entry({ action: "updated", details: { kind: "game-update", changes: { schema_version: 1, name: { from: "Было", to: "Стало" } } } }), resolveName))
+            .toBe("изменил игру «Имя game»");
         expect(auditSummary(entry({ entity_type: "player", action: "deleted", details: { kind: "entity", name: "Аня" } }), resolveName))
             .toBe("удалил игрока «Имя player»");
     });
@@ -66,13 +66,15 @@ describe("auditSummary", () => {
 });
 
 describe("auditIsExpandable", () => {
-    it("expands only renames and match edits", () => {
+    it("expands updates that carry a field diff", () => {
         expect(auditIsExpandable(entry({ action: "created" }))).toBe(false);
         expect(auditIsExpandable(entry({ action: "deleted" }))).toBe(false);
-        expect(auditIsExpandable(entry({ action: "renamed", details: { kind: "rename", oldName: "a", newName: "b" } }))).toBe(true);
-        expect(auditIsExpandable(entry({ entity_type: "match", action: "updated" }))).toBe(true);
-        // A non-match "updated" never occurs today, but must not claim expandability.
-        expect(auditIsExpandable(entry({ action: "updated" }))).toBe(false);
+        expect(auditIsExpandable(entry({ entity_type: "match", action: "updated", details: { kind: "match-update", changes: { schema_version: 1, date: null, game: null, player_changes: [], calculator_changed: false } } }))).toBe(true);
+        expect(auditIsExpandable(entry({ action: "updated", details: { kind: "player-update", changes: { schema_version: 1, name: { from: "a", to: "b" } } } }))).toBe(true);
+        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "updated", details: { kind: "tenant-update", changes: { schema_version: 1, name: null, arena_membership_mode: null, tournaments_openness: null, starting_rating: null, leagues_changed: false, icon: null, clubs: null } } }))).toBe(true);
+        // Legacy updated rows with the plain entity shape have no diff to show.
+        expect(auditIsExpandable(entry({ action: "updated", details: { kind: "entity", name: "x" } }))).toBe(false);
+        expect(auditIsExpandable(entry({ entity_type: "match", action: "updated" }))).toBe(false);
     });
 });
 
@@ -113,8 +115,9 @@ describe("formatScore", () => {
 });
 
 describe("tenantUpdateRows", () => {
-    it("maps every changed field to a row", () => {
+    it("maps the name row first, then every changed field", () => {
         const rows = tenantUpdateRows({
+            name: { from: "Было", to: "Стало" },
             arena_membership_mode: { from: "any_member", to: "members_only" },
             tournaments_openness: { from: "open", to: "members_only" },
             starting_rating: { from: 500, to: 100 },
@@ -122,14 +125,16 @@ describe("tenantUpdateRows", () => {
             clubs: { added_club_ids: ["c1" as Base58ID], removed_club_ids: ["c2" as Base58ID, "c3" as Base58ID] },
         });
         expect(rows.map((r) => r.kind)).toEqual([
+            "name",
             "membership-mode",
             "tournaments-openness",
             "starting-rating",
             "leagues",
             "clubs",
         ]);
-        expect(rows[2]).toEqual({ kind: "starting-rating", old: 500, new: 100 });
-        expect(rows[4]).toEqual({ kind: "clubs", added: ["c1"], removed: ["c2", "c3"] });
+        expect(rows[1]).toEqual({ kind: "membership-mode", old: "any_member", new: "members_only" });
+        expect(rows[3]).toEqual({ kind: "starting-rating", old: 500, new: 100 });
+        expect(rows[5]).toEqual({ kind: "clubs", added: ["c1"], removed: ["c2", "c3"] });
     });
 
     it("skips untouched fields", () => {
@@ -140,9 +145,9 @@ describe("tenantUpdateRows", () => {
     });
 });
 
-describe("auditIsExpandable", () => {
+describe("auditIsExpandable for tenants", () => {
     it("expands tenant settings updates", () => {
-        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "updated" }))).toBe(true);
+        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "updated", details: { kind: "tenant-update", changes: { schema_version: 1, name: null, arena_membership_mode: null, tournaments_openness: null, starting_rating: null, leagues_changed: false, icon: null, clubs: null } } }))).toBe(true);
         expect(auditIsExpandable(entry({ entity_type: "tenant", action: "created" }))).toBe(false);
     });
 });

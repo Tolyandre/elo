@@ -2,13 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://elo/audit/club-update.v1.json",
   "title": "Audit club-update details (v1)",
-  "description": "What changed in one club update: the icon key or the membership (one add/remove per event — membership is changed stint-by-stint, not as a composition PUT). Untouched fields stay null/false; a no-op change produces no club-update row.",
+  "description": "What changed in one club update: the name, the icon key, or the membership (one add/remove per event — membership is changed stint-by-stint, not as a composition PUT). Untouched fields stay null/false; a no-op change produces no club-update row.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "players_changed"],
   "properties": {
     "schema_version": { "const": 1 },
     "players_changed": { "type": "boolean" },
+    "name": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
     "icon": {
       "type": ["object", "null"],
       "additionalProperties": false,

@@ -17,7 +17,6 @@ import { useAuditEntityName } from "./use-audit-entity-name";
 const ACTION_ICON: Record<AuditAction, typeof Plus> = {
     created: Plus,
     updated: Pencil,
-    renamed: Pencil,
     deleted: Trash2,
 };
 

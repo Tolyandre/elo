@@ -3,6 +3,7 @@ package elo
 import (
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/tesera"
 )
@@ -49,28 +50,32 @@ func TestDisplayName(t *testing.T) {
 	}
 }
 
-func TestGameMetaChanged(t *testing.T) {
+func TestBuildGameUpdateDetails(t *testing.T) {
 	old := db.Game{Name: "X", NameEn: pgText("X"), GameMode: GameModeCompetitive}
-	same := GameMetaPatch{
-		Alias:     nil,
-		NameEn:    strPtr("X"),
-		NameRu:    nil,
-		BggRef:    nil,
-		TeseraRef: nil,
-		GameMode:  strPtr(GameModeCompetitive),
+	if !buildGameUpdateDetails(old, old).IsEmpty() {
+		t.Error("identical rows must produce an empty diff")
 	}
-	if gameMetaChanged(old, "", "X", "", GameModeCompetitive, same) {
-		t.Error("identical metadata must not report a change")
+
+	renamed := old
+	renamed.NameEn = pgText("Y")
+	renamed.Name = "Y"
+	d := buildGameUpdateDetails(old, renamed)
+	if d.IsEmpty() || d.Name == nil || d.NameEn == nil {
+		t.Errorf("rename diff = %+v, want name and name_en changes", d)
 	}
-	changed := same
-	changed.BggRef = int64Ptr(822)
-	if !gameMetaChanged(old, "", "X", "", GameModeCompetitive, changed) {
-		t.Error("bgg ref change must be detected")
+
+	bggChanged := old
+	bggChanged.BggID = pgtype.Int4{Int32: 822, Valid: true}
+	d = buildGameUpdateDetails(old, bggChanged)
+	if d.IsEmpty() || d.BggRef == nil || d.BggRef.From != nil || d.BggRef.To == nil || *d.BggRef.To != 822 {
+		t.Errorf("bgg diff = %+v, want null → 822", d.BggRef)
 	}
-	modeChanged := same
-	modeChanged.GameMode = strPtr(GameModeCoop)
-	if !gameMetaChanged(old, "", "X", "", GameModeCoop, modeChanged) {
-		t.Error("game mode change must be detected")
+
+	modeChanged := old
+	modeChanged.GameMode = GameModeCoop
+	d = buildGameUpdateDetails(old, modeChanged)
+	if d.IsEmpty() || d.GameMode == nil || d.GameMode.To != GameModeCoop {
+		t.Errorf("mode diff = %+v, want → coop", d.GameMode)
 	}
 }
 

@@ -174,14 +174,6 @@ func auditDetailsFromStored(kind string, raw json.RawMessage) (*AuditEntry_Detai
 		if err := details.FromAuditEntityDetails(v); err != nil {
 			return nil, err
 		}
-	case audit.KindRename:
-		var v AuditRenameDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditRenameDetails(v); err != nil {
-			return nil, err
-		}
 	case audit.KindMatchUpdate:
 		var v AuditMatchUpdateDetails
 		if err := json.Unmarshal(shortened, &v); err != nil {
@@ -212,6 +204,30 @@ func auditDetailsFromStored(kind string, raw json.RawMessage) (*AuditEntry_Detai
 			return nil, err
 		}
 		if err := details.FromAuditAuditClubUpdateDetails(v); err != nil {
+			return nil, err
+		}
+	case audit.KindGameUpdate:
+		var v AuditGameUpdateDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditGameUpdateDetails(v); err != nil {
+			return nil, err
+		}
+	case audit.KindPlayerUpdate:
+		var v AuditPlayerUpdateDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditPlayerUpdateDetails(v); err != nil {
+			return nil, err
+		}
+	case audit.KindTagUpdate:
+		var v AuditTagUpdateDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditTagUpdateDetails(v); err != nil {
 			return nil, err
 		}
 	case audit.KindArenaCampConf:

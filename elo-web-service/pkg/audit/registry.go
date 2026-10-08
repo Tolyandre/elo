@@ -26,12 +26,14 @@ var schemasFS embed.FS
 // Details document kinds, stored in audit_log.details_kind. The DB CHECK
 // constraint on that column must be kept in sync with this set.
 const (
-	KindEntity           = "entity"            // created/deleted game, player, club, or tag
-	KindRename           = "rename"            // renamed game, player, or club
+	KindEntity           = "entity"            // created/deleted game, player, club, tag, or tenant
 	KindMatchUpdate      = "match-update"      // edited match
-	KindTenantUpdate     = "tenant-update"     // tenant settings / composition update (ADR-36)
+	KindTenantUpdate     = "tenant-update"     // tenant name / settings / composition update (ADR-36)
 	KindUserUpdate       = "user-update"       // edit-permission toggle on a user (/admin/users)
-	KindClubUpdate       = "club-update"       // club icon / membership change (ADR-36)
+	KindClubUpdate       = "club-update"       // club name / icon / membership change (ADR-36)
+	KindGameUpdate       = "game-update"       // game meta update, rename included
+	KindPlayerUpdate     = "player-update"     // player name change
+	KindTagUpdate        = "tag-update"        // tag name change
 	KindArenaCampConf    = "arena-camp-config" // camp arena create/update/delete (ADR-27)
 	KindCampLink         = "camp-link"         // match attached to / detached from a camp (ADR-27)
 	KindTournamentConfig = "tournament-config" // tournament create / config update (ADR-26)
@@ -57,11 +59,11 @@ const (
 )
 
 // Audited actions, stored in audit_log.action. Kept in sync with the DB CHECK
-// constraint.
+// constraint. A rename is not an action of its own: it is an `updated` whose
+// details carry the name's before → after (migration 077).
 const (
 	ActionCreated = "created"
 	ActionUpdated = "updated"
-	ActionRenamed = "renamed"
 	ActionDeleted = "deleted"
 )
 

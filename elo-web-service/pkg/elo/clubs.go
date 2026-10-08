@@ -106,7 +106,7 @@ func (s *ClubService) UpdateClub(ctx context.Context, clubID id.ID, name string,
 			return err
 		}
 		if old.Name != name {
-			return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionRenamed, clubID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
+			return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionUpdated, clubID, audit.KindClubUpdate, audit.NewClubNameChange(old.Name, name))
 		}
 		return nil
 	})

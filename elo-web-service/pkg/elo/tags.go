@@ -102,7 +102,7 @@ func (s *TagService) UpdateTagName(ctx context.Context, tagID id.ID, name string
 		}
 		updated = TagWithUsage{Id: t.ID, Name: t.Name, GameCount: int(count)}
 		if old.Name != name {
-			return recordAuditEvent(ctx, q, actor, audit.EntityTag, audit.ActionRenamed, tagID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
+			return recordAuditEvent(ctx, q, actor, audit.EntityTag, audit.ActionUpdated, tagID, audit.KindTagUpdate, audit.NewTagUpdateDetails(old.Name, name))
 		}
 		return nil
 	})

@@ -1994,20 +1994,18 @@ export interface components {
             /** @enum {string} */
             entity_type: "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament" | "tenant" | "user";
             entity_id: components["schemas"]["Base58ID"];
-            /** @enum {string} */
-            action: "created" | "updated" | "renamed" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club icon/membership, ADR-36); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
-            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditTenantUpdateDetails"] | components["schemas"]["AuditUserUpdateDetails"] | components["schemas"]["AuditClubUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
+            /**
+             * @description A rename is an `updated` whose details carry the name's before → after (migration 077 retired the dedicated action).
+             * @enum {string}
+             */
+            action: "created" | "updated" | "deleted";
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
+            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditTenantUpdateDetails"] | components["schemas"]["AuditUserUpdateDetails"] | components["schemas"]["AuditClubUpdateDetails"] | components["schemas"]["AuditGameUpdateDetails"] | components["schemas"]["AuditPlayerUpdateDetails"] | components["schemas"]["AuditTagUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
         };
         AuditEntityDetails: {
             schema_version: number;
             /** @description Entity name at the moment of creation/deletion */
             name: string;
-        };
-        AuditRenameDetails: {
-            schema_version: number;
-            old_name: string;
-            new_name: string;
         };
         AuditMatchUpdateDetails: {
             schema_version: number;
@@ -2032,9 +2030,13 @@ export interface components {
             }[];
             calculator_changed: boolean;
         };
-        /** @description What changed in one tenant settings/composition update (ADR-36): the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing carries the plain entity details instead. */
+        /** @description What changed in one tenant settings/composition update (ADR-36): the name, the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing produces no tenant-update row. */
         AuditTenantUpdateDetails: {
             schema_version: number;
+            name?: {
+                from: string | null;
+                to: string | null;
+            } | null;
             arena_membership_mode?: {
                 /** @enum {string} */
                 from: "any_member" | "members_only";
@@ -2063,6 +2065,68 @@ export interface components {
                 added_club_ids: components["schemas"]["Base58ID"][];
                 removed_club_ids: components["schemas"]["Base58ID"][];
             } | null;
+        };
+        /** @description Everything that changed in one game meta update, rename included (the display name follows alias/name_ru/name_en). Fields the update did not touch stay absent; an update that changed nothing produces no game-update row. */
+        AuditGameUpdateDetails: {
+            schema_version: number;
+            name?: {
+                from: string | null;
+                to: string | null;
+            } | null;
+            alias?: {
+                from: string | null;
+                to: string | null;
+            } | null;
+            name_ru?: {
+                from: string | null;
+                to: string | null;
+            } | null;
+            name_en?: {
+                from: string | null;
+                to: string | null;
+            } | null;
+            bgg_ref?: {
+                /** Format: int32 */
+                from: number | null;
+                /** Format: int32 */
+                to: number | null;
+            } | null;
+            tesera_ref?: {
+                /** Format: int32 */
+                from: number | null;
+                /** Format: int32 */
+                to: number | null;
+            } | null;
+            game_mode?: {
+                from: string;
+                to: string;
+            } | null;
+            /** @description Box-art URL fill from the BGG enrichment. */
+            image_url?: {
+                from: string | null;
+                to: string | null;
+            } | null;
+            /** @description Thumbnail URL fill from the BGG enrichment. */
+            image_thumb_url?: {
+                from: string | null;
+                to: string | null;
+            } | null;
+        };
+        /** @description What changed in one player update — the name. A no-op update produces no player-update row. */
+        AuditPlayerUpdateDetails: {
+            schema_version: number;
+            name: {
+                from: string | null;
+                to: string | null;
+            };
+        };
+        /** @description What changed in one tag update — the name. A no-op update produces no tag-update row. */
+        AuditTagUpdateDetails: {
+            schema_version: number;
+            name: {
+                from: string | null;
+                to: string | null;
+            };
         };
         AuditPage: {
             status: string;
@@ -2226,10 +2290,14 @@ export interface components {
                 to: boolean;
             };
         };
-        /** @description What changed in one club update: the icon key or the membership (one add/remove per event — membership is changed stint-by-stint, not as a composition PUT). Untouched fields stay null/false; a no-op change produces no club-update row. */
+        /** @description What changed in one club update: the name, the icon key, or the membership (one add/remove per event — membership is changed stint-by-stint, not as a composition PUT). Untouched fields stay null/false; a no-op change produces no club-update row. */
         AuditClubUpdateDetails: {
             schema_version: number;
             players_changed: boolean;
+            name?: {
+                from: string | null;
+                to: string | null;
+            } | null;
             /** @description Icon key change; a null side means "no icon" there. */
             icon?: {
                 from: string | null;

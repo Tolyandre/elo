@@ -78,15 +78,18 @@ AuditEntry:
       $ref: './common.yaml#/Base58ID'
     action:
       type: string
-      enum: [created, updated, renamed, deleted]
+      enum: [created, updated, deleted]
+      description: A rename is an `updated` whose details carry the name's before → after (migration 077 retired the dedicated action).
     details:
       description: >-
         Action-specific payload; null when the event carries no details (match
         created). Narrow by action: entity → AuditEntityDetails (created/deleted
-        of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated →
+        of game/player/club/tag/tenant), updated →
         AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant
-        settings/composition) or AuditUserUpdateDetails (edit-permission toggle)
-        or AuditClubUpdateDetails (club icon/membership, ADR-36);
+        name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle)
+        or AuditClubUpdateDetails (club name/icon/membership, ADR-36)
+        or AuditGameUpdateDetails (game meta, rename included)
+        or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name);
         arena → AuditArenaCampConfigDetails
         (camp config) or AuditCampLinkDetails (match attach/detach);
         tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails /
@@ -94,11 +97,13 @@ AuditEntry:
         AuditSlotAdjustDetails (ADR-26).
       oneOf:
         - $ref: '#/AuditEntityDetails'
-        - $ref: '#/AuditRenameDetails'
         - $ref: '#/AuditMatchUpdateDetails'
         - $ref: '#/AuditTenantUpdateDetails'
         - $ref: '#/AuditUserUpdateDetails'
         - $ref: '#/AuditClubUpdateDetails'
+        - $ref: '#/AuditGameUpdateDetails'
+        - $ref: '#/AuditPlayerUpdateDetails'
+        - $ref: '#/AuditTagUpdateDetails'
         - $ref: '#/AuditArenaCampConfigDetails'
         - $ref: '#/AuditCampLinkDetails'
         - $ref: '#/AuditTournamentConfigDetails'
@@ -118,17 +123,6 @@ AuditEntityDetails:
     name:
       type: string
       description: Entity name at the moment of creation/deletion
-
-AuditRenameDetails:
-  type: object
-  required: [schema_version, old_name, new_name]
-  properties:
-    schema_version:
-      type: integer
-    old_name:
-      type: string
-    new_name:
-      type: string
 
 AuditMatchUpdateDetails:
   type: object
@@ -181,14 +175,25 @@ AuditMatchUpdateDetails:
 AuditTenantUpdateDetails:
   type: object
   description: >-
-    What changed in one tenant settings/composition update (ADR-36): the
-    openness pair, the main arena's settings document, the club composition.
-    Untouched fields stay null/false; an update that changed nothing carries
-    the plain entity details instead.
+    What changed in one tenant settings/composition update (ADR-36): the name,
+    the openness pair, the main arena's settings document, the club
+    composition. Untouched fields stay null/false; an update that changed
+    nothing produces no tenant-update row.
   required: [schema_version, leagues_changed]
   properties:
     schema_version:
       type: integer
+    name:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
     arena_membership_mode:
       type: object
       nullable: true
@@ -271,8 +276,8 @@ AuditUserUpdateDetails:
 AuditClubUpdateDetails:
   type: object
   description: >-
-    What changed in one club update: the icon key or the membership (one
-    add/remove per event — membership is changed stint-by-stint, not as a
+    What changed in one club update: the name, the icon key, or the membership
+    (one add/remove per event — membership is changed stint-by-stint, not as a
     composition PUT). Untouched fields stay null/false; a no-op change
     produces no club-update row.
   required: [schema_version, players_changed]
@@ -281,6 +286,17 @@ AuditClubUpdateDetails:
       type: integer
     players_changed:
       type: boolean
+    name:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
     icon:
       type: object
       nullable: true
@@ -306,6 +322,157 @@ AuditClubUpdateDetails:
           type: array
           items:
             $ref: './common.yaml#/Base58ID'
+
+AuditGameUpdateDetails:
+  type: object
+  description: >-
+    Everything that changed in one game meta update, rename included (the
+    display name follows alias/name_ru/name_en). Fields the update did not
+    touch stay absent; an update that changed nothing produces no game-update
+    row.
+  required: [schema_version]
+  properties:
+    schema_version:
+      type: integer
+    name:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+    alias:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+    name_ru:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+    name_en:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+    bgg_ref:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: integer
+          format: int32
+          nullable: true
+        to:
+          type: integer
+          format: int32
+          nullable: true
+    tesera_ref:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: integer
+          format: int32
+          nullable: true
+        to:
+          type: integer
+          format: int32
+          nullable: true
+    game_mode:
+      type: object
+      nullable: true
+      required: [from, to]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+    image_url:
+      type: object
+      nullable: true
+      required: [from, to]
+      description: Box-art URL fill from the BGG enrichment.
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+    image_thumb_url:
+      type: object
+      nullable: true
+      required: [from, to]
+      description: Thumbnail URL fill from the BGG enrichment.
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+
+AuditPlayerUpdateDetails:
+  type: object
+  description: What changed in one player update — the name. A no-op update produces no player-update row.
+  required: [schema_version, name]
+  properties:
+    schema_version:
+      type: integer
+    name:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+
+AuditTagUpdateDetails:
+  type: object
+  description: What changed in one tag update — the name. A no-op update produces no tag-update row.
+  required: [schema_version, name]
+  properties:
+    schema_version:
+      type: integer
+    name:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
 
 AuditArenaCampConfigDetails:
   type: object

@@ -6,9 +6,11 @@ import { useGames } from "@/app/gamesContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useClubs } from "@/app/clubsContext";
 import { MEMBERSHIP_MODE_LABELS, TOURNAMENTS_OPENNESS_LABELS } from "@/app/admin/tenants/labels";
+import { GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes";
 import { matchUpdateRows, tenantUpdateRows, formatScore } from "@/lib/audit-display";
 import { TenantIcon } from "@/components/tenant-icon";
 import { clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
+import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/datetime";
 
 /**
@@ -17,15 +19,6 @@ import { formatDateTime } from "@/lib/datetime";
  * deleted, so the ids always resolve).
  */
 export function AuditEntryDetailsView({ entry }: { entry: AuditEntry }) {
-    if (entry.details?.kind === "rename") {
-        return (
-            <p className="text-sm">
-                <span className="text-muted-foreground line-through">{entry.details.oldName}</span>
-                {" → "}
-                <span className="font-medium">{entry.details.newName}</span>
-            </p>
-        );
-    }
     if (entry.details?.kind === "match-update") {
         return <MatchUpdateDetails changes={entry.details.changes} />;
     }
@@ -38,7 +31,32 @@ export function AuditEntryDetailsView({ entry }: { entry: AuditEntry }) {
     if (entry.details?.kind === "club-update") {
         return <ClubUpdateDetails changes={entry.details.changes} />;
     }
+    if (entry.details?.kind === "game-update") {
+        return <GameUpdateDetails changes={entry.details.changes} />;
+    }
+    if (entry.details?.kind === "player-update" || entry.details?.kind === "tag-update") {
+        return (
+            <dl className="space-y-1.5 text-sm">
+                <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-muted-foreground">Название:</dt>
+                    <dd><NameDiff from={entry.details.changes.name.from} to={entry.details.changes.name.to} /></dd>
+                </div>
+            </dl>
+        );
+    }
     return null;
+}
+
+/** A name-ish before → after pair: the old value struck through, the new one
+ * emphasized. Null sides render as a dash. */
+function NameDiff({ from, to }: { from: string | null; to: string | null }) {
+    return (
+        <>
+            <span className={cn("text-muted-foreground", from && "line-through")}>{from ?? "—"}</span>
+            {" → "}
+            <span className="font-medium">{to ?? "—"}</span>
+        </>
+    );
 }
 
 function ClubUpdateDetails({ changes }: { changes: components["schemas"]["AuditClubUpdateDetails"] }) {
@@ -46,6 +64,12 @@ function ClubUpdateDetails({ changes }: { changes: components["schemas"]["AuditC
 
     return (
         <dl className="space-y-1.5 text-sm">
+            {changes.name && (
+                <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-muted-foreground">Название:</dt>
+                    <dd><NameDiff from={changes.name.from} to={changes.name.to} /></dd>
+                </div>
+            )}
             {changes.icon && (
                 <div className="flex flex-wrap gap-x-2 items-center">
                     <dt className="text-muted-foreground">Иконка:</dt>
@@ -88,6 +112,46 @@ function ClubIconByKey({ icon }: { icon: string | null }) {
     );
 }
 
+function GameUpdateDetails({ changes }: { changes: components["schemas"]["AuditGameUpdateDetails"] }) {
+    const modeLabel = (m: string) => (m in GAME_MODE_LABELS ? GAME_MODE_LABELS[m as GameMode] : m);
+    return (
+        <dl className="space-y-1.5 text-sm">
+            {changes.name && <DiffRow label="Название" from={changes.name.from} to={changes.name.to} />}
+            {changes.alias && <DiffRow label="Алиас" from={changes.alias.from} to={changes.alias.to} />}
+            {changes.name_ru && <DiffRow label="Название (рус)" from={changes.name_ru.from} to={changes.name_ru.to} />}
+            {changes.name_en && <DiffRow label="Name (eng)" from={changes.name_en.from} to={changes.name_en.to} />}
+            {changes.game_mode && (
+                <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-muted-foreground">Режим:</dt>
+                    <dd>{modeLabel(changes.game_mode.from)} → {modeLabel(changes.game_mode.to)}</dd>
+                </div>
+            )}
+            {changes.bgg_ref && <RefDiffRow label="BGG" from={changes.bgg_ref.from} to={changes.bgg_ref.to} />}
+            {changes.tesera_ref && <RefDiffRow label="Tesera" from={changes.tesera_ref.from} to={changes.tesera_ref.to} />}
+            {changes.image_url && <DiffRow label="Обложка (URL)" from={changes.image_url.from} to={changes.image_url.to} />}
+            {changes.image_thumb_url && <DiffRow label="Превью (URL)" from={changes.image_thumb_url.from} to={changes.image_thumb_url.to} />}
+        </dl>
+    );
+}
+
+function DiffRow({ label, from, to }: { label: string; from: string | null; to: string | null }) {
+    return (
+        <div className="flex flex-wrap gap-x-2">
+            <dt className="text-muted-foreground">{label}:</dt>
+            <dd><NameDiff from={from} to={to} /></dd>
+        </div>
+    );
+}
+
+function RefDiffRow({ label, from, to }: { label: string; from: number | null; to: number | null }) {
+    return (
+        <div className="flex flex-wrap gap-x-2">
+            <dt className="text-muted-foreground">{label}:</dt>
+            <dd>{from ?? "—"} → {to ?? "—"}</dd>
+        </div>
+    );
+}
+
 function UserUpdateDetails({ changes }: { changes: components["schemas"]["AuditUserUpdateDetails"] }) {
     return (
         <dl className="space-y-1.5 text-sm">
@@ -116,6 +180,14 @@ function TenantUpdateDetails({ changes }: { changes: components["schemas"]["Audi
     return (
         <dl className="space-y-1.5 text-sm">
             {rows.map((row, i) => {
+                if (row.kind === "name") {
+                    return (
+                        <div key={i} className="flex flex-wrap gap-x-2">
+                            <dt className="text-muted-foreground">Название:</dt>
+                            <dd><NameDiff from={row.old} to={row.new} /></dd>
+                        </div>
+                    );
+                }
                 if (row.kind === "membership-mode") {
                     return (
                         <div key={i} className="flex flex-wrap gap-x-2">

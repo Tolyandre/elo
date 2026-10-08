@@ -52,7 +52,6 @@ func (e ApiSuccessMessageStatus) Valid() bool {
 const (
 	Created AuditEntryAction = "created"
 	Deleted AuditEntryAction = "deleted"
-	Renamed AuditEntryAction = "renamed"
 	Updated AuditEntryAction = "updated"
 )
 
@@ -62,8 +61,6 @@ func (e AuditEntryAction) Valid() bool {
 	case Created:
 		return true
 	case Deleted:
-		return true
-	case Renamed:
 		return true
 	case Updated:
 		return true
@@ -1268,6 +1265,7 @@ type AuditEntityDetails struct {
 
 // AuditEntry defines model for AuditEntry.
 type AuditEntry struct {
+	// Action A rename is an `updated` whose details carry the name's before → after (migration 077 retired the dedicated action).
 	Action AuditEntryAction `json:"action"`
 
 	// ActorName Display name of the acting user at read time; null for system events.
@@ -1277,7 +1275,7 @@ type AuditEntry struct {
 	ActorUserId Base58ID  `json:"actor_user_id"`
 	CreatedAt   time.Time `json:"created_at"`
 
-	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club icon/membership, ADR-36); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
+	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
 	Details *AuditEntry_Details `json:"details,omitempty"`
 
 	// EntityId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -1288,16 +1286,61 @@ type AuditEntry struct {
 	Id Base58ID `json:"id"`
 }
 
-// AuditEntryAction defines model for AuditEntry.Action.
+// AuditEntryAction A rename is an `updated` whose details carry the name's before → after (migration 077 retired the dedicated action).
 type AuditEntryAction string
 
-// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club icon/membership, ADR-36); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
+// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
 type AuditEntry_Details struct {
 	union json.RawMessage
 }
 
 // AuditEntryEntityType defines model for AuditEntry.EntityType.
 type AuditEntryEntityType string
+
+// AuditGameUpdateDetails Everything that changed in one game meta update, rename included (the display name follows alias/name_ru/name_en). Fields the update did not touch stay absent; an update that changed nothing produces no game-update row.
+type AuditGameUpdateDetails struct {
+	Alias *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"alias,omitempty"`
+	BggRef *struct {
+		From *int32 `json:"from"`
+		To   *int32 `json:"to"`
+	} `json:"bgg_ref,omitempty"`
+	GameMode *struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	} `json:"game_mode,omitempty"`
+
+	// ImageThumbUrl Thumbnail URL fill from the BGG enrichment.
+	ImageThumbUrl *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"image_thumb_url,omitempty"`
+
+	// ImageUrl Box-art URL fill from the BGG enrichment.
+	ImageUrl *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"image_url,omitempty"`
+	Name *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"name,omitempty"`
+	NameEn *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"name_en,omitempty"`
+	NameRu *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"name_ru,omitempty"`
+	SchemaVersion int `json:"schema_version"`
+	TeseraRef     *struct {
+		From *int32 `json:"from"`
+		To   *int32 `json:"to"`
+	} `json:"tesera_ref,omitempty"`
+}
 
 // AuditMatchUpdateDetails defines model for AuditMatchUpdateDetails.
 type AuditMatchUpdateDetails struct {
@@ -1336,14 +1379,25 @@ type AuditPage struct {
 	Status string  `json:"status"`
 }
 
-// AuditRenameDetails defines model for AuditRenameDetails.
-type AuditRenameDetails struct {
-	NewName       string `json:"new_name"`
-	OldName       string `json:"old_name"`
-	SchemaVersion int    `json:"schema_version"`
+// AuditPlayerUpdateDetails What changed in one player update — the name. A no-op update produces no player-update row.
+type AuditPlayerUpdateDetails struct {
+	Name struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"name"`
+	SchemaVersion int `json:"schema_version"`
 }
 
-// AuditTenantUpdateDetails What changed in one tenant settings/composition update (ADR-36): the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing carries the plain entity details instead.
+// AuditTagUpdateDetails What changed in one tag update — the name. A no-op update produces no tag-update row.
+type AuditTagUpdateDetails struct {
+	Name struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"name"`
+	SchemaVersion int `json:"schema_version"`
+}
+
+// AuditTenantUpdateDetails What changed in one tenant settings/composition update (ADR-36): the name, the openness pair, the main arena's settings document, the club composition. Untouched fields stay null/false; an update that changed nothing produces no tenant-update row.
 type AuditTenantUpdateDetails struct {
 	ArenaMembershipMode *struct {
 		From AuditTenantUpdateDetailsArenaMembershipModeFrom `json:"from"`
@@ -1360,7 +1414,11 @@ type AuditTenantUpdateDetails struct {
 		To   *string `json:"to"`
 	} `json:"icon,omitempty"`
 	LeaguesChanged bool `json:"leagues_changed"`
-	SchemaVersion  int  `json:"schema_version"`
+	Name           *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"name,omitempty"`
+	SchemaVersion  int `json:"schema_version"`
 	StartingRating *struct {
 		From float64 `json:"from"`
 		To   float64 `json:"to"`
@@ -2350,13 +2408,17 @@ type AuditAuditCampLinkDetails struct {
 // AuditAuditCampLinkDetailsOp defines model for AuditAuditCampLinkDetails.Op.
 type AuditAuditCampLinkDetailsOp string
 
-// AuditAuditClubUpdateDetails What changed in one club update: the icon key or the membership (one add/remove per event — membership is changed stint-by-stint, not as a composition PUT). Untouched fields stay null/false; a no-op change produces no club-update row.
+// AuditAuditClubUpdateDetails What changed in one club update: the name, the icon key, or the membership (one add/remove per event — membership is changed stint-by-stint, not as a composition PUT). Untouched fields stay null/false; a no-op change produces no club-update row.
 type AuditAuditClubUpdateDetails struct {
 	// Icon Icon key change; a null side means "no icon" there.
 	Icon *struct {
 		From *string `json:"from"`
 		To   *string `json:"to"`
 	} `json:"icon,omitempty"`
+	Name *struct {
+		From *string `json:"from"`
+		To   *string `json:"to"`
+	} `json:"name,omitempty"`
 	Players *struct {
 		AddedPlayerIds   []Base58ID `json:"added_player_ids"`
 		RemovedPlayerIds []Base58ID `json:"removed_player_ids"`
@@ -3309,32 +3371,6 @@ func (t *AuditEntry_Details) MergeAuditEntityDetails(v AuditEntityDetails) error
 	return err
 }
 
-// AsAuditRenameDetails returns the union data inside the AuditEntry_Details as a AuditRenameDetails
-func (t AuditEntry_Details) AsAuditRenameDetails() (AuditRenameDetails, error) {
-	var body AuditRenameDetails
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromAuditRenameDetails overwrites any union data inside the AuditEntry_Details as the provided AuditRenameDetails
-func (t *AuditEntry_Details) FromAuditRenameDetails(v AuditRenameDetails) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeAuditRenameDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditRenameDetails
-func (t *AuditEntry_Details) MergeAuditRenameDetails(v AuditRenameDetails) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
 // AsAuditMatchUpdateDetails returns the union data inside the AuditEntry_Details as a AuditMatchUpdateDetails
 func (t AuditEntry_Details) AsAuditMatchUpdateDetails() (AuditMatchUpdateDetails, error) {
 	var body AuditMatchUpdateDetails
@@ -3429,6 +3465,84 @@ func (t *AuditEntry_Details) FromAuditAuditClubUpdateDetails(v AuditAuditClubUpd
 
 // MergeAuditAuditClubUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditClubUpdateDetails
 func (t *AuditEntry_Details) MergeAuditAuditClubUpdateDetails(v AuditAuditClubUpdateDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditGameUpdateDetails returns the union data inside the AuditEntry_Details as a AuditGameUpdateDetails
+func (t AuditEntry_Details) AsAuditGameUpdateDetails() (AuditGameUpdateDetails, error) {
+	var body AuditGameUpdateDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditGameUpdateDetails overwrites any union data inside the AuditEntry_Details as the provided AuditGameUpdateDetails
+func (t *AuditEntry_Details) FromAuditGameUpdateDetails(v AuditGameUpdateDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditGameUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditGameUpdateDetails
+func (t *AuditEntry_Details) MergeAuditGameUpdateDetails(v AuditGameUpdateDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditPlayerUpdateDetails returns the union data inside the AuditEntry_Details as a AuditPlayerUpdateDetails
+func (t AuditEntry_Details) AsAuditPlayerUpdateDetails() (AuditPlayerUpdateDetails, error) {
+	var body AuditPlayerUpdateDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditPlayerUpdateDetails overwrites any union data inside the AuditEntry_Details as the provided AuditPlayerUpdateDetails
+func (t *AuditEntry_Details) FromAuditPlayerUpdateDetails(v AuditPlayerUpdateDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditPlayerUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditPlayerUpdateDetails
+func (t *AuditEntry_Details) MergeAuditPlayerUpdateDetails(v AuditPlayerUpdateDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditTagUpdateDetails returns the union data inside the AuditEntry_Details as a AuditTagUpdateDetails
+func (t AuditEntry_Details) AsAuditTagUpdateDetails() (AuditTagUpdateDetails, error) {
+	var body AuditTagUpdateDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditTagUpdateDetails overwrites any union data inside the AuditEntry_Details as the provided AuditTagUpdateDetails
+func (t *AuditEntry_Details) FromAuditTagUpdateDetails(v AuditTagUpdateDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditTagUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditTagUpdateDetails
+func (t *AuditEntry_Details) MergeAuditTagUpdateDetails(v AuditTagUpdateDetails) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

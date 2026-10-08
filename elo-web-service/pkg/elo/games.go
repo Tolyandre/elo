@@ -356,11 +356,9 @@ func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMet
 		} else if !db.IsNoRows(aerr) {
 			return aerr
 		}
-		switch {
-		case old.Name != name:
-			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionRenamed, gameID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
-		case gameMetaChanged(old, alias, nameEn, nameRu, gameMode, meta):
-			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindEntity, audit.NewEntityDetails(name))
+		d := buildGameUpdateDetails(old, g)
+		if !d.IsEmpty() {
+			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindGameUpdate, d)
 		}
 		return nil
 	})
@@ -678,7 +676,16 @@ func (s *GameService) applyBggImages(ctx context.Context, gameID id.ID, name str
 			return err
 		}
 		if firstFill {
-			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindEntity, audit.NewEntityDetails(name))
+			d := audit.NewGameUpdateDetails()
+			if thing.ImageURL != "" {
+				d.ImageURL = &audit.ValueChange{To: &thing.ImageURL}
+			}
+			if thing.ThumbURL != "" {
+				d.ImageThumbURL = &audit.ValueChange{To: &thing.ThumbURL}
+			}
+			if !d.IsEmpty() {
+				return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindGameUpdate, d)
+			}
 		}
 		return nil
 	})
@@ -741,15 +748,51 @@ func canonicalizeNames(typed, nameRu, nameEn string) (display, alias string) {
 	return typed, typed
 }
 
-// gameMetaChanged reports whether the metadata update touches anything
-// besides the (unchanged) display name.
-func gameMetaChanged(old db.Game, alias, nameEn, nameRu, gameMode string, meta GameMetaPatch) bool {
-	return textOf(old.Alias) != alias ||
-		textOf(old.NameEn) != nameEn ||
-		textOf(old.NameRu) != nameRu ||
-		int64Of(old.BggID) != derefInt64(meta.BggRef) ||
-		int64Of(old.TeseraID) != derefInt64(meta.TeseraRef) ||
-		old.GameMode != gameMode
+// buildGameUpdateDetails diffs a game meta edit field by field — the old row
+// before the rewrite against the row after it, rename included (the display
+// name follows alias/name_ru/name_en).
+func buildGameUpdateDetails(old, new db.Game) audit.GameUpdateDetails {
+	d := audit.NewGameUpdateDetails()
+	if old.Name != new.Name {
+		d.Name = strChange(old.Name, new.Name)
+	}
+	if textOf(old.Alias) != textOf(new.Alias) {
+		d.Alias = textChange(old.Alias, new.Alias)
+	}
+	if textOf(old.NameRu) != textOf(new.NameRu) {
+		d.NameRu = textChange(old.NameRu, new.NameRu)
+	}
+	if textOf(old.NameEn) != textOf(new.NameEn) {
+		d.NameEn = textChange(old.NameEn, new.NameEn)
+	}
+	if int64Of(old.BggID) != int64Of(new.BggID) {
+		d.BggRef = &audit.RefChange{From: int4Ref(old.BggID), To: int4Ref(new.BggID)}
+	}
+	if int64Of(old.TeseraID) != int64Of(new.TeseraID) {
+		d.TeseraRef = &audit.RefChange{From: int4Ref(old.TeseraID), To: int4Ref(new.TeseraID)}
+	}
+	if old.GameMode != new.GameMode {
+		d.GameMode = &audit.StringChange{From: old.GameMode, To: new.GameMode}
+	}
+	return d
+}
+
+func strChange(from, to string) *audit.ValueChange {
+	return &audit.ValueChange{From: &from, To: &to}
+}
+
+func textChange(from, to pgtype.Text) *audit.ValueChange {
+	return &audit.ValueChange{From: textPtr(from), To: textPtr(to)}
+}
+
+// int4Ref reports a nullable int reference for a diff side: an invalid
+// (NULL) column reads as null, not zero.
+func int4Ref(i pgtype.Int4) *int64 {
+	if !i.Valid {
+		return nil
+	}
+	v := int64(i.Int32)
+	return &v
 }
 
 func trimmed(s *string) string {

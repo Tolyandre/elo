@@ -279,7 +279,7 @@ func (s *PlayerService) UpdatePlayer(ctx context.Context, playerID id.ID, name s
 			return err
 		}
 		if old.Name != name {
-			return recordAuditEvent(ctx, q, actor, audit.EntityPlayer, audit.ActionRenamed, playerID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
+			return recordAuditEvent(ctx, q, actor, audit.EntityPlayer, audit.ActionUpdated, playerID, audit.KindPlayerUpdate, audit.NewPlayerUpdateDetails(old.Name, name))
 		}
 		return nil
 	})

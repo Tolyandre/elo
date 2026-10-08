@@ -10,6 +10,7 @@ import (
 
 func TestValidateDetailsDocuments(t *testing.T) {
 	t.Parallel()
+	int64Ptr := func(v int64) *int64 { return &v }
 	tests := []struct {
 		name string
 		kind string
@@ -19,8 +20,26 @@ func TestValidateDetailsDocuments(t *testing.T) {
 		{"entity ok", KindEntity, NewEntityDetails("Скул Кинг"), true},
 		{"entity empty name", KindEntity, EntityDetails{SchemaVersion: 1, Name: ""}, false},
 		{"entity extra field", KindEntity, map[string]any{"schema_version": 1, "name": "x", "extra": 1}, false},
-		{"rename ok", KindRename, NewRenameDetails("Старое", "Новое"), true},
-		{"rename missing new", KindRename, map[string]any{"schema_version": 1, "old_name": "a"}, false},
+		{
+			"game-update full ok",
+			KindGameUpdate,
+			func() GameUpdateDetails {
+				d := NewGameUpdateDetails()
+				d.Name = valueChange(strPtr("Старое"), strPtr("Новое"))
+				d.BggRef = &RefChange{From: int64Ptr(1), To: int64Ptr(2)}
+				d.GameMode = &StringChange{From: "standard", To: "coop"}
+				return d
+			}(),
+			true,
+		},
+		{"game-update empty ok", KindGameUpdate, NewGameUpdateDetails(), true},
+		{"game-update extra field", KindGameUpdate, map[string]any{"schema_version": 1, "nope": 1}, false},
+		{"player-update ok", KindPlayerUpdate, NewPlayerUpdateDetails("Старое", "Новое"), true},
+		{"player-update missing name", KindPlayerUpdate, map[string]any{"schema_version": 1}, false},
+		{"tag-update ok", KindTagUpdate, NewTagUpdateDetails("Старое", "Новое"), true},
+		{"tag-update missing name", KindTagUpdate, map[string]any{"schema_version": 1}, false},
+		{"club-update name ok", KindClubUpdate, NewClubNameChange("Старое", "Новое"), true},
+		{"tenant-update name ok", KindTenantUpdate, NewTenantNameChange("Старое", "Новое"), true},
 		{"match-update empty ok", KindMatchUpdate, NewMatchUpdateDetails(), true},
 		{
 			"match-update full ok",

@@ -189,12 +189,16 @@ components:
       $ref: './audit.yaml#/AuditEntry'
     AuditEntityDetails:
       $ref: './audit.yaml#/AuditEntityDetails'
-    AuditRenameDetails:
-      $ref: './audit.yaml#/AuditRenameDetails'
     AuditMatchUpdateDetails:
       $ref: './audit.yaml#/AuditMatchUpdateDetails'
     AuditTenantUpdateDetails:
       $ref: './audit.yaml#/AuditTenantUpdateDetails'
+    AuditGameUpdateDetails:
+      $ref: './audit.yaml#/AuditGameUpdateDetails'
+    AuditPlayerUpdateDetails:
+      $ref: './audit.yaml#/AuditPlayerUpdateDetails'
+    AuditTagUpdateDetails:
+      $ref: './audit.yaml#/AuditTagUpdateDetails'
     AuditPage:
       $ref: './audit.yaml#/AuditPage'
 

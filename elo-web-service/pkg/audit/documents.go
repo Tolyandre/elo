@@ -14,11 +14,13 @@ import (
 
 func init() {
 	reg.Register(KindEntity, 1, "entity.v1.json")
-	reg.Register(KindRename, 1, "rename.v1.json")
 	reg.Register(KindMatchUpdate, 1, "match_update.v1.json")
 	reg.Register(KindTenantUpdate, 1, "tenant_update.v1.json")
 	reg.Register(KindUserUpdate, 1, "user_update.v1.json")
 	reg.Register(KindClubUpdate, 1, "club_update.v1.json")
+	reg.Register(KindGameUpdate, 1, "game_update.v1.json")
+	reg.Register(KindPlayerUpdate, 1, "player_update.v1.json")
+	reg.Register(KindTagUpdate, 1, "tag_update.v1.json")
 	reg.Register(KindArenaCampConf, 1, "arena_camp_config.v1.json")
 	reg.Register(KindCampLink, 1, "camp_link.v1.json")
 	reg.Register(KindTournamentConfig, 1, "tournament_config.v1.json")
@@ -50,18 +52,6 @@ type EntityDetails struct {
 // NewEntityDetails builds v1 entity details.
 func NewEntityDetails(name string) EntityDetails {
 	return EntityDetails{SchemaVersion: 1, Name: name}
-}
-
-// RenameDetails captures a rename.
-type RenameDetails struct {
-	SchemaVersion int    `json:"schema_version"`
-	OldName       string `json:"old_name"`
-	NewName       string `json:"new_name"`
-}
-
-// NewRenameDetails builds v1 rename details.
-func NewRenameDetails(oldName, newName string) RenameDetails {
-	return RenameDetails{SchemaVersion: 1, OldName: oldName, NewName: newName}
 }
 
 // Player change kinds (PlayerChange.Change).
@@ -139,6 +129,13 @@ type BoolChange struct {
 	To   bool `json:"to"`
 }
 
+// RefChange is one before → after pair of a nullable integer reference (a
+// game's BGG/Tesera id); a null side means "unset" there.
+type RefChange struct {
+	From *int64 `json:"from"`
+	To   *int64 `json:"to"`
+}
+
 // TenantClubsChange is one club-composition replacement: the ids added and
 // removed by the update.
 type TenantClubsChange struct {
@@ -152,6 +149,7 @@ type TenantClubsChange struct {
 // instead.
 type TenantUpdateDetails struct {
 	SchemaVersion       int                `json:"schema_version"`
+	Name                *ValueChange       `json:"name"`
 	ArenaMembershipMode *StringChange      `json:"arena_membership_mode"`
 	TournamentsOpenness *StringChange      `json:"tournaments_openness"`
 	StartingRating      *NumberChange      `json:"starting_rating"`
@@ -165,9 +163,14 @@ func NewTenantUpdateDetails() TenantUpdateDetails {
 	return TenantUpdateDetails{SchemaVersion: 1}
 }
 
+// NewTenantNameChange builds the details of a tenant rename.
+func NewTenantNameChange(from, to string) TenantUpdateDetails {
+	return TenantUpdateDetails{SchemaVersion: 1, Name: valueChange(&from, &to)}
+}
+
 // IsEmpty reports whether the details describe no changes at all.
 func (d TenantUpdateDetails) IsEmpty() bool {
-	return d.ArenaMembershipMode == nil && d.TournamentsOpenness == nil &&
+	return d.Name == nil && d.ArenaMembershipMode == nil && d.TournamentsOpenness == nil &&
 		d.StartingRating == nil && !d.LeaguesChanged && d.Icon == nil && d.Clubs == nil
 }
 
@@ -189,6 +192,65 @@ func NewUserUpdateDetails(from, to bool) UserUpdateDetails {
 }
 
 // ---------------------------------------------------------------------------
+// Games, players, tags: meta updates with field-level diffs. A rename is not
+// a distinct action — it is the name field's before → after (migration 077).
+// ---------------------------------------------------------------------------
+
+// GameUpdateDetails describes everything that changed in one game meta
+// update, rename included — games.name is generated from
+// alias/name_ru/name_en, so it changes exactly when one of those does (or is
+// reported alongside them). Fields the update did not touch stay nil; an
+// update that changed nothing (IsEmpty) produces no audit row.
+type GameUpdateDetails struct {
+	SchemaVersion int           `json:"schema_version"`
+	Name          *ValueChange  `json:"name,omitempty"`
+	Alias         *ValueChange  `json:"alias,omitempty"`
+	NameRu        *ValueChange  `json:"name_ru,omitempty"`
+	NameEn        *ValueChange  `json:"name_en,omitempty"`
+	BggRef        *RefChange    `json:"bgg_ref,omitempty"`
+	TeseraRef     *RefChange    `json:"tesera_ref,omitempty"`
+	GameMode      *StringChange `json:"game_mode,omitempty"`
+	ImageURL      *ValueChange  `json:"image_url,omitempty"`
+	ImageThumbURL *ValueChange  `json:"image_thumb_url,omitempty"`
+}
+
+// NewGameUpdateDetails builds v1 game-update details.
+func NewGameUpdateDetails() GameUpdateDetails {
+	return GameUpdateDetails{SchemaVersion: 1}
+}
+
+// IsEmpty reports whether the details describe no changes at all.
+func (d GameUpdateDetails) IsEmpty() bool {
+	return d.Name == nil && d.Alias == nil && d.NameRu == nil && d.NameEn == nil &&
+		d.BggRef == nil && d.TeseraRef == nil && d.GameMode == nil &&
+		d.ImageURL == nil && d.ImageThumbURL == nil
+}
+
+// PlayerUpdateDetails records what changed in one player update — the name.
+// A no-op update produces no row.
+type PlayerUpdateDetails struct {
+	SchemaVersion int          `json:"schema_version"`
+	Name          *ValueChange `json:"name"`
+}
+
+// NewPlayerUpdateDetails builds v1 player-update details.
+func NewPlayerUpdateDetails(from, to string) PlayerUpdateDetails {
+	return PlayerUpdateDetails{SchemaVersion: 1, Name: valueChange(&from, &to)}
+}
+
+// TagUpdateDetails records what changed in one tag update — the name. A
+// no-op update produces no row.
+type TagUpdateDetails struct {
+	SchemaVersion int          `json:"schema_version"`
+	Name          *ValueChange `json:"name"`
+}
+
+// NewTagUpdateDetails builds v1 tag-update details.
+func NewTagUpdateDetails(from, to string) TagUpdateDetails {
+	return TagUpdateDetails{SchemaVersion: 1, Name: valueChange(&from, &to)}
+}
+
+// ---------------------------------------------------------------------------
 // Clubs (ADR-36): icon and membership changes. The entity_id of the row is
 // the club; membership events name players inside the details document.
 // ---------------------------------------------------------------------------
@@ -200,13 +262,20 @@ type ClubPlayersChange struct {
 	RemovedPlayerIDs []string `json:"removed_player_ids"`
 }
 
-// ClubUpdateDetails describes one club icon or membership change. Fields the
-// change did not touch stay nil/false; a no-op change produces no row.
+// ClubUpdateDetails describes one club name, icon, or membership change.
+// Fields the change did not touch stay nil/false; a no-op change produces no
+// row.
 type ClubUpdateDetails struct {
 	SchemaVersion  int                `json:"schema_version"`
 	PlayersChanged bool               `json:"players_changed"`
+	Name           *ValueChange       `json:"name"`
 	Icon           *ValueChange       `json:"icon"`
 	Players        *ClubPlayersChange `json:"players"`
+}
+
+// NewClubNameChange builds the details of a club rename.
+func NewClubNameChange(from, to string) ClubUpdateDetails {
+	return ClubUpdateDetails{SchemaVersion: 1, Name: valueChange(&from, &to)}
 }
 
 // NewClubIconChange builds the details of a club icon set/clear; a nil side
