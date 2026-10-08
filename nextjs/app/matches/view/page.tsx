@@ -24,7 +24,7 @@ import { MatchAudit } from "@/components/audit/match-audit";
 import { PendingMatchCard } from "@/components/pending-match-card";
 import { BackButton } from "@/components/back-button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Field, FieldGroup, FieldTitle } from "@/components/ui/field";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -222,12 +222,10 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
 
       <Card>
         <CardContent>
-          <FieldGroup>
-            <Field orientation="horizontal">
-              <FieldTitle>Округлять до целого</FieldTitle>
-              <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
-            </Field>
-          </FieldGroup>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="round-to-integer">Округлять до целого</Label>
+            <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
+          </div>
         </CardContent>
       </Card>
 

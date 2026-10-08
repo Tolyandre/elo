@@ -22,10 +22,7 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import {
-    Field,
-    FieldTitle,
-} from "@/components/ui/field"
+import { Label } from "@/components/ui/label"
 
 import {
     Suit,
@@ -245,35 +242,38 @@ export function SkullKingCalculator() {
             <div className="mx-auto max-w-md space-y-6">
                 <Card>
                     <CardContent className="space-y-6">
-                        <Field orientation="horizontal">
-                            <FieldTitle>Деньги в игре</FieldTitle>
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="sk-loot">Деньги в игре</Label>
                             <Switch
+                                id="sk-loot"
                                 checked={lootEnabled}
                                 onCheckedChange={(v) =>
                                     form.setValue("lootEnabled", v)
                                 }
                             />
-                        </Field>
+                        </div>
 
-                        <Field orientation="horizontal">
-                            <FieldTitle>Кракен в игре</FieldTitle>
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="sk-kraken">Кракен в игре</Label>
                             <Switch
+                                id="sk-kraken"
                                 checked={krakenEnabled}
                                 onCheckedChange={(v) =>
                                     form.setValue("krakenEnabled", v)
                                 }
                             />
-                        </Field>
+                        </div>
 
-                        <Field orientation="horizontal">
-                            <FieldTitle>Белый кит в игре</FieldTitle>
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="sk-white-whale">Белый кит в игре</Label>
                             <Switch
+                                id="sk-white-whale"
                                 checked={whiteWhaleEnabled}
                                 onCheckedChange={(v) =>
                                     form.setValue("whiteWhaleEnabled", v)
                                 }
                             />
-                        </Field>
+                        </div>
 
                         <Separator />
 
