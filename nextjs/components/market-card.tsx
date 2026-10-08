@@ -79,7 +79,7 @@ function OutcomeDonut({ market, nameOf }: { market: Market; nameOf: (o: MarketOu
                     <div key={d.id} className="text-xs leading-tight">
                         <div className="flex items-center gap-1.5">
                             <span className="inline-block size-2 rounded-full shrink-0" style={{ background: d.color }} />
-                            <span className="font-medium truncate">{d.name}</span>
+                            <span className="font-medium min-w-0 break-words">{d.name}</span>
                             <span className="ml-auto font-mono tabular-nums text-muted-foreground shrink-0">{Math.round(d.value)}%</span>
                         </div>
                     </div>
@@ -226,19 +226,23 @@ export function MarketCard({ market, probabilityHistory, className }: { market: 
     return (
         <Card className={className}>
             <CardHeader className="pb-2">
-                <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base flex items-center gap-2">
-                        {/* The market mark, as the «Ставки» menu item wore it. */}
-                        <TrendingUp className="h-5 w-5 shrink-0" />
-                        {title}
-                    </CardTitle>
+                {/* The badge floats right so the caption uses the full width
+                    and wraps around it; flow-root contains the float so the
+                    date line below stays clear. */}
+                <div className="flow-root">
                     {/* Open is the unremarkable default — only final/intermediate
                         statuses get a badge. */}
                     {!isOpen && (
-                        <Badge variant={statusVariant(market)} className="shrink-0">
+                        <Badge variant={statusVariant(market)} className="float-right ml-3 mt-0.5">
                             {statusLabel(market, resolutionOutcomeName)}
                         </Badge>
                     )}
+                    <CardTitle className="text-base leading-snug">
+                        {/* The market mark, as the «Ставки» menu item wore it —
+                            inline so it flows with the caption's first line. */}
+                        <TrendingUp className="inline-block h-5 w-5 align-[-4px] mr-1.5" />
+                        {title}
+                    </CardTitle>
                 </div>
                 {date && (
                     <p className="text-sm text-muted-foreground">{dateLabel}: {date}</p>

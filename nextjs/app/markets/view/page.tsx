@@ -34,7 +34,7 @@ function DeltaRow({ label, net, earned, totalStaked }: { label: string; net: num
     const positive = net >= 0;
     return (
         <div className="flex justify-between text-sm gap-2">
-            <span className="text-muted-foreground truncate" title={label}>{label}</span>
+            <span className="text-muted-foreground min-w-0 break-words">{label}</span>
             <span className="flex gap-2 shrink-0">
                 <span className="text-muted-foreground">({totalStaked.toFixed(1)} → {earned.toFixed(1)})</span>
                 <span className={`w-12 text-right font-medium ${positive ? "text-success" : "text-destructive"}`}>
@@ -119,7 +119,9 @@ function OutcomeColumn({
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-success" : ""}`}>
             <div className="text-center min-w-0">
-                <h3 className="font-semibold text-lg truncate" style={{ color: titleColor }} title={label}>{isWinner ? "✓ " : ""}{label}</h3>
+                {/* Long outcome names wrap instead of being cut — the full
+                    text is the whole point of the card. */}
+                <h3 className="font-semibold text-lg leading-tight break-words" style={{ color: titleColor }}>{isWinner ? "✓ " : ""}{label}</h3>
                 <p className="text-2xl font-bold leading-tight">{headline}</p>
             </div>
             <div className="text-sm space-y-1">

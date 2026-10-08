@@ -27,10 +27,12 @@ export function ResolutionDescription({ market }: { market: Market }) {
                     ?? "var(--foreground)";
                 return (
                     <div key={o.ids.join(",")} className="flex gap-2">
+                        {/* min-w-20 keeps the short-name rows aligned with the
+                            «Отмена» row; longer names grow and wrap instead of
+                            being cut. */}
                         <span
-                            className={`font-medium shrink-0 w-20 truncate ${isWinner ? "" : "opacity-80"}`}
+                            className={`font-medium min-w-20 break-words ${isWinner ? "" : "opacity-80"}`}
                             style={{ color }}
-                            title={o.label}
                         >
                             {isWinner ? "✓ " : ""}{o.label}:
                         </span>
@@ -39,7 +41,7 @@ export function ResolutionDescription({ market }: { market: Market }) {
                 );
             })}
             <div className="flex gap-2">
-                <span className="font-medium text-muted-foreground shrink-0 w-20">Отмена:</span>
+                <span className="font-medium text-muted-foreground min-w-20">Отмена:</span>
                 <span className="text-muted-foreground">{cancel}</span>
             </div>
         </div>
