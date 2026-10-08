@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuditEntry } from "@/app/api";
-import { auditIsExpandable, auditSummary, formatScore, matchUpdateRows, tenantUpdateRows } from "@/lib/audit-display";
+import { auditEntityName, auditIsExpandable, auditSummary, formatScore, matchUpdateRows, tenantUpdateRows, type AuditNameResolver } from "@/lib/audit-display";
 import type { Base58ID } from "@/lib/id";
 
 function entry(partial: Partial<AuditEntry>): AuditEntry {
@@ -34,6 +34,29 @@ describe("auditSummary", () => {
         const e = entry({ action: "renamed", details: { kind: "rename", oldName: "Было", newName: "Стало" } });
         expect(auditSummary(e)).toBe("переименовал игру");
         expect(auditIsExpandable(e)).toBe(true);
+    });
+
+    it("inlines the context-resolved current name on every action", () => {
+        const resolveName: AuditNameResolver = (type, id) => (id === "eid" ? `Имя ${type}` : undefined);
+        expect(auditSummary(entry({ entity_type: "tenant", action: "updated" }), resolveName))
+            .toBe("изменил сообщество «Имя tenant»");
+        expect(auditSummary(entry({ action: "renamed", details: { kind: "rename", oldName: "Было", newName: "Стало" } }), resolveName))
+            .toBe("переименовал игру «Имя game»");
+        expect(auditSummary(entry({ entity_type: "player", action: "deleted", details: { kind: "entity", name: "Аня" } }), resolveName))
+            .toBe("удалил игрока «Имя player»");
+    });
+
+    it("unresolvable names fall back to the details doc, then to the plain id", () => {
+        // Deleted entity: the context has no row, the details document still
+        // carries the at-event-time name.
+        expect(auditSummary(entry({ entity_type: "player", action: "deleted", details: { kind: "entity", name: "Аня" } })))
+            .toBe("удалил игрока «Аня»");
+        // Nothing resolvable — the row component shows the plain entity_id.
+        expect(auditEntityName(entry({ entity_type: "tenant", action: "updated" }))).toBeUndefined();
+        expect(auditEntityName(entry({ entity_type: "arena", action: "created" }))).toBeUndefined();
+        // Matches never carry a name anywhere.
+        expect(auditEntityName(entry({ entity_type: "match" }))).toBeUndefined();
+        expect(auditEntityName(entry({ entity_type: "match", details: { kind: "entity", name: "x" } as never }))).toBeUndefined();
     });
 });
 

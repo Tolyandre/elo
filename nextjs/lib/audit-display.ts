@@ -32,34 +32,58 @@ export type TenantUpdateRow =
     | { kind: "icon"; old: string | null; new: string | null }
     | { kind: "clubs"; added: Base58ID[]; removed: Base58ID[] };
 
+/** Looks up the current display name of an audited entity; undefined when it
+ * cannot be resolved client-side (deleted entity, no app-wide list). */
+export type AuditNameResolver = (entityType: AuditEntityType, entityId: string) => string | undefined;
+
 /**
- * Collapsed-row summary, e.g. "создал игру «Skull King»". Entity names known
- * from the details document (created/deleted events) are inlined; renames and
- * match edits show their old→new values in the expanded section instead.
+ * Collapsed-row summary, e.g. "создал игру «Skull King»". The entity name is
+ * resolved via entity_id (current name, even for historical rows) with the
+ * details document (created/deleted events) as fallback; rows whose name
+ * cannot be resolved render the plain entity id next to the summary instead
+ * (see auditEntityName). Match rows never carry a name.
  */
-export function auditSummary(entry: AuditEntry): string {
+export function auditSummary(entry: AuditEntry, resolveName?: AuditNameResolver): string {
+    const suffix = nameSuffix(entry, resolveName);
     switch (entry.action) {
         case "created":
             if (entry.entity_type === "match") return "добавил партию";
-            return `создал ${ENTITY_NOUN[entry.entity_type]}${entityNameSuffix(entry)}`;
+            return `создал ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
         case "updated":
-            return `изменил ${ENTITY_NOUN[entry.entity_type]}`;
+            return `изменил ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
         case "renamed":
-            return `переименовал ${ENTITY_NOUN[entry.entity_type]}`;
+            return `переименовал ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
         case "deleted":
-            return `удалил ${ENTITY_NOUN[entry.entity_type]}${entityNameSuffix(entry)}`;
+            return `удалил ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
     }
 }
 
-function entityNameSuffix(entry: AuditEntry): string {
-    if (entry.details?.kind === "entity") return ` «${entry.details.name}»`;
+/**
+ * The entity's display name for an audit row: the context-resolved current
+ * name, else the at-event-time name from the details document (what
+ * created/deleted rows showed before resolution existed). undefined means
+ * nothing resolvable — the row shows the plain entity_id (except match rows,
+ * which have no name anywhere).
+ */
+export function auditEntityName(entry: AuditEntry, resolveName?: AuditNameResolver): string | undefined {
+    if (entry.entity_type === "match") return undefined;
+    return resolveName?.(entry.entity_type, entry.entity_id) ?? detailsName(entry);
+}
+
+function nameSuffix(entry: AuditEntry, resolveName?: AuditNameResolver): string {
+    const name = auditEntityName(entry, resolveName);
+    return name ? ` «${name}»` : "";
+}
+
+function detailsName(entry: AuditEntry): string | undefined {
+    if (entry.details?.kind === "entity") return entry.details.name;
     // Camp arenas (ADR-27): create carries the new name, delete the final one.
     if (entry.details?.kind === "arena-camp-config") {
         const change = entry.details.changes.name;
         const name = entry.action === "deleted" ? change?.from : change?.to;
-        return name ? ` «${name}»` : "";
+        return name ?? undefined;
     }
-    return "";
+    return undefined;
 }
 
 /** Whether the row expands into a details section (chevron affordance). */

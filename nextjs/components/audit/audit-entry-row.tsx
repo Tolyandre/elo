@@ -2,7 +2,7 @@
 
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { AuditAction, AuditEntry } from "@/app/api";
-import { auditIsExpandable, auditSummary } from "@/lib/audit-display";
+import { auditEntityName, auditIsExpandable, auditSummary } from "@/lib/audit-display";
 import { formatDateTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import {
@@ -12,6 +12,7 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion";
 import { AuditEntryDetailsView } from "./audit-entry-details";
+import { useAuditEntityName } from "./use-audit-entity-name";
 
 const ACTION_ICON: Record<AuditAction, typeof Plus> = {
     created: Plus,
@@ -27,10 +28,17 @@ const ACTION_ICON: Record<AuditAction, typeof Plus> = {
  */
 export function AuditEntryRow({ entry, className }: { entry: AuditEntry; className?: string }) {
     const Icon = ACTION_ICON[entry.action];
+    const resolveName = useAuditEntityName();
+    // Unresolvable names (deleted entity, no app-wide list) degrade to the
+    // plain entity id, rendered quietly after the summary.
+    const showIdFallback = auditEntityName(entry, resolveName) === undefined;
     const summary = (
         <>
             <span className="font-medium">{entry.actor_name}</span>{" "}
-            <span>{auditSummary(entry)}</span>
+            <span>{auditSummary(entry, resolveName)}</span>
+            {showIdFallback && (
+                <span className="font-mono text-xs text-muted-foreground">{entry.entity_id}</span>
+            )}
         </>
     );
     const meta = (
