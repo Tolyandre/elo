@@ -158,13 +158,9 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, arenaID id.ID, w
 		}
 
 		// Determine effective league: for players with no settlement, derive from starting values;
-		// for existing players, correct stale elite based on current match counts.
-		var league string
-		if r.Rating == nil {
-			league = *initialArenaLeague(arena, settings)
-		} else {
-			league = *effectiveArenaLeague(&r.League, int(r.Cnt60), int(r.Cnt180), arena)
-		}
+		// for existing players, correct stale elite based on current match counts. A league-less
+		// arena names no league — displayLeague never dereferences the nil the helpers return.
+		league := displayLeague(&r.League, r.Rating != nil, int(r.Cnt60), int(r.Cnt180), arena, settings)
 
 		matchesLeftForElite := 0
 		if league == LeagueAmateur {

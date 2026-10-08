@@ -268,7 +268,7 @@ function TenantSettingsContent() {
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    «Все партии» — рейтинг считает всё записанное; «Есть участник сообщества» — партии с хотя бы одним участником; «Только участники» — партии, где играют лишь участники. Смена правила пересчитывает рейтинг сообщества с самого начала.
+                                    Смена правила пересчитывает рейтинг сообщества с самого начала.
                                 </p>
                             </div>
                             <div className="flex-1 min-w-0 space-y-1.5">
@@ -298,7 +298,6 @@ function TenantSettingsContent() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-1.5"><Users className="size-4" /> Клубы сообщества</CardTitle>
                         <CardDescription>
-                            Принадлежность сообществу задаётся клубами: участник сообщества — активный участник любого из них.
                             Изменение состава пересчитывает рейтинг сообщества. Затемнённые клубы уже принадлежат другому сообществу.
                         </CardDescription>
                     </CardHeader>
@@ -320,7 +319,7 @@ function TenantSettingsContent() {
                             <CardTitle>Главная арена</CardTitle>
                             <CardDescription>
                                 Смена стартового рейтинга или лиг пересчитывает рейтинг сообщества с самого
-                                начала — в фоне, уже после сохранения.
+                                начала.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

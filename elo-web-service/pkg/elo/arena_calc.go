@@ -109,6 +109,27 @@ func effectiveArenaLeague(stored *string, cnt60, cnt180 int, arena Arena) *strin
 	return stored
 }
 
+// displayLeague is the league a players listing shows: unsettled players
+// derive from the starting values, settled players get the stale-elite
+// correction. A league-less arena names no league — the empty string (the
+// helpers above return nil there, and the listing SQL coalesces the stored
+// NULL league to 'newbie', which would misreport every settled player).
+func displayLeague(stored *string, settled bool, cnt60, cnt180 int, arena Arena, s EloSettings) string {
+	if len(arena.Settings.Leagues) == 0 {
+		return ""
+	}
+	var league *string
+	if settled {
+		league = effectiveArenaLeague(stored, cnt60, cnt180, arena)
+	} else {
+		league = initialArenaLeague(arena, s)
+	}
+	if league == nil {
+		return ""
+	}
+	return *league
+}
+
 // determineArenaLeague returns the league a player is in AFTER a settlement.
 // A newbie stays while the elo−rating gap exceeds the newbie goal; the elite
 // check applies immediately when the counts qualify (a promoted newbie can
