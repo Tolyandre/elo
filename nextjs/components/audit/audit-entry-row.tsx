@@ -60,7 +60,10 @@ export function AuditEntryRow({ entry, className }: { entry: AuditEntry; classNa
     return (
         <Accordion type="single" collapsible className={cn("border-b-0", className)}>
             <AccordionItem value="details" className="border-b-0">
-                <AccordionTrigger className="py-3 hover:no-underline">
+                {/* font-normal keeps the collapsed line at the same weight as
+                    the non-expandable rows — the trigger's default font-medium
+                    made "переименовал" render bolder than "изменил". */}
+                <AccordionTrigger className="py-3 font-normal hover:no-underline">
                     <span className="flex items-start gap-2">
                         <Icon className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                         <span className="flex flex-wrap items-baseline gap-x-2 text-left">
