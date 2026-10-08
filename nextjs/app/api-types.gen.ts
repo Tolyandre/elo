@@ -26,8 +26,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all players with Elo rankings
-         * @description The catalog is global (ADR-36) — every player appears — but the ranking columns come from the `tenant`'s main arena, which is required (ADR-36 phase 5: reads are tenant-scoped, there is no global default).
+         * List all players, with Elo rankings when a tenant is named
+         * @description The catalog is global (ADR-36) — every player appears, with or without a tenant: the name lookups (tournament brackets, arena feeds, match cards) must resolve on pages opened by a direct link (ADR-36 phase 7). The ranking columns are tenant-scoped (ADR-36 phase 5) and are present only when `tenant` names an existing tenant; without it `rank` is omitted and no existing tenant is a 404.
          */
         get: operations["ListPlayers"];
         put?: never;
@@ -388,8 +388,7 @@ export interface paths {
         /** List matches with cursor-based pagination */
         get: operations["ListMatches"];
         put?: never;
-        /** Add a new match */
-        post: operations["AddMatch"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -866,6 +865,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{id}/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a new match owned by the tenant
+         * @description Every match is created under a tenant (ADR-36). The path tenant must exist — a missing tenant is a 404; a match with no current member of the tenant among its participants is a 400 (ErrMatchOutsideTenant, the same guard the edit applies). The tenant is not part of the request body and cannot be changed later.
+         */
+        post: operations["CreateTenantMatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{id}/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a game table owned by the tenant
+         * @description Every table belongs to a tenant (ADR-36). The path tenant must exist — a missing tenant is a 404; seating with no relation to the tenant is a 400 (ErrTableOutsideTenant). The owner cannot be changed later.
+         */
+        post: operations["CreateTenantTable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings": {
         parameters: {
             query?: never;
@@ -1145,11 +1184,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all active game tables */
+        /** List the tenant's active game tables (the «Сейчас играют» lobby) */
         get: operations["ListTables"];
         put?: never;
-        /** Create a new game table */
-        post: operations["CreateTable"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1287,7 +1325,8 @@ export interface components {
             name: string;
             geologist_name?: string | null;
             user_id?: components["schemas"]["Base58ID"] | null;
-            rank: components["schemas"]["HistoryRank"];
+            /** @description The tenant-scoped ranking columns (ADR-36 phase 5); present only when the list read named a tenant — omitted otherwise (ADR-36 phase 7). */
+            rank?: components["schemas"]["HistoryRank"];
         };
         /** @description Minimal player object returned after create/patch */
         PlayerRef: {
@@ -2039,9 +2078,9 @@ export interface components {
             } | null;
             arena_membership_mode?: {
                 /** @enum {string} */
-                from: "any_member" | "members_only";
+                from: "all" | "any_member" | "members_only";
                 /** @enum {string} */
-                to: "any_member" | "members_only";
+                to: "all" | "any_member" | "members_only";
             } | null;
             tournaments_openness?: {
                 /** @enum {string} */
@@ -2140,6 +2179,8 @@ export interface components {
         };
         TableSummary: {
             id: components["schemas"]["Base58ID"];
+            /** @description The tenant the table belongs to (ADR-36); fixed at creation. */
+            tenant_id: components["schemas"]["Base58ID"];
             game_id: components["schemas"]["Base58ID"];
             host_user_id: components["schemas"]["Base58ID"];
             /** @description Per-device token of the device that last claimed hosting; a host session whose token differs steps down to player/viewer mode. Empty on legacy tables (nothing enforces it). */
@@ -2270,10 +2311,10 @@ export interface components {
             /** @description The clubs belonging to the tenant (ADR-36); a tenant holds one or many. */
             club_ids: components["schemas"]["Base58ID"][];
             /**
-             * @description Which matches count into the main arena.
+             * @description Which matches count into the main arena (ADR-36), evaluated at the match date against membership history. `all` («Все партии») — every rated match, membership irrelevant (coop matches still settle no rating, ADR-33); `any_member` («Есть участник сообщества») — at least one participant was a member at the match date; `members_only` («Только участники сообщества») — all were. The mode also gates tournament registration (with tournaments_openness) and bets.
              * @enum {string}
              */
-            arena_membership_mode: "any_member" | "members_only";
+            arena_membership_mode: "all" | "any_member" | "members_only";
             /**
              * @description Whether tournament registration is restricted to members.
              * @enum {string}
@@ -2281,6 +2322,19 @@ export interface components {
             tournaments_openness: "members_only" | "open";
             /** @description The tenant's main arena — the tenant's own rating space (ADR-36). */
             main_arena_id: components["schemas"]["Base58ID"];
+        };
+        IawwCell: {
+            /** @description Scoring row id (e.g. "structure", "str-res"); not an entity id */
+            row: string;
+            coeff: number;
+            count: number;
+        };
+        CreateTableRequest: {
+            id: components["schemas"]["Base58ID"];
+            game_id: components["schemas"]["Base58ID"];
+            /** @description Per-browser device token; identifies the creating device as the host */
+            host_client_token?: string;
+            game_state: components["schemas"]["TableGameState"];
         };
         /** @description The edit-permission change behind one user update (the /admin/users page's only write). A no-op update produces no user-update row. */
         AuditUserUpdateDetails: {
@@ -2406,19 +2460,6 @@ export interface components {
             slot_id: components["schemas"]["Base58ID"];
             game_id?: components["schemas"]["Base58ID"];
         };
-        IawwCell: {
-            /** @description Scoring row id (e.g. "structure", "str-res"); not an entity id */
-            row: string;
-            coeff: number;
-            count: number;
-        };
-        CreateTableRequest: {
-            id: components["schemas"]["Base58ID"];
-            game_id: components["schemas"]["Base58ID"];
-            /** @description Per-browser device token; identifies the creating device as the host */
-            host_client_token?: string;
-            game_state: components["schemas"]["TableGameState"];
-        };
         UpdateTableStateRequest: {
             /**
              * Format: int64
@@ -2473,9 +2514,9 @@ export interface operations {
     };
     ListPlayers: {
         parameters: {
-            query: {
-                /** @description The tenant whose main arena the ratings and leagues are read from (ADR-36). Naming no existing tenant is a 404. */
-                tenant: string;
+            query?: {
+                /** @description The tenant whose main arena the ratings and leagues are read from (ADR-36). Optional — omit it for the name catalog without ranking columns. Naming no existing tenant is a 404. */
+                tenant?: string;
             };
             header?: never;
             path?: never;
@@ -4005,102 +4046,6 @@ export interface operations {
             };
         };
     };
-    AddMatch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    id: components["schemas"]["Base58ID"];
-                    game_id: components["schemas"]["Base58ID"];
-                    /** @description Map of player_id (string) to numeric score. Required for competitive matches (at least 2 players); must be omitted for coop matches (ADR-33). */
-                    score?: {
-                        [key: string]: number;
-                    };
-                    /** @description Only meaningful for mixed games (ADR-33): which mode this match was played in, default competitive. Coop-only and competitive-only games decide the mode themselves; a request contradicting the game's mode is a 400. */
-                    mode?: components["schemas"]["MatchMode"];
-                    /**
-                     * Format: double
-                     * @description The shared game result — required for coop matches, rejected for competitive ones.
-                     */
-                    game_score?: number;
-                    /** @description Whether the team/solo player beat the game — required for coop matches, rejected for competitive ones. */
-                    game_won?: boolean;
-                    /** @description Participants without per-player scores — the player list of a coop match (at least one, ADR-33), instead of score. Rejected for competitive matches, where score carries the players. */
-                    player_ids?: components["schemas"]["Base58ID"][];
-                    /**
-                     * Format: date-time
-                     * @description Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
-                     */
-                    date?: string;
-                    /** @description Optional camp arena IDs (ADR-27) this match belongs to. Each arena must exist, be a camp, and its window must contain the match date; the links become part of the camp's stats. */
-                    camp_arena_ids?: components["schemas"]["Base58ID"][];
-                    /** @description Explicit opt-out from tournament bracket acceptance (ADR-26). When the match exactly fits a playing slot (same game, exactly the seated players) the server links it by default — the form checkbox is default-checked. Send true to keep the match out of the bracket; fitting is always verified server-side. */
-                    skip_tournament_link?: boolean;
-                    /** @description Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form. */
-                    calculator_kind?: string | null;
-                    /** @description Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id", which the schema marks as an entity id so the Go handler canonicalizes it at the boundary. */
-                    calculator_data?: Record<string, never> | null;
-                };
-            };
-        };
-        responses: {
-            /** @description Match added */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: {
-                            id: components["schemas"]["Base58ID"];
-                        };
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description History change conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     GetMatchById: {
         parameters: {
             query: {
@@ -5500,8 +5445,12 @@ export interface operations {
                 "application/json": {
                     id: components["schemas"]["Base58ID"];
                     name: string;
-                    /** @enum {string} */
-                    arena_membership_mode: "any_member" | "members_only";
+                    /**
+                     * @description Which matches count into the main arena (ADR-36). `all` — every rated match; `any_member` — at least one participant was a member at the match date; `members_only` — all were.
+                     * @default any_member
+                     * @enum {string}
+                     */
+                    arena_membership_mode: "all" | "any_member" | "members_only";
                     /** @enum {string} */
                     tournaments_openness: "members_only" | "open";
                     /** @description Initial club composition (may be empty). */
@@ -5617,8 +5566,11 @@ export interface operations {
                 "application/json": {
                     name?: string;
                     icon?: string;
-                    /** @enum {string} */
-                    arena_membership_mode?: "any_member" | "members_only";
+                    /**
+                     * @description Which matches count into the main arena (ADR-36). `all` — every rated match; `any_member` — at least one participant was a member at the match date; `members_only` — all were.
+                     * @enum {string}
+                     */
+                    arena_membership_mode?: "all" | "any_member" | "members_only";
                     /** @enum {string} */
                     tournaments_openness?: "members_only" | "open";
                     settings?: components["schemas"]["ArenaSettings"];
@@ -5961,6 +5913,169 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CreateTenantMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    id: components["schemas"]["Base58ID"];
+                    game_id: components["schemas"]["Base58ID"];
+                    /** @description Map of player_id (string) to numeric score. Required for competitive matches (at least 2 players); must be omitted for coop matches (ADR-33). */
+                    score?: {
+                        [key: string]: number;
+                    };
+                    /** @description Only meaningful for mixed games (ADR-33): which mode this match was played in, default competitive. Coop-only and competitive-only games decide the mode themselves; a request contradicting the game's mode is a 400. */
+                    mode?: components["schemas"]["MatchMode"];
+                    /**
+                     * Format: double
+                     * @description The shared game result — required for coop matches, rejected for competitive ones.
+                     */
+                    game_score?: number;
+                    /** @description Whether the team/solo player beat the game — required for coop matches, rejected for competitive ones. */
+                    game_won?: boolean;
+                    /** @description Participants without per-player scores — the player list of a coop match (at least one, ADR-33), instead of score. Rejected for competitive matches, where score carries the players. */
+                    player_ids?: components["schemas"]["Base58ID"][];
+                    /**
+                     * Format: date-time
+                     * @description Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
+                     */
+                    date?: string;
+                    /** @description Optional camp arena IDs (ADR-27) this match belongs to. Each arena must exist, be a camp, and its window must contain the match date; the links become part of the camp's stats. */
+                    camp_arena_ids?: components["schemas"]["Base58ID"][];
+                    /** @description Explicit opt-out from tournament bracket acceptance (ADR-26). When the match exactly fits a playing slot (same game, exactly the seated players) the server links it by default — the form checkbox is default-checked. Send true to keep the match out of the bracket; fitting is always verified server-side. */
+                    skip_tournament_link?: boolean;
+                    /** @description Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form. */
+                    calculator_kind?: string | null;
+                    /** @description Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id", which the schema marks as an entity id so the Go handler canonicalizes it at the boundary. */
+                    calculator_data?: Record<string, never> | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Match added */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: {
+                            id: components["schemas"]["Base58ID"];
+                        };
+                    };
+                };
+            };
+            /** @description Bad request, or no participant is a current member of the tenant (the match would never belong to it) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description History change conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CreateTenantTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTableRequest"];
+            };
+        };
+        responses: {
+            /** @description Table created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["TableSummary"];
+                    };
+                };
+            };
+            /** @description Bad request (invalid state, unknown game) or seating unrelated to the tenant */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6942,7 +7057,10 @@ export interface operations {
     };
     ListTables: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description List only tables created under this tenant (ADR-36). Required — there is no cross-tenant lobby. Naming no existing tenant is a 404. */
+                tenant: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6961,44 +7079,8 @@ export interface operations {
                     };
                 };
             };
-        };
-    };
-    CreateTable: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTableRequest"];
-            };
-        };
-        responses: {
-            /** @description Table created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["TableSummary"];
-                    };
-                };
-            };
-            /** @description Bad request (invalid state or unknown game) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
+            /** @description Tenant not found (the ?tenant= parameter names no existing tenant) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

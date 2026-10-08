@@ -131,6 +131,7 @@ func (e AuditMatchUpdateDetailsPlayerChangesChange) Valid() bool {
 
 // Defines values for AuditTenantUpdateDetailsArenaMembershipModeFrom.
 const (
+	AuditTenantUpdateDetailsArenaMembershipModeFromAll         AuditTenantUpdateDetailsArenaMembershipModeFrom = "all"
 	AuditTenantUpdateDetailsArenaMembershipModeFromAnyMember   AuditTenantUpdateDetailsArenaMembershipModeFrom = "any_member"
 	AuditTenantUpdateDetailsArenaMembershipModeFromMembersOnly AuditTenantUpdateDetailsArenaMembershipModeFrom = "members_only"
 )
@@ -138,6 +139,8 @@ const (
 // Valid indicates whether the value is a known member of the AuditTenantUpdateDetailsArenaMembershipModeFrom enum.
 func (e AuditTenantUpdateDetailsArenaMembershipModeFrom) Valid() bool {
 	switch e {
+	case AuditTenantUpdateDetailsArenaMembershipModeFromAll:
+		return true
 	case AuditTenantUpdateDetailsArenaMembershipModeFromAnyMember:
 		return true
 	case AuditTenantUpdateDetailsArenaMembershipModeFromMembersOnly:
@@ -149,6 +152,7 @@ func (e AuditTenantUpdateDetailsArenaMembershipModeFrom) Valid() bool {
 
 // Defines values for AuditTenantUpdateDetailsArenaMembershipModeTo.
 const (
+	AuditTenantUpdateDetailsArenaMembershipModeToAll         AuditTenantUpdateDetailsArenaMembershipModeTo = "all"
 	AuditTenantUpdateDetailsArenaMembershipModeToAnyMember   AuditTenantUpdateDetailsArenaMembershipModeTo = "any_member"
 	AuditTenantUpdateDetailsArenaMembershipModeToMembersOnly AuditTenantUpdateDetailsArenaMembershipModeTo = "members_only"
 )
@@ -156,6 +160,8 @@ const (
 // Valid indicates whether the value is a known member of the AuditTenantUpdateDetailsArenaMembershipModeTo enum.
 func (e AuditTenantUpdateDetailsArenaMembershipModeTo) Valid() bool {
 	switch e {
+	case AuditTenantUpdateDetailsArenaMembershipModeToAll:
+		return true
 	case AuditTenantUpdateDetailsArenaMembershipModeToAnyMember:
 		return true
 	case AuditTenantUpdateDetailsArenaMembershipModeToMembersOnly:
