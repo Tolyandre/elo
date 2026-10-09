@@ -6,8 +6,7 @@ package elo
 // created by schema migration 068 in every environment, which also anchors
 // the global arena to it and backfills the tenant_id of pre-tenancy
 // tournaments and markets. The id sits outside the 061 club/user range
-// (...0001–...0003). Keep the SQL literals of the same value in sync
-// (migration 068 and testdata/seed.sql).
+// (...0001–...0003).
 //
 // Backfill-only anchor: nothing at runtime may fall back to this id — every
 // tournament/market/arena created after tenancy carries its tenant

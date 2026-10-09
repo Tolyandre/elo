@@ -16,18 +16,6 @@ services:
       timeout: 5s
       retries: 10
 
-  seed:
-    image: docker.io/postgres:16-alpine
-    restart: "no"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGPASSWORD: devpassword
-    volumes:
-      - ./elo-web-service/testdata/seed.sql:/seed.sql:ro
-    command: ["psql", "-h", "postgres", "-U", "elo", "-d", "elo", "-f", "/seed.sql"]
-
   mock-oauth2:
     build:
       context: ./mock-oauth2

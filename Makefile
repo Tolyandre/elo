@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test integration-test-one decode-id db-market copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api test
+.PHONY: dev-up dev-down dev-migrate dev-logs backend-run frontend-run integration-test integration-test-one decode-id db-market copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api test
 
 ## Regenerate Go server code from openapi/openapi.yaml
 generate-go-api:
@@ -18,19 +18,15 @@ generate-api: generate-go-api generate-ts-api
 test:
 	./dev shell -- bash -ec 'unformatted="$$(gofmt -l elo-web-service/main.go elo-web-service/cmd elo-web-service/pkg elo-web-service/integration_test)"; [ -z "$$unformatted" ] || { echo "gofmt gate: unformatted Go files (run gofmt -w on them):"; echo "$$unformatted"; exit 1; }; go test -C elo-web-service ./...'
 
-## Start all dev dependencies (postgres, mock-oauth2, migrations, seed)
+## Start all dev dependencies (postgres, mock-oauth2) and run migrations.
+## The dev DB is meant to be a prod copy (`make copy-prod-db-to-dev`).
 dev-up:
 	docker compose up -d --wait postgres mock-oauth2
 	cd elo-web-service && CGO_ENABLED=0 go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
-	docker compose run --rm seed
 
 ## Stop all dev dependencies
 dev-down:
 	docker compose down -v
-
-## Re-apply seed data (idempotent — safe to run multiple times)
-dev-seed:
-	docker compose run --rm seed
 
 ## Re-apply migrations (same code path as production)
 dev-migrate:
@@ -62,8 +58,7 @@ copy-prod-db-to-stage:
 
 ## Copy the production DB into the local docker compose postgres. Prod runs on
 ## this machine (see copy-prod-db-to-test/stage — local postgres peer auth via
-## sudo), so no SSH is involved. Wipes the local elo database first (seed data
-## is not re-applied), restores the dump with objects owned by the local elo
+## sudo), so no SSH is involved. Wipes the local elo database first, restores the dump with objects owned by the local elo
 ## role, then re-applies migrations so the schema matches the local code.
 ## Override if the prod database is named differently:
 ##   make copy-prod-db-to-dev PROD_DB=elo-web-service

@@ -51,8 +51,7 @@ The service is pure Go (`CGO_ENABLED=0` everywhere, including the Nix build) —
 
 Container runtimes for the integration tests: `DOCKER_HOST`/`CONTAINER_HOST` are unset in the ambient environment, but the Makefile targets set `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock` explicitly. That user-scoped podman socket must exist and be reachable; `podman ps` is the quick reachability check.
 
-- `make dev-up`: start Postgres and mock OAuth, run migrations, and seed local data.
-- `make dev-seed`: re-apply idempotent seed data (`elo-web-service/testdata/seed.sql`).
+- `make dev-up`: start Postgres and mock OAuth, run migrations. The dev DB is meant to be a prod copy (`make copy-prod-db-to-dev`) — there is no seed data.
 - `make dev-migrate`: re-apply migrations against the dev DB.
 - `make backend-run`: run the Go backend with Docker-oriented config.
 - `make frontend-run`: run the Next.js dev server.
@@ -142,7 +141,7 @@ Format Go code with `gofmt`; keep packages lowercase and tests named `*_test.go`
 
 Backend (all document/versioned mechanics come from the shared registries — see ADR-09/16):
 
-1. `elo-web-service/pkg/elo/game_ids.go`: well-known game UUID + `Games` map entry (title); mirror the row in `testdata/seed.sql`.
+1. `elo-web-service/pkg/elo/game_ids.go`: well-known game UUID + `Games` map entry (title).
 2. `elo-web-service/pkg/elo/table_game_<kind>.go`: a `tableGame` implementation — typed state struct + `normalize`/`applySubmit`/`playerIDs` — and a `tableGames` entry in `table_service.go`. The game owns its submit shape (decoded with `decodeSubmit`, which rejects unknown fields); no shared input union to extend.
 3. `elo-web-service/pkg/calculator/<kind>.go` + `<kind>.v1.json`: register the calculator kind (`reg.Register` in init) for history-mode match editing. Mark id properties `"x-entity-id": true`; never key a player by object key.
 4. `openapi/tables.yaml`: submit request-body union + game-state schema variants, then `make generate-api` (openapilint must pass).

@@ -9,7 +9,8 @@ import (
 // Well-known games.id constants (ADR-16). Live tables pin the game they run
 // via these ids, and the frontend uses their Base58 wire forms to route a
 // table to its game app and to pick the game when saving the final match.
-// Every environment's games table carries these rows (see testdata/seed.sql).
+// These rows originate in schema migration 061 and exist in every
+// production-derived database.
 const (
 	gameIDSkullKingUUID = "00000000-0000-0000-0000-000000000188" // wire 111111111111117m
 	gameIDIAWWUUID      = "00000000-0000-0000-0000-000000000009" // wire 111111111111111A

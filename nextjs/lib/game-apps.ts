@@ -1,7 +1,7 @@
 // Well-known game ids and the game-app registry for live tables (ADR-16).
 //
 // The ids are the games-table row ids every environment carries (mirrored in
-// elo-web-service/pkg/elo/game_ids.go and testdata/seed.sql); tables pin the
+// elo-web-service/pkg/elo/game_ids.go); tables pin the
 // game they run via game_id, and the frontend routes a table to its game app
 // and picks the game when saving the final match by looking the id up here.
 //
