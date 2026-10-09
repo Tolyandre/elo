@@ -111,7 +111,14 @@ startup by `MigrateDataRunner`, validation on every write; new leaf package
 - `leagues` lists the leagues that exist in the arena, in promotion order.
   The global arena keeps all three; per-game arenas keep newbie + amateur
   (current behavior); tournament arenas are seeded with `leagues: []` and
-  `starting_rating = starting_elo`.
+  `starting_rating = starting_elo`. The schema rejects a single league —
+  either no leagues, or at least two. One league would only rename the
+  players list's caption (ranking is one bucket regardless), and a lone
+  newbie league would additionally keep the catch-up mechanics running with
+  «wins needed» hints pointing at a promotion that does not exist. The rule
+  gates writes only (the schema on arena create/PATCH and tenant settings);
+  `Parse` stays cardinality-blind so documents stored before the rule keep
+  rendering until their next edit.
 - The newbie league is what creates the elo/rating distinction (ADR-03): an
   arena without a newbie league has rating ≡ elo. `leagues: []` means no
   leagues at all: `league` is NULL on settlements and players form a single

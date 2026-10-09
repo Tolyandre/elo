@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Arena settings",
-  "description": "Versioned settings document for an arena instance (ADR-24), stored in arenas.settings. Unlike elo_settings (a date-keyed series) these settings are date-independent: changing them affects every match of the arena. League parameters live here; the shared formula constants (K, D, starting_elo, win_reward) stay in elo_settings. leagues lists the leagues that exist in the arena in promotion order; an empty array means no leagues (league is NULL on settlements, display rating equals true Elo). v1 carries no entity references, so no x-entity-id marking is needed yet.",
+  "description": "Versioned settings document for an arena instance (ADR-24), stored in arenas.settings. Unlike elo_settings (a date-keyed series) these settings are date-independent: changing them affects every match of the arena. League parameters live here; the shared formula constants (K, D, starting_elo, win_reward) stay in elo_settings. leagues lists the leagues that exist in the arena in promotion order; an empty array means no leagues (league is NULL on settlements, display rating equals true Elo), and a single league is rejected — either none, or at least two. v1 carries no entity references, so no x-entity-id marking is needed yet.",
   "type": "object",
   "additionalProperties": false,
   "required": ["starting_rating", "leagues"],
@@ -12,6 +12,11 @@
     },
     "leagues": {
       "type": "array",
+      "description": "Either no leagues at all (players render as one caption-less list, display rating equals true Elo), or at least two in promotion order — a single league is rejected: it would only rename the list's caption, and a lone newbie league would additionally keep the catch-up mechanics running with «wins needed» hints pointing at a promotion that does not exist.",
+      "oneOf": [
+        { "maxItems": 0 },
+        { "minItems": 2 }
+      ],
       "items": {
         "oneOf": [
           { "$ref": "#/$defs/league_newbie" },

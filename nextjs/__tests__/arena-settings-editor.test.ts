@@ -89,10 +89,24 @@ describe("settingsValuesError", () => {
 
     it("ignores disabled leagues' params", () => {
         const values = initialSettingsValues(doc);
+        values.leagues.elite = false; // newbie + amateur remain — a valid set
+        values.leagues.matches6m = "-5"; // an elite param on a disabled league
+        expect(settingsValuesError(values)).toBeNull();
+    });
+
+    it("rejects exactly one selected league (the server schema does too)", () => {
+        const values = initialSettingsValues(null);
         values.leagues.newbie = false;
-        values.leagues.elite = false;
-        values.leagues.goalGap = "-5";
-        values.leagues.matches6m = "-5";
+        values.leagues.amateur = false;
+        values.leagues.elite = true;
+        expect(settingsValuesError(values)).toContain("одиночная лига");
+    });
+
+    it("accepts no leagues and two leagues", () => {
+        expect(settingsValuesError(initialSettingsValues(null, { withLeagues: false }))).toBeNull();
+        const values = initialSettingsValues(null);
+        values.leagues.newbie = false;
+        values.leagues.elite = true;
         expect(settingsValuesError(values)).toBeNull();
     });
 });

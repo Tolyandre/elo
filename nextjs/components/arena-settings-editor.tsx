@@ -90,6 +90,11 @@ export function settingsValuesError(values: ArenaSettingsValues): string | null 
     if (!Number.isFinite(Number(values.startingRating))) {
         return "Стартовый рейтинг должен быть числом";
     }
+    // The server rejects a single league (the settings schema): one league
+    // would only rename the caption above the players list. None or >= 2.
+    if ([leagues.newbie, leagues.amateur, leagues.elite].filter(Boolean).length === 1) {
+        return "Выберите хотя бы две лиги либо отключите все — одиночная лига бессмысленна";
+    }
     if (leagues.newbie) {
         if (!(nonNegative(leagues.goalGap) && nonNegative(leagues.earnedMin) && nonNegative(leagues.earnedMax))) {
             return "Параметры лиги новичков должны быть неотрицательными числами";
