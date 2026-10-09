@@ -38,10 +38,16 @@ export function RatingChart({ history }: { history: RatingPoint[] }) {
     const [range, setRange] = useState<{ start: number; end: number } | null>(null)
     const [activePreset, setActivePreset] = useState<PresetKey | null>('all')
     const [prevHistory, setPrevHistory] = useState(history)
+    // Recharts' Brush keeps traveller positions in internal state, scaled over
+    // the previous data length; when the controlled endIndex moves past that
+    // stale domain (history grew — e.g. a tenant switch) it renders rect x=NaN.
+    // Remount the Brush with each history so the scale is derived fresh.
+    const [brushEpoch, setBrushEpoch] = useState(0)
     if (history !== prevHistory) {
         setPrevHistory(history)
         setRange(null)
         setActivePreset('all')
+        setBrushEpoch(epoch => epoch + 1)
     }
 
     // Frozen at mount: preset cutoffs don't need to track a live clock.
@@ -153,6 +159,7 @@ export function RatingChart({ history }: { history: RatingPoint[] }) {
                     />
                     {showControls && (
                         <Brush
+                            key={brushEpoch}
                             dataKey="label"
                             height={28}
                             travellerWidth={8}
