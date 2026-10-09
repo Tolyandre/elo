@@ -220,6 +220,14 @@ function TenantUpdateDetails({ changes }: { changes: components["schemas"]["Audi
                         </div>
                     );
                 }
+                if (row.kind === "catch-up") {
+                    return (
+                        <div key={i} className="flex flex-wrap gap-x-2">
+                            <dt className="text-muted-foreground">Догоняние рейтинга:</dt>
+                            <dd>изменены параметры догоняния рейтинга до эло</dd>
+                        </div>
+                    );
+                }
                 if (row.kind === "icon") {
                     return (
                         <div key={i} className="flex flex-wrap gap-x-2 items-center">

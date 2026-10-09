@@ -343,10 +343,24 @@ type Querier interface {
 	// arena-filtered recent match counts the elite promotion hint needs (same
 	// counts as ListArenaPlayersAt, anchored at now). Final ranking (league
 	// priority, then rating) is applied by the service.
+	//
+	// The window counts are pre-aggregated per player in CTEs — one scan of the
+	// arena's window matches each — instead of per-player LATERALs. Under a
+	// generic prepared-statement plan (Postgres swaps the custom plan out after
+	// 5 executions) it cannot estimate the window selectivity, and a per-player
+	// lateral then degrades into per-match probes of match_scores (~3s for a
+	// 100-player arena); the aggregate shape is estimate-insensitive.
 	ListArenaPlayers(ctx context.Context, arenaID id.ID) ([]ListArenaPlayersRow, error)
 	// Point-in-time standings of one arena (for rank-change history): the latest
 	// settlement at or before @at, plus the arena-filtered match counts the elite
 	// staleness check needs. Lists players with at least one settlement.
+	//
+	// The window counts are pre-aggregated per player in CTEs — one scan of the
+	// arena's window matches each — instead of per-player LATERALs. Under a
+	// generic prepared-statement plan (Postgres swaps the custom plan out after
+	// 5 executions) it cannot estimate the window selectivity ($2), and a
+	// per-player lateral then degrades into per-match probes of match_scores
+	// (~3s for a 100-player arena); the aggregate shape is estimate-insensitive.
 	ListArenaPlayersAt(ctx context.Context, arg ListArenaPlayersAtParams) ([]ListArenaPlayersAtRow, error)
 	// kind narrows the list for the /arenas page tabs: 'games' returns every
 	// user-managed arena except camps and the global one (the main page, not a

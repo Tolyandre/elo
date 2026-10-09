@@ -442,7 +442,7 @@ func TestAuditTenantSettings(t *testing.T) {
 	}
 	// An arena settings change leaves the starting-rating pair.
 	if w := doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
-		`{"settings": {"starting_rating": 100, "leagues": []}}`); w.Code != http.StatusOK {
+		`{"settings": {"starting_rating": 100, "catch_up": {"earned_min": 2, "earned_max": 64, "tau": 100}, "leagues": []}}`); w.Code != http.StatusOK {
 		t.Fatalf("PATCH tenant settings: %d %s", w.Code, w.Body.String())
 	}
 

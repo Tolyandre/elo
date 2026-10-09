@@ -94,7 +94,7 @@ func TestCamp_CRUDAndValidation(t *testing.T) {
 	end := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
 
 	// Happy path.
-	body := `{"name":"Тестовый кэмп","camp":true,"starts_at":"` + start + `","ends_at":"` + end + `","settings":{"starting_rating":1000,"leagues":[]}}`
+	body := `{"name":"Тестовый кэмп","camp":true,"starts_at":"` + start + `","ends_at":"` + end + `","settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`
 	w := doJSON(t, router, http.MethodPost, "/arenas", editor, body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create camp: %d %s", w.Code, w.Body.String())
@@ -115,17 +115,17 @@ func TestCamp_CRUDAndValidation(t *testing.T) {
 	}
 
 	// Missing dates → 400.
-	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"Без дат","camp":true,"settings":{"starting_rating":1000,"leagues":[]}}`)
+	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"Без дат","camp":true,"settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("camp without dates must 400, got %d %s", w.Code, w.Body.String())
 	}
 	// Disordered dates → 400.
-	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"Кривые даты","camp":true,"starts_at":"`+end+`","ends_at":"`+start+`","settings":{"starting_rating":1000,"leagues":[]}}`)
+	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"Кривые даты","camp":true,"starts_at":"`+end+`","ends_at":"`+start+`","settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("camp with end before start must 400, got %d %s", w.Code, w.Body.String())
 	}
 	// Leagues are not allowed on camps → 400.
-	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"Кэмп с лигами","camp":true,"starts_at":"`+start+`","ends_at":"`+end+`","settings":{"starting_rating":1000,"leagues":[{"kind":"newbie","goal_gap":16,"earned_min":2,"earned_max":64,"tau":100}]}}`)
+	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"Кэмп с лигами","camp":true,"starts_at":"`+start+`","ends_at":"`+end+`","settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[{"kind":"newbie","goal_gap":16}]}}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("camp with leagues must 400, got %d %s", w.Code, w.Body.String())
 	}
@@ -148,7 +148,7 @@ func TestCamp_CRUDAndValidation(t *testing.T) {
 	// Narrowing the window end past the match (~now) must be rejected.
 	narrowEnd := time.Now().Add(-2 * time.Hour).Format(time.RFC3339)
 	w = doJSON(t, router, http.MethodPatch, "/arenas/"+created.Data.Id, editor,
-		`{"name":"Тестовый кэмп","camp":true,"starts_at":"`+start+`","ends_at":"`+narrowEnd+`","settings":{"starting_rating":1000,"leagues":[]}}`)
+		`{"name":"Тестовый кэмп","camp":true,"starts_at":"`+start+`","ends_at":"`+narrowEnd+`","settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`)
 	if w.Code != http.StatusConflict {
 		t.Fatalf("narrowing camp dates past a match must 409, got %d %s", w.Code, w.Body.String())
 	}
@@ -156,7 +156,7 @@ func TestCamp_CRUDAndValidation(t *testing.T) {
 	// Widening (and renaming) is fine.
 	wideStart := time.Now().Add(-48 * time.Hour).Format(time.RFC3339)
 	w = doJSON(t, router, http.MethodPatch, "/arenas/"+created.Data.Id, editor,
-		`{"name":"Тестовый кэмп переименованный","camp":true,"starts_at":"`+wideStart+`","ends_at":"`+end+`","settings":{"starting_rating":1000,"leagues":[]}}`)
+		`{"name":"Тестовый кэмп переименованный","camp":true,"starts_at":"`+wideStart+`","ends_at":"`+end+`","settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("widening camp dates must 200, got %d %s", w.Code, w.Body.String())
 	}
@@ -202,7 +202,7 @@ func TestCamp_MatchLinkingAndDrain(t *testing.T) {
 	campSvc := newArenaService(pool)
 	camp, err := campSvc.CreateArena(ctx, idpkg.ID(""), elo.ArenaWriteOpts{
 		Name: "Линковочный кэмп", Camp: true, StartsAt: &start, EndsAt: &end,
-		SettingsRaw: json.RawMessage(`{"starting_rating":1000,"leagues":[]}`),
+		SettingsRaw: json.RawMessage(`{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}`),
 	})
 	if err != nil {
 		t.Fatalf("create camp: %v", err)
@@ -295,14 +295,14 @@ func TestCamp_MatchEditRelinksCamps(t *testing.T) {
 	actor := createTestAdmin(t, pool)
 	campA, err := campSvc.CreateArena(ctx, actor, elo.ArenaWriteOpts{
 		Name: "Кэмп А", Camp: true, StartsAt: &start, EndsAt: &end,
-		SettingsRaw: json.RawMessage(`{"starting_rating":1000,"leagues":[]}`),
+		SettingsRaw: json.RawMessage(`{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}`),
 	})
 	if err != nil {
 		t.Fatalf("create camp A: %v", err)
 	}
 	campB, err := campSvc.CreateArena(ctx, actor, elo.ArenaWriteOpts{
 		Name: "Кэмп Б", Camp: true, StartsAt: &start, EndsAt: &end,
-		SettingsRaw: json.RawMessage(`{"starting_rating":1000,"leagues":[]}`),
+		SettingsRaw: json.RawMessage(`{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}`),
 	})
 	if err != nil {
 		t.Fatalf("create camp B: %v", err)

@@ -15,7 +15,7 @@ import (
 func init() {
 	reg.Register(KindEntity, 1, "entity.v1.json")
 	reg.Register(KindMatchUpdate, 1, "match_update.v1.json")
-	reg.Register(KindTenantUpdate, 1, "tenant_update.v1.json")
+	reg.Register(KindTenantUpdate, 2, "tenant_update.v2.json")
 	reg.Register(KindUserUpdate, 1, "user_update.v1.json")
 	reg.Register(KindClubUpdate, 1, "club_update.v1.json")
 	reg.Register(KindGameUpdate, 1, "game_update.v1.json")
@@ -38,6 +38,18 @@ func init() {
 			return nil, err
 		}
 		doc["schema_version"] = 2
+		return json.Marshal(doc)
+	})
+
+	// v2 adds catch_up_changed (arena settings v2 moved the catch-up
+	// parameters out of the newbie league); v1 documents predate the flag.
+	registerMigrator(KindTenantUpdate, 1, func(raw json.RawMessage) (json.RawMessage, error) {
+		var doc map[string]any
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, err
+		}
+		doc["schema_version"] = 2
+		doc["catch_up_changed"] = false
 		return json.Marshal(doc)
 	})
 }
@@ -154,24 +166,25 @@ type TenantUpdateDetails struct {
 	TournamentsOpenness *StringChange      `json:"tournaments_openness"`
 	StartingRating      *NumberChange      `json:"starting_rating"`
 	LeaguesChanged      bool               `json:"leagues_changed"`
+	CatchUpChanged      bool               `json:"catch_up_changed"`
 	Icon                *ValueChange       `json:"icon"`
 	Clubs               *TenantClubsChange `json:"clubs"`
 }
 
-// NewTenantUpdateDetails builds v1 tenant-update details.
+// NewTenantUpdateDetails builds v2 tenant-update details.
 func NewTenantUpdateDetails() TenantUpdateDetails {
-	return TenantUpdateDetails{SchemaVersion: 1}
+	return TenantUpdateDetails{SchemaVersion: 2}
 }
 
 // NewTenantNameChange builds the details of a tenant rename.
 func NewTenantNameChange(from, to string) TenantUpdateDetails {
-	return TenantUpdateDetails{SchemaVersion: 1, Name: valueChange(&from, &to)}
+	return TenantUpdateDetails{SchemaVersion: 2, Name: valueChange(&from, &to)}
 }
 
 // IsEmpty reports whether the details describe no changes at all.
 func (d TenantUpdateDetails) IsEmpty() bool {
 	return d.Name == nil && d.ArenaMembershipMode == nil && d.TournamentsOpenness == nil &&
-		d.StartingRating == nil && !d.LeaguesChanged && d.Icon == nil && d.Clubs == nil
+		d.StartingRating == nil && !d.LeaguesChanged && !d.CatchUpChanged && d.Icon == nil && d.Clubs == nil
 }
 
 // ---------------------------------------------------------------------------

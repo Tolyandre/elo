@@ -750,6 +750,57 @@ func (q *Queries) ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEven
 
 const listArenaPlayers = `-- name: ListArenaPlayers :many
 
+WITH arena AS (
+    SELECT a.id, a.camp, a.tournament_id, a.tenant_id, a.match_filter_id,
+           t.arena_membership_mode
+    FROM arenas a
+    LEFT JOIN tenants t ON t.id = a.tenant_id
+    WHERE a.id = $1
+),
+matches_60 AS (
+    SELECT m.id
+    FROM matches m
+    CROSS JOIN arena a
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
+    WHERE m.date >= (now() - interval '60 days') AND m.date <= now()
+      AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, a.arena_membership_mode, m.mode, m.id, m.date)
+      ELSE arena_contains_match(
+    m.mode,
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+      END)
+),
+cnt_60 AS (
+    SELECT ms.player_id, COUNT(*)::int AS cnt
+    FROM matches_60 w
+    JOIN match_scores ms ON ms.match_id = w.id
+    GROUP BY ms.player_id
+),
+matches_180 AS (
+    SELECT m.id
+    FROM matches m
+    CROSS JOIN arena a
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
+    WHERE m.date >= (now() - interval '180 days') AND m.date <= now()
+      AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, a.arena_membership_mode, m.mode, m.id, m.date)
+      ELSE arena_contains_match(
+    m.mode,
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+      END)
+),
+cnt_180 AS (
+    SELECT ms.player_id, COUNT(*)::int AS cnt
+    FROM matches_180 w
+    JOIN match_scores ms ON ms.match_id = w.id
+    GROUP BY ms.player_id
+)
 SELECT p.id AS player_id, p.name AS player_name,
        -- CASE forces sqlc to infer a nullable type: a player whose latest
        -- settlement is after  (or who has none yet) yields a NULL row.
@@ -757,7 +808,7 @@ SELECT p.id AS player_id, p.name AS player_name,
        CASE WHEN latest.elo_after IS NULL THEN NULL ELSE latest.elo_after END AS elo_after,
        latest.league,
        st.matches_count, st.first_count, st.second_count, st.third_count, st.fourth_count,
-       COALESCE(cnt60.cnt, 0) AS cnt_60, COALESCE(cnt180.cnt, 0) AS cnt_180
+       COALESCE(c60.cnt, 0) AS cnt_60, COALESCE(c180.cnt, 0) AS cnt_180
 FROM arena_player_stats st
 JOIN players p ON p.id = st.player_id
 JOIN arenas ar ON ar.id = st.arena_id
@@ -769,44 +820,8 @@ LEFT JOIN LATERAL (
     ORDER BY s.date DESC, s.id DESC
     LIMIT 1
 ) latest ON true
-LEFT JOIN LATERAL (
-    SELECT COUNT(*)::int AS cnt
-    FROM matches m
-    JOIN match_scores ms ON ms.match_id = m.id
-    JOIN arenas a ON a.id = st.arena_id
-    LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN tenants t ON t.id = a.tenant_id
-    WHERE ms.player_id = p.id
-      AND m.date >= (now() - interval '60 days') AND m.date <= now()
-      AND (CASE WHEN a.tenant_id IS NOT NULL
-      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
-      ELSE arena_contains_match(
-    m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
-    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
-    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
-      END)
-) cnt60 ON true
-LEFT JOIN LATERAL (
-    SELECT COUNT(*)::int AS cnt
-    FROM matches m
-    JOIN match_scores ms ON ms.match_id = m.id
-    JOIN arenas a ON a.id = st.arena_id
-    LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN tenants t ON t.id = a.tenant_id
-    WHERE ms.player_id = p.id
-      AND m.date >= (now() - interval '180 days') AND m.date <= now()
-      AND (CASE WHEN a.tenant_id IS NOT NULL
-      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
-      ELSE arena_contains_match(
-    m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
-    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
-    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
-      END)
-) cnt180 ON true
+LEFT JOIN cnt_60 c60 ON c60.player_id = p.id
+LEFT JOIN cnt_180 c180 ON c180.player_id = p.id
 WHERE st.arena_id = $1
   -- members_only tenant arenas (ADR-36) list and rank current members only —
   -- a current member of ANY club of the tenant; guests and former members
@@ -849,6 +864,13 @@ type ListArenaPlayersRow struct {
 // arena-filtered recent match counts the elite promotion hint needs (same
 // counts as ListArenaPlayersAt, anchored at now). Final ranking (league
 // priority, then rating) is applied by the service.
+//
+// The window counts are pre-aggregated per player in CTEs — one scan of the
+// arena's window matches each — instead of per-player LATERALs. Under a
+// generic prepared-statement plan (Postgres swaps the custom plan out after
+// 5 executions) it cannot estimate the window selectivity, and a per-player
+// lateral then degrades into per-match probes of match_scores (~3s for a
+// 100-player arena); the aggregate shape is estimate-insensitive.
 func (q *Queries) ListArenaPlayers(ctx context.Context, arenaID id.ID) ([]ListArenaPlayersRow, error) {
 	rows, err := q.db.Query(ctx, listArenaPlayers, arenaID)
 	if err != nil {
@@ -883,13 +905,64 @@ func (q *Queries) ListArenaPlayers(ctx context.Context, arenaID id.ID) ([]ListAr
 }
 
 const listArenaPlayersAt = `-- name: ListArenaPlayersAt :many
+WITH arena AS (
+    SELECT a.id, a.camp, a.tournament_id, a.tenant_id, a.match_filter_id,
+           t.arena_membership_mode
+    FROM arenas a
+    LEFT JOIN tenants t ON t.id = a.tenant_id
+    WHERE a.id = $1
+),
+matches_60 AS (
+    SELECT m.id
+    FROM matches m
+    CROSS JOIN arena a
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
+    WHERE m.date >= ($2::timestamptz - interval '60 days') AND m.date <= $2::timestamptz
+      AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, a.arena_membership_mode, m.mode, m.id, m.date)
+      ELSE arena_contains_match(
+    m.mode,
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+      END)
+),
+cnt_60 AS (
+    SELECT ms.player_id, COUNT(*)::int AS cnt
+    FROM matches_60 w
+    JOIN match_scores ms ON ms.match_id = w.id
+    GROUP BY ms.player_id
+),
+matches_180 AS (
+    SELECT m.id
+    FROM matches m
+    CROSS JOIN arena a
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
+    WHERE m.date >= ($2::timestamptz - interval '180 days') AND m.date <= $2::timestamptz
+      AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, a.arena_membership_mode, m.mode, m.id, m.date)
+      ELSE arena_contains_match(
+    m.mode,
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+      END)
+),
+cnt_180 AS (
+    SELECT ms.player_id, COUNT(*)::int AS cnt
+    FROM matches_180 w
+    JOIN match_scores ms ON ms.match_id = w.id
+    GROUP BY ms.player_id
+)
 SELECT p.id AS player_id, p.name AS player_name,
        -- CASE forces sqlc to infer a nullable type: a player whose latest
        -- settlement is after @at (or who has none yet) yields a NULL row.
        CASE WHEN latest.rating_after IS NULL THEN NULL ELSE latest.rating_after END AS rating_after,
        CASE WHEN latest.elo_after IS NULL THEN NULL ELSE latest.elo_after END AS elo_after,
        latest.league,
-       COALESCE(cnt60.cnt, 0) AS cnt_60, COALESCE(cnt180.cnt, 0) AS cnt_180
+       COALESCE(c60.cnt, 0) AS cnt_60, COALESCE(c180.cnt, 0) AS cnt_180
 FROM players p
 JOIN LATERAL (
     SELECT 1 FROM arena_settlements s WHERE s.arena_id = $1 AND s.player_id = p.id LIMIT 1
@@ -897,54 +970,18 @@ JOIN LATERAL (
 LEFT JOIN LATERAL (
     SELECT s.rating_after, s.elo_after, s.league
     FROM arena_settlements s
-    WHERE s.arena_id = $1 AND s.player_id = p.id AND s.date <= $2
+    WHERE s.arena_id = $1 AND s.player_id = p.id AND s.date <= $2::timestamptz
     ORDER BY s.date DESC, s.id DESC
     LIMIT 1
 ) latest ON true
-LEFT JOIN LATERAL (
-    SELECT COUNT(*)::int AS cnt
-    FROM matches m
-    JOIN match_scores ms ON ms.match_id = m.id
-    JOIN arenas a ON a.id = $1
-    LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN tenants t ON t.id = a.tenant_id
-    WHERE ms.player_id = p.id
-      AND m.date >= ($2 - interval '60 days') AND m.date <= $2
-      AND (CASE WHEN a.tenant_id IS NOT NULL
-      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
-      ELSE arena_contains_match(
-    m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
-    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
-    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
-      END)
-) cnt60 ON true
-LEFT JOIN LATERAL (
-    SELECT COUNT(*)::int AS cnt
-    FROM matches m
-    JOIN match_scores ms ON ms.match_id = m.id
-    JOIN arenas a ON a.id = $1
-    LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN tenants t ON t.id = a.tenant_id
-    WHERE ms.player_id = p.id
-      AND m.date >= ($2 - interval '180 days') AND m.date <= $2
-      AND (CASE WHEN a.tenant_id IS NOT NULL
-      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
-      ELSE arena_contains_match(
-    m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
-    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
-    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
-      END)
-) cnt180 ON true
+LEFT JOIN cnt_60 c60 ON c60.player_id = p.id
+LEFT JOIN cnt_180 c180 ON c180.player_id = p.id
 ORDER BY p.name
 `
 
 type ListArenaPlayersAtParams struct {
-	ArenaID id.ID              `json:"arena_id"`
-	Date    pgtype.Timestamptz `json:"date"`
+	ArenaID id.ID     `json:"arena_id"`
+	At      time.Time `json:"at"`
 }
 
 type ListArenaPlayersAtRow struct {
@@ -960,8 +997,15 @@ type ListArenaPlayersAtRow struct {
 // Point-in-time standings of one arena (for rank-change history): the latest
 // settlement at or before @at, plus the arena-filtered match counts the elite
 // staleness check needs. Lists players with at least one settlement.
+//
+// The window counts are pre-aggregated per player in CTEs — one scan of the
+// arena's window matches each — instead of per-player LATERALs. Under a
+// generic prepared-statement plan (Postgres swaps the custom plan out after
+// 5 executions) it cannot estimate the window selectivity ($2), and a
+// per-player lateral then degrades into per-match probes of match_scores
+// (~3s for a 100-player arena); the aggregate shape is estimate-insensitive.
 func (q *Queries) ListArenaPlayersAt(ctx context.Context, arg ListArenaPlayersAtParams) ([]ListArenaPlayersAtRow, error) {
-	rows, err := q.db.Query(ctx, listArenaPlayersAt, arg.ArenaID, arg.Date)
+	rows, err := q.db.Query(ctx, listArenaPlayersAt, arg.ArenaID, arg.At)
 	if err != nil {
 		return nil, err
 	}

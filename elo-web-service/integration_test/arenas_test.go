@@ -151,7 +151,7 @@ func TestArena_CRUDAndValidation(t *testing.T) {
 
 	// Create a two-game arena (the "Кланк!" shape). The name must differ from
 	// the arena seeded by migration 052 — names are unique now.
-	body := `{"name":"Кланк (тест)","filter":{"game_ids":["` + string(gameID) + `","` + string(otherGameID) + `"],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[{"kind":"newbie","goal_gap":16,"earned_min":2,"earned_max":64,"tau":100},{"kind":"amateur"}]}}`
+	body := `{"name":"Кланк (тест)","filter":{"game_ids":["` + string(gameID) + `","` + string(otherGameID) + `"],"tag_ids":[]},"settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[{"kind":"newbie","goal_gap":16},{"kind":"amateur"}]}}`
 	w := doJSON(t, router, http.MethodPost, "/arenas", editor, body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create arena: %d %s", w.Code, w.Body.String())
@@ -165,7 +165,7 @@ func TestArena_CRUDAndValidation(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode created: %v", err)
 	}
-	if created.Data.SettingsSchemaVersion != 1 {
+	if created.Data.SettingsSchemaVersion != 2 {
 		t.Fatalf("settings schema version: %d", created.Data.SettingsSchemaVersion)
 	}
 
@@ -176,18 +176,18 @@ func TestArena_CRUDAndValidation(t *testing.T) {
 	}
 
 	// Arena names are unique, case-insensitively → 400.
-	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"кланк (ТЕСТ)","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[]}}`)
+	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"кланк (ТЕСТ)","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("duplicate arena name must 400, got %d %s", w.Code, w.Body.String())
 	}
 
 	// A second arena cannot be renamed onto the first one's name.
-	secondBody := `{"name":"Вторая арена","filter":{"game_ids":["` + string(gameID) + `"],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[]}}`
+	secondBody := `{"name":"Вторая арена","filter":{"game_ids":["` + string(gameID) + `"],"tag_ids":[]},"settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`
 	w = doJSON(t, router, http.MethodPost, "/arenas", editor, secondBody)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create second arena: %d %s", w.Code, w.Body.String())
 	}
-	w = doJSON(t, router, http.MethodPatch, "/arenas/"+created.Data.Id, editor, `{"name":"Вторая арена","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[]}}`)
+	w = doJSON(t, router, http.MethodPatch, "/arenas/"+created.Data.Id, editor, `{"name":"Вторая арена","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("rename onto a taken name must 400, got %d %s", w.Code, w.Body.String())
 	}
@@ -280,14 +280,14 @@ func TestArena_GameListExcludesLinkOnlyArenas(t *testing.T) {
 	tournArenaID := idpkg.NewMonotonic()
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO arenas (id, name, settings, settings_schema_version, tournament_id, camp)
-		 VALUES ($1, 'Арена-лист турнирная арена', '{"starting_rating":1000,"leagues":[]}', 1, $2, false)`,
+		 VALUES ($1, 'Арена-лист турнирная арена', '{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}', 2, $2, false)`,
 		tournArenaID, tournID); err != nil {
 		t.Fatalf("insert probe tournament arena: %v", err)
 	}
 	campArenaID := idpkg.NewMonotonic()
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO arenas (id, name, settings, settings_schema_version, camp, starts_at, ends_at)
-		 VALUES ($1, 'Арена-лист лагерь', '{"starting_rating":1000,"leagues":[]}', 1, true, NOW() - interval '1 day', NOW() + interval '1 day')`,
+		 VALUES ($1, 'Арена-лист лагерь', '{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}', 2, true, NOW() - interval '1 day', NOW() + interval '1 day')`,
 		campArenaID); err != nil {
 		t.Fatalf("insert probe camp arena: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestArena_EliteHintCountsRecentMatches(t *testing.T) {
 	// starting_rating equals the elo starting value (1000 in the test seed),
 	// so fresh players settle straight into the base (amateur) league.
 	body := `{"name":"Хинт арена","filter":{"game_ids":["` + gameID + `"],"tag_ids":[]},` +
-		`"settings":{"starting_rating":1000,"leagues":[{"kind":"amateur"},{"kind":"elite","matches_6m":20,"matches_2m":3}]}}`
+		`"settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[{"kind":"amateur"},{"kind":"elite","matches_6m":20,"matches_2m":3}]}}`
 	w := doJSON(t, router, http.MethodPost, "/arenas", editor, body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create arena: %d %s", w.Code, w.Body.String())

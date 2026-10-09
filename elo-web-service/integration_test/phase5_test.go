@@ -72,7 +72,7 @@ func TestPhase5_TenantArenaSettings(t *testing.T) {
 	// Change the settings through the tenant: a new starting rating and an
 	// elite league on top.
 	w := doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
-		`{"settings": {"starting_rating": 1234, "leagues": [{"kind": "newbie", "goal_gap": 20, "earned_min": 2, "earned_max": 60, "tau": 90}, {"kind": "elite", "matches_6m": 5, "matches_2m": 2}]}}`)
+		`{"settings": {"starting_rating": 1234, "catch_up": {"earned_min": 2, "earned_max": 60, "tau": 90}, "leagues": [{"kind": "newbie", "goal_gap": 20}, {"kind": "elite", "matches_6m": 5, "matches_2m": 2}]}}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH tenant settings: %d %s", w.Code, w.Body.String())
 	}
@@ -108,7 +108,7 @@ func TestPhase5_TenantArenaSettings(t *testing.T) {
 
 	// The arena stays system-managed: a direct arena PATCH is a 409.
 	w = doJSON(t, router, http.MethodPatch, "/arenas/"+tenantArena, token,
-		`{"name": "Захвачено", "settings": {"starting_rating": 1, "leagues": []}}`)
+		`{"name": "Захвачено", "settings": {"starting_rating": 1, "catch_up": {"earned_min": 2, "earned_max": 64, "tau": 100}, "leagues": []}}`)
 	if w.Code != http.StatusConflict {
 		t.Fatalf("direct arena PATCH gave %d, want 409", w.Code)
 	}

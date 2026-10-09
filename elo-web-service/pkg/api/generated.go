@@ -1167,7 +1167,7 @@ type Arena struct {
 	// PlayerIds Camp participants, derived from the arena settlements (camps in list responses only).
 	PlayerIds *[]Base58ID `json:"player_ids,omitempty"`
 
-	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
+	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v2: {starting_rating: number, catch_up: {earned_min, earned_max, tau}, leagues: [{kind: newbie|amateur|elite, ...params}]}. The catch-up parameters drive the rating↔elo convergence in every arena; the newbie league carries only its goal_gap.
 	Settings              ArenaSettings `json:"settings"`
 	SettingsSchemaVersion int           `json:"settings_schema_version"`
 
@@ -1193,7 +1193,7 @@ type ArenaInput struct {
 	Filter *MatchFilter `json:"filter,omitempty"`
 	Name   string       `json:"name"`
 
-	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
+	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v2: {starting_rating: number, catch_up: {earned_min, earned_max, tau}, leagues: [{kind: newbie|amateur|elite, ...params}]}. The catch-up parameters drive the rating↔elo convergence in every arena; the newbie league carries only its goal_gap.
 	Settings ArenaSettings `json:"settings"`
 	StartsAt *time.Time    `json:"starts_at,omitempty"`
 }
@@ -1250,7 +1250,7 @@ type ArenaResult struct {
 	Status string `json:"status"`
 }
 
-// ArenaSettings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
+// ArenaSettings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v2: {starting_rating: number, catch_up: {earned_min, earned_max, tau}, leagues: [{kind: newbie|amateur|elite, ...params}]}. The catch-up parameters drive the rating↔elo convergence in every arena; the newbie league carries only its goal_gap.
 type ArenaSettings map[string]interface{}
 
 // ArenaUpdateReport defines model for ArenaUpdateReport.
@@ -1409,7 +1409,10 @@ type AuditTenantUpdateDetails struct {
 		From AuditTenantUpdateDetailsArenaMembershipModeFrom `json:"from"`
 		To   AuditTenantUpdateDetailsArenaMembershipModeTo   `json:"to"`
 	} `json:"arena_membership_mode,omitempty"`
-	Clubs *struct {
+
+	// CatchUpChanged The main arena's rating catch-up parameters changed (arena settings v2 moved them out of the newbie league into the top-level catch_up).
+	CatchUpChanged bool `json:"catch_up_changed"`
+	Clubs          *struct {
 		AddedClubIds   []Base58ID `json:"added_club_ids"`
 		RemovedClubIds []Base58ID `json:"removed_club_ids"`
 	} `json:"clubs,omitempty"`
@@ -3086,7 +3089,7 @@ type PatchTenantJSONBody struct {
 	Icon                *string                                 `json:"icon,omitempty"`
 	Name                *string                                 `json:"name,omitempty"`
 
-	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
+	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v2: {starting_rating: number, catch_up: {earned_min, earned_max, tau}, leagues: [{kind: newbie|amateur|elite, ...params}]}. The catch-up parameters drive the rating↔elo convergence in every arena; the newbie league carries only its goal_gap.
 	Settings            *ArenaSettings                          `json:"settings,omitempty"`
 	TournamentsOpenness *PatchTenantJSONBodyTournamentsOpenness `json:"tournaments_openness,omitempty"`
 }

@@ -248,7 +248,7 @@ func TestTenants_Lifecycle(t *testing.T) {
 		t.Fatalf("GET main arena tenant_id = %v, want %s", fetched.Data.TenantId, wantTenant)
 	}
 	w = doJSON(t, router, http.MethodPatch, "/arenas/"+mainArenaID, token,
-		`{"name": "Переименовали", "settings": {"starting_rating": 1000, "leagues": []}, "filter": {"game_ids": [], "tag_ids": []}}`)
+		`{"name": "Переименовали", "settings": {"starting_rating": 1000, "catch_up": {"earned_min": 2, "earned_max": 64, "tau": 100}, "leagues": []}, "filter": {"game_ids": [], "tag_ids": []}}`)
 	if w.Code != http.StatusConflict {
 		t.Fatalf("PATCH main arena: %d %s", w.Code, w.Body.String())
 	}

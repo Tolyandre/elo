@@ -179,7 +179,7 @@ AuditTenantUpdateDetails:
     the openness pair, the main arena's settings document, the club
     composition. Untouched fields stay null/false; an update that changed
     nothing produces no tenant-update row.
-  required: [schema_version, leagues_changed]
+  required: [schema_version, leagues_changed, catch_up_changed]
   properties:
     schema_version:
       type: integer
@@ -229,6 +229,11 @@ AuditTenantUpdateDetails:
           format: double
     leagues_changed:
       type: boolean
+    catch_up_changed:
+      type: boolean
+      description: >-
+        The main arena's rating catch-up parameters changed (arena settings v2
+        moved them out of the newbie league into the top-level catch_up).
     icon:
       type: object
       nullable: true

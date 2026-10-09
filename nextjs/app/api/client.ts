@@ -45,9 +45,40 @@ const errorToastMiddleware: Middleware = {
     },
 };
 
+// ─── In-flight GET coalescing ────────────────────────────────────────────────
+// Identical concurrent GETs share one network request; every awaiter gets its
+// own readable Response (a clone). A page refresh fires the same GET several
+// times because React StrictMode (dev) mounts every component twice and
+// independent widgets fetch the same endpoint (the tables lobby and the
+// header indicator) — sharing the in-flight promise collapses them. The map
+// holds a request only until it settles: no caching, nothing stale.
+
+const inFlightGets = new Map<string, Promise<Response>>();
+
+export function coalescingFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    // Calls carrying an abort signal own their lifecycle (timeouts, unmount
+    // cancellation) — never merge those; writes are not idempotent.
+    if (method !== "GET" || init?.signal) {
+        return fetch(input, init);
+    }
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const existing = inFlightGets.get(url);
+    if (existing) {
+        // Cloning is safe here: the entry exists only while the fetch is in
+        // flight, and it is removed the moment the promise settles — before
+        // the first caller's handlers can touch its body.
+        return existing.then((res) => res.clone());
+    }
+    const request = fetch(input, init).finally(() => inFlightGets.delete(url));
+    inFlightGets.set(url, request);
+    return request;
+}
+
 export const client = createClient<paths>({
     baseUrl: EloWebServiceBaseUrl,
     credentials: "include",
+    fetch: coalescingFetch,
 });
 client.use(errorToastMiddleware);
 

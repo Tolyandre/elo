@@ -82,6 +82,13 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "apply migrations: %v\n", err)
 		os.Exit(1)
 	}
+	// Mirror production boot: the in-process document migrations (calculator
+	// data, audit details, arena settings) run at startup, before any read —
+	// e.g. stored v1 arena settings docs must reach the calc as v2.
+	if err := db.MigrateCalculatorData(ctx, connStr); err != nil {
+		fmt.Fprintf(os.Stderr, "run document data migrations: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Mirror production boot (ADR-36 phase 6): a migration that rewrites a
 	// main arena's settlement history marks it stale, and the API process

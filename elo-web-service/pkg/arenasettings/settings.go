@@ -5,18 +5,27 @@ import (
 	"fmt"
 )
 
+// CatchUp holds the rating catch-up parameters (ADR-03). While a player's
+// rating is below their elo, wins earn between EarnedMin and EarnedMax rating
+// points scaling with the gap; above elo, stakes are amplified the same way.
+// Since v2 the parameters belong to the arena, not to the newbie league: the
+// catch-up is driven by the starting_rating vs starting_elo gap and is a no-op
+// while rating >= elo.
+type CatchUp struct {
+	EarnedMin float64
+	EarnedMax float64
+	Tau       float64
+}
+
 // League describes one league of an arena. The params are set per kind; the
 // zero values of the other kinds' fields are meaningless.
 type League struct {
 	Kind string // "newbie", "amateur", "elite"
 
-	// Newbie league params (ADR-03): the display rating catches up to the
-	// true Elo while elo - rating > GoalGap; Earned/EarnedMin/EarnedMax/Tau
-	// drive the catch-up scaling.
-	GoalGap   float64
-	EarnedMin float64
-	EarnedMax float64
-	Tau       float64
+	// Newbie league param (ADR-03): the player stays in newbie while
+	// elo - rating > GoalGap. The catch-up scaling parameters live in
+	// Settings.CatchUp (v2) — they are not league-specific.
+	GoalGap float64
 
 	// Elite league promotion thresholds.
 	Matches6M int
@@ -27,6 +36,7 @@ type League struct {
 // promotion order (later = higher); empty means the arena has no leagues.
 type Settings struct {
 	StartingRating float64
+	CatchUp        CatchUp
 	Leagues        []League
 }
 
@@ -60,15 +70,17 @@ func firstLeague(leagues []League, kind string) (League, bool) {
 // logic is written against kinds, so an arbitrary order would be meaningless.
 var leagueRank = map[string]int{"newbie": 0, "amateur": 1, "elite": 2}
 
-// document mirrors the v1 schema shape for unmarshalling.
+// document mirrors the v2 schema shape for unmarshalling.
 type document struct {
 	StartingRating float64 `json:"starting_rating"`
-	Leagues        []struct {
+	CatchUp        struct {
+		EarnedMin float64 `json:"earned_min"`
+		EarnedMax float64 `json:"earned_max"`
+		Tau       float64 `json:"tau"`
+	} `json:"catch_up"`
+	Leagues []struct {
 		Kind      string   `json:"kind"`
 		GoalGap   *float64 `json:"goal_gap"`
-		EarnedMin *float64 `json:"earned_min"`
-		EarnedMax *float64 `json:"earned_max"`
-		Tau       *float64 `json:"tau"`
 		Matches6M *int     `json:"matches_6m"`
 		Matches2M *int     `json:"matches_2m"`
 	} `json:"leagues"`
@@ -82,7 +94,15 @@ func Parse(raw json.RawMessage) (Settings, error) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return Settings{}, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	settings := Settings{StartingRating: doc.StartingRating, Leagues: make([]League, 0, len(doc.Leagues))}
+	settings := Settings{
+		StartingRating: doc.StartingRating,
+		CatchUp: CatchUp{
+			EarnedMin: doc.CatchUp.EarnedMin,
+			EarnedMax: doc.CatchUp.EarnedMax,
+			Tau:       doc.CatchUp.Tau,
+		},
+		Leagues: make([]League, 0, len(doc.Leagues)),
+	}
 	prevRank := -1
 	for _, l := range doc.Leagues {
 		rank, ok := leagueRank[l.Kind]
@@ -97,9 +117,6 @@ func Parse(raw json.RawMessage) (Settings, error) {
 		switch l.Kind {
 		case "newbie":
 			league.GoalGap = *l.GoalGap
-			league.EarnedMin = *l.EarnedMin
-			league.EarnedMax = *l.EarnedMax
-			league.Tau = *l.Tau
 		case "elite":
 			league.Matches6M = *l.Matches6M
 			league.Matches2M = *l.Matches2M

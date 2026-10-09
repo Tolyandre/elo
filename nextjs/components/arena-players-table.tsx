@@ -132,7 +132,7 @@ export function ArenaPlayersGroups({
 
 function LeagueFooter({ kind, arena }: { kind: string; arena: Arena }) {
   const { startingElo, eloConstK, eloConstD } = useSettings();
-  const { starting_rating: startingRating, leagues } = parseArenaSettings(arena.settings);
+  const { starting_rating: startingRating, catch_up: catchUp, leagues } = parseArenaSettings(arena.settings);
   const newbie = leagues.find((l) => l.kind === "newbie");
   const elite = leagues.find((l) => l.kind === "elite");
 
@@ -144,16 +144,17 @@ function LeagueFooter({ kind, arena }: { kind: string; arena: Arena }) {
       </p>
     );
   }
-  if (kind === "amateur" && newbie) {
-    // The catch-up description only makes sense when the arena actually has
-    // the newbie league below (with starting rating = starting elo there is
-    // no gap to close). The schema requires these params on a newbie league.
+  if (kind === "amateur" && newbie && catchUp) {
+    // The promotion hint only makes sense when the arena actually has the
+    // newbie league below (with starting rating = starting elo there is no
+    // gap to close). The catch-up params themselves live at the document's
+    // top level since arena settings v2.
     const [lower, upper] = winsNeededForAmateur(
       startingElo - startingRating,
       newbie.goal_gap ?? 0,
       eloConstK,
-      newbie.earned_max ?? 0,
-      newbie.tau ?? 1,
+      catchUp.earned_max,
+      catchUp.tau,
       eloConstD,
     );
     return (

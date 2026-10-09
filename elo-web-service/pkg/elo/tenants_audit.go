@@ -64,15 +64,16 @@ func textValue(s pgtype.Text) string {
 }
 
 // setSettingsDiff records a main-arena settings document change: the
-// starting rating as a value pair, league-parameter changes as a flag.
+// starting rating and catch-up parameters as value pairs, league-parameter
+// changes as a flag.
 func setSettingsDiff(details *audit.TenantUpdateDetails, old, new arenasettings.Settings) {
 	if old.StartingRating != new.StartingRating {
 		details.StartingRating = &audit.NumberChange{From: old.StartingRating, To: new.StartingRating}
 	}
-	if !slices.EqualFunc(old.Leagues, new.Leagues, func(x, y arenasettings.League) bool {
-		return x.Kind == y.Kind && x.GoalGap == y.GoalGap && x.EarnedMin == y.EarnedMin && x.EarnedMax == y.EarnedMax &&
-			x.Tau == y.Tau && x.Matches6M == y.Matches6M && x.Matches2M == y.Matches2M
-	}) {
+	if old.CatchUp != new.CatchUp {
+		details.CatchUpChanged = true
+	}
+	if !leaguesEqual(old.Leagues, new.Leagues) {
 		details.LeaguesChanged = true
 	}
 }

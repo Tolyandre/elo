@@ -16,6 +16,7 @@ import {
 import { useGames } from "@/app/gamesContext";
 import { useTags } from "@/app/tagsContext";
 import { useMe } from "@/app/meContext";
+import { useSettings } from "@/app/settingsContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { GameMultiSelect } from "@/components/game-multi-select";
 import { MultiSelect } from "@/components/vendor/multi-select";
@@ -27,6 +28,7 @@ import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
 import {
     ArenaSettingsFields,
     ArenaSettingsValues,
+    SettingsDefaults,
     buildSettingsFromValues,
     initialSettingsValues,
     settingsValuesError,
@@ -41,7 +43,7 @@ type ArenaFormValues = {
     dateTo: string;
 } & ArenaSettingsValues;
 
-function initialValues(existing?: Arena, camp = false): ArenaFormValues {
+function initialValues(existing: Arena | undefined, camp: boolean, defaults: SettingsDefaults): ArenaFormValues {
     return {
         name: existing?.name ?? "",
         gameIds: existing?.filter?.game_ids ?? [],
@@ -58,8 +60,13 @@ function initialValues(existing?: Arena, camp = false): ArenaFormValues {
                 ? toDatetimeLocal(existing.ends_at)
                 : "",
         ...initialSettingsValues(existing?.settings, {
-            startingRating: camp ? "1000" : "900",
+            // A fresh arena starts like an auto-managed game arena (rating 900,
+            // newbie + amateur); a fresh camp like the old tournament arenas —
+            // rating = the starting elo, no leagues.
+            startingRating: camp ? defaults.startingRating : defaults.startingRating ?? "900",
             withLeagues: !camp,
+            catchUp: defaults.catchUp,
+            goalGap: defaults.goalGap,
         }),
     };
 }
@@ -83,11 +90,20 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
     const { offline } = useOffline();
     const { games } = useGames();
     const { tags } = useTags();
+    const settings = useSettings();
     const isEdit = !!existing;
     const isCamp = isEdit ? !!existing.camp : camp;
     const draftKey = isEdit ? `${existing.id}${isCamp ? ":camp" : ""}` : isCamp ? "new-camp" : "new";
 
-    const [values, setValues] = useState<ArenaFormValues>(() => initialValues(existing, isCamp));
+    const [values, setValues] = useState<ArenaFormValues>(() => initialValues(existing, isCamp, {
+        startingRating: String(settings.startingElo),
+        catchUp: {
+            earnedMin: String(settings.newbieLeagueEarnedMin),
+            earnedMax: String(settings.newbieLeagueEarnedMax),
+            tau: String(settings.newbieLeagueEarnedTau),
+        },
+        goalGap: String(settings.newbieLeagueGoalGap),
+    }));
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
@@ -97,6 +113,9 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
             if (!raw) return;
             const draft = JSON.parse(raw) as ArenaFormDraft;
             if (draft.key !== draftKey) return;
+            // A draft from before a values-shape change misses fields — as
+            // good as none (an undefined catchUp would crash the render).
+            if (!draft.startingRating || !draft.leagues || !draft.catchUp) return;
             /* eslint-disable react-hooks/set-state-in-effect -- restore the saved draft after mount; localStorage is client-only, so it cannot run during render */
             setValues({
                 name: draft.name,
@@ -105,6 +124,7 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                 dateFrom: draft.dateFrom,
                 dateTo: draft.dateTo,
                 startingRating: draft.startingRating,
+                catchUp: draft.catchUp,
                 leagues: draft.leagues,
             });
             /* eslint-enable react-hooks/set-state-in-effect */
@@ -174,10 +194,10 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
         setError("");
         setSubmitting(true);
         // Camp settings have no leagues (ADR-27: camps rank like the old
-        // tournament arenas — a single rating ≡ elo list).
-        const settings: ArenaSettings = isCamp
-            ? { starting_rating: Number(values.startingRating), leagues: [] }
-            : buildSettingsFromValues(values);
+        // tournament arenas) — the camp form never renders the league
+        // controls, so their chips stay off and the built document carries
+        // leagues: [].
+        const settingsDoc: ArenaSettings = buildSettingsFromValues(values);
         try {
             if (existing) {
                 await updateArenaPromise(existing.id, {
@@ -196,7 +216,7 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                                   date_to: values.dateTo ? new Date(values.dateTo).toISOString() : null,
                               } satisfies MatchFilter,
                           }),
-                    settings,
+                    settings: settingsDoc,
                 });
                 clearDraft();
                 toast.success(isCamp ? "Кэмп обновлён" : "Арена обновлена");
@@ -218,7 +238,7 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                                   date_to: values.dateTo ? new Date(values.dateTo).toISOString() : null,
                               } satisfies MatchFilter,
                           }),
-                    settings,
+                    settings: settingsDoc,
                 });
                 clearDraft();
                 toast.success(isCamp ? "Кэмп создан — рейтинг появится, когда он пересчитается" : "Арена создана — рейтинг появится, когда она пересчитается");
@@ -334,25 +354,26 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                 </CardContent>
             </Card>
 
-            {!isCamp && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Рейтинг и лиги</CardTitle>
-                        <CardDescription>
-                            Смена стартового рейтинга или лиг пересчитывает рейтинг арены заново —
-                            в фоне, уже после сохранения.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ArenaSettingsFields
-                            values={{ startingRating: values.startingRating, leagues: values.leagues }}
-                            onChange={(settings) => setValues((v) => ({ ...v, ...settings }))}
-                            disabled={!canEdit}
-                            heading={false}
-                        />
-                    </CardContent>
-                </Card>
-            )}
+            <Card>
+                <CardHeader>
+                    <CardTitle>{isCamp ? "Рейтинг" : "Рейтинг и лиги"}</CardTitle>
+                    <CardDescription>
+                        {isCamp
+                            ? "Смена стартового рейтинга пересчитывает рейтинг кэмпа заново — в фоне, уже после сохранения."
+                            : "Смена стартового рейтинга или лиг пересчитывает рейтинг арены заново — в фоне, уже после сохранения."}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <ArenaSettingsFields
+                        values={{ startingRating: values.startingRating, catchUp: values.catchUp, leagues: values.leagues }}
+                        onChange={(settings) => setValues((v) => ({ ...v, ...settings }))}
+                        disabled={!canEdit}
+                        startingElo={settings.startingElo}
+                        withLeagues={!isCamp}
+                        heading={false}
+                    />
+                </CardContent>
+            </Card>
 
             {error && <div className="text-destructive text-sm">{error}</div>}
 

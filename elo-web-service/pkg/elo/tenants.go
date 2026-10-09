@@ -408,9 +408,14 @@ func (s *TenantService) UpdateTenantArenaSettings(ctx context.Context, tenantID 
 
 // settingsEqual compares two parsed arena settings documents.
 func settingsEqual(a, b arenasettings.Settings) bool {
-	return a.StartingRating == b.StartingRating && slices.EqualFunc(a.Leagues, b.Leagues, func(x, y arenasettings.League) bool {
-		return x.Kind == y.Kind && x.GoalGap == y.GoalGap && x.EarnedMin == y.EarnedMin && x.EarnedMax == y.EarnedMax &&
-			x.Tau == y.Tau && x.Matches6M == y.Matches6M && x.Matches2M == y.Matches2M
+	return a.StartingRating == b.StartingRating && a.CatchUp == b.CatchUp && leaguesEqual(a.Leagues, b.Leagues)
+}
+
+// leaguesEqual compares league lists field by field.
+func leaguesEqual(a, b []arenasettings.League) bool {
+	return slices.EqualFunc(a, b, func(x, y arenasettings.League) bool {
+		return x.Kind == y.Kind && x.GoalGap == y.GoalGap &&
+			x.Matches6M == y.Matches6M && x.Matches2M == y.Matches2M
 	})
 }
 

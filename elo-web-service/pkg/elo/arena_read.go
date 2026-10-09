@@ -150,7 +150,7 @@ func (s *ArenaService) GetArenaPlayersAt(ctx context.Context, arenaID id.ID, at 
 
 	rows, err := s.Queries.ListArenaPlayersAt(ctx, db.ListArenaPlayersAtParams{
 		ArenaID: arenaID,
-		Date:    pgtype.Timestamptz{Time: at, Valid: true},
+		At:      at,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list arena players at %v: %w", at, err)
@@ -197,7 +197,7 @@ func applyArenaPlayerHints(p *ArenaPlayer, eloAfter float64, cnt60, cnt180 int, 
 	if *p.League == LeagueNewbie {
 		if gap := eloAfter - p.Rating; gap > 0 {
 			if nl, ok := arena.Settings.Newbie(); ok {
-				p.WinsNeededForAmateurLower, p.WinsNeededForAmateurUpper = calcWinsNeededForAmateur(gap, nl, s)
+				p.WinsNeededForAmateurLower, p.WinsNeededForAmateurUpper = calcWinsNeededForAmateur(gap, nl, arena.Settings.CatchUp, s)
 			}
 		}
 	}

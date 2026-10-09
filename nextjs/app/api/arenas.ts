@@ -161,16 +161,17 @@ export async function updateArenasPromise(): Promise<UpdateArenasResult["data"]>
 /**
  * Typed view of the arena settings document (ADR-24). The wire type is an
  * opaque object — the server validates it against the versioned JSON Schema
- * in pkg/arenasettings; v1 shape reproduced here for rendering.
+ * in pkg/arenasettings; v2 shape reproduced here for rendering: the catch-up
+ * parameters live in the top-level catch_up object (they drive the
+ * rating↔elo convergence in every arena), the newbie league keeps only its
+ * goal_gap.
  */
 export type ArenaSettingsDoc = {
     starting_rating: number;
+    catch_up: { earned_min: number; earned_max: number; tau: number };
     leagues: {
         kind: "newbie" | "amateur" | "elite";
         goal_gap?: number;
-        earned_min?: number;
-        earned_max?: number;
-        tau?: number;
         matches_6m?: number;
         matches_2m?: number;
     }[];

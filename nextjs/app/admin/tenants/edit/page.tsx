@@ -15,6 +15,7 @@ import {
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useMe } from "@/app/meContext";
 import { useClubs } from "@/app/clubsContext";
+import { useSettings } from "@/app/settingsContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { PageContainer } from "@/components/page-container";
 import { LoadingRows } from "@/components/loading-rows";
@@ -38,6 +39,7 @@ import { ClubIcon } from "@/components/club-icon";
 import {
     ArenaSettingsFields,
     ArenaSettingsValues,
+    SettingsDefaults,
     buildSettingsFromValues,
     initialSettingsValues,
     settingsValuesError,
@@ -59,6 +61,19 @@ function TenantSettingsContent() {
     const { canEdit } = useMe();
     const { offline } = useOffline();
     const { clubs, clubDisplayName } = useClubs();
+    const eloSettings = useSettings();
+
+    // Defaults a fresh main arena is filled with — the live elo-settings
+    // values, the same ones the backend seeds auto-created arenas from.
+    const settingsDefaults: SettingsDefaults = {
+        startingRating: String(eloSettings.startingElo),
+        catchUp: {
+            earnedMin: String(eloSettings.newbieLeagueEarnedMin),
+            earnedMax: String(eloSettings.newbieLeagueEarnedMax),
+            tau: String(eloSettings.newbieLeagueEarnedTau),
+        },
+        goalGap: String(eloSettings.newbieLeagueGoalGap),
+    };
 
     const [tenant, setTenant] = useState<Tenant | null>(null);
     const [loading, setLoading] = useState(true);
@@ -98,7 +113,7 @@ function TenantSettingsContent() {
                     if (cancelled) return;
                     setSettings(initialSettingsValues(arena.settings, { withLeagues: true }));
                 } else {
-                    setSettings(initialSettingsValues(null, { withLeagues: true }));
+                    setSettings(initialSettingsValues(null, { ...settingsDefaults, withLeagues: true }));
                 }
             } catch (e) {
                 if (!cancelled) setLoadError(e instanceof Error ? e.message : String(e));
@@ -107,6 +122,7 @@ function TenantSettingsContent() {
             }
         })();
         return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch once per tenant; the elo-settings defaults are read at mount only
     }, [tenantId]);
 
     // Every club is a candidate; the ones owned by another tenant are shown
@@ -328,6 +344,7 @@ function TenantSettingsContent() {
                                 onChange={setSettings}
                                 disabled={!canEdit}
                                 idPrefix="tenantArena"
+                                startingElo={eloSettings.startingElo}
                             />
                         </CardContent>
                     </Card>
