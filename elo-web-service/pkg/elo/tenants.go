@@ -211,7 +211,7 @@ func (s *TenantService) UpdateTenantName(ctx context.Context, tenantID id.ID, na
 			// sync like game/tournament arenas (user-renamed arenas are
 			// impossible for main arenas — they are system-managed).
 			if arena, err := q.GetArenaByTenant(ctx, &tenantID); err == nil {
-				if err := q.UpdateArenaName(ctx, db.UpdateArenaNameParams{ID: arena.ID, Name: arenaName(name)}); err != nil {
+				if err := q.UpdateArenaName(ctx, db.UpdateArenaNameParams{ID: arena.ID, Name: name}); err != nil {
 					return err
 				}
 			} else if !db.IsNoRows(err) {

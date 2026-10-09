@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -174,7 +175,8 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	for pid := range allPlayerIDSet {
 		allPlayerIDs = append(allPlayerIDs, pid)
 	}
-	sortPlayerIDs(allPlayerIDs)
+	// Sorted for a consistent lock order across concurrent settlements.
+	slices.Sort(allPlayerIDs)
 
 	resolvedAtTz := pgtype.Timestamptz{Time: resolvedAt, Valid: true}
 

@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -72,10 +71,6 @@ func main() {
 		AllowHeaders:     []string{"Origin", "Content-Type"},
 		AllowCredentials: true,
 	}))
-
-	router.OPTIONS("/matches", func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
 
 	// strictWrapper wraps the StrictServer via ServerInterfaceWrapper so that
 	// path-parameter methods (e.g. GetPlayerStats) are exposed as plain gin.HandlerFunc.
@@ -284,12 +279,10 @@ func runMigrations(dsn string, runSchema bool) {
 	if runSchema {
 		if err := db.MigrateUpWithDSN(dsn); err != nil {
 			log.Fatalf("migrations failed: %v", err)
-			os.Exit(1)
 		}
 	}
 	if err := db.MigrateCalculatorData(context.Background(), dsn); err != nil {
 		log.Fatalf("calculator data migration failed: %v", err)
-		os.Exit(1)
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
-	"github.com/tolyandre/elo-web-service/pkg/tesera"
 )
 
 func TestCanonicalizeNames(t *testing.T) {
@@ -76,16 +75,5 @@ func TestBuildGameUpdateDetails(t *testing.T) {
 	d = buildGameUpdateDetails(old, modeChanged)
 	if d.IsEmpty() || d.GameMode == nil || d.GameMode.To != GameModeCoop {
 		t.Errorf("mode diff = %+v, want → coop", d.GameMode)
-	}
-}
-
-// int64Ptr mirrors the wire layer's *int for the patch struct.
-func int64Ptr(v int64) *int64 { return &v }
-
-func TestNormalizeNameCompat(t *testing.T) {
-	// The elo layer relies on tesera.NormalizeName for alias derivation; a
-	// title pair that differs only by case/punctuation must fold equal.
-	if tesera.NormalizeName("Ёжик") != tesera.NormalizeName("ежик") {
-		t.Error("ё folding broken")
 	}
 }

@@ -816,13 +816,6 @@ func int64Of(i pgtype.Int4) int64 {
 	return int64(i.Int32)
 }
 
-func derefInt64(i *int64) int64 {
-	if i == nil {
-		return 0
-	}
-	return *i
-}
-
 func pgText(s string) pgtype.Text {
 	if s == "" {
 		return pgtype.Text{}
@@ -835,12 +828,4 @@ func pgInt4(i *int64) pgtype.Int4 {
 		return pgtype.Int4{}
 	}
 	return pgtype.Int4{Int32: int32(*i), Valid: true}
-}
-
-func reduce[T, M any](s []T, f func(M, *T) M, initValue M) M {
-	acc := initValue
-	for _, v := range s {
-		acc = f(acc, &v)
-	}
-	return acc
 }

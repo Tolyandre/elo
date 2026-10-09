@@ -361,7 +361,7 @@ func (s *ArenaService) EnsureGameArena(ctx context.Context, q *db.Queries, gameI
 		return err
 	}
 	return createAutoArena(ctx, q, arenaCreateInput{
-		name:           arenaName(gameName),
+		name:           gameName,
 		settings:       raw,
 		gameID:         &gameID,
 		startingRating: startingRatingGameArenaDefault,
@@ -392,7 +392,7 @@ func (s *ArenaService) EnsureTenantArena(ctx context.Context, q *db.Queries, ten
 		return err
 	}
 	return createAutoArena(ctx, q, arenaCreateInput{
-		name:           arenaName(tenantName),
+		name:           tenantName,
 		settings:       raw,
 		tenantID:       &tenantID,
 		startingRating: startingElo,
@@ -437,16 +437,14 @@ func createAutoArena(ctx context.Context, q *db.Queries, in arenaCreateInput) er
 }
 
 // SyncArenaName renames an auto-managed arena after its entity.
+// SyncArenaName renames an auto-managed arena after its entity. No prefix:
+// the arena of game "Skull King" is just "Skull King".
 func (s *ArenaService) SyncArenaName(ctx context.Context, q *db.Queries, arena Arena, entityName string) error {
 	if arena.GameID == nil {
 		return nil
 	}
-	return q.UpdateArenaName(ctx, db.UpdateArenaNameParams{ID: arena.ID, Name: arenaName(entityName)})
+	return q.UpdateArenaName(ctx, db.UpdateArenaNameParams{ID: arena.ID, Name: entityName})
 }
-
-// arenaName names an auto-managed arena after its entity — no prefix: the
-// arena of game "Skull King" is just "Skull King".
-func arenaName(entityName string) string { return entityName }
 
 // startingRatingGameArenaDefault preserves the pre-rework per-game starting
 // rating (elo_settings.starting_rating_game_arena default).

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -955,9 +954,6 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 		Settings: state.Settings,
 	})
 }
-
-// sortPlayerIDs sorts player IDs numerically (for consistent locking order)
-func sortPlayerIDs(ids []id.ID) { slices.Sort(ids) }
 
 // playerIDsOf returns the keys of a player→score map as a slice.
 func playerIDsOf(playerScores map[id.ID]float64) []id.ID {

@@ -1,7 +1,6 @@
 package elo
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -132,72 +131,6 @@ type ArenaUpdateReport struct {
 	ArenaName       string
 	MatchesReplayed int
 	ChangedPlayers  []PlayerStateChange
-}
-
-// IArenaService exposes arena reads, editor CRUD, the update pipeline and the
-// background worker.
-type IArenaService interface {
-	// Reads.
-	ListArenas(ctx context.Context) ([]ArenaWithCount, error)
-	// ListArenasByKind narrows the list: "games" returns every user-created
-	// arena except camps and the global one, "camps" only camp arenas
-	// (ADR-27), "tournaments" only the tournament arenas (empty until ADR-26).
-	ListArenasByKind(ctx context.Context, kind string) ([]ArenaWithCount, error)
-	GetArena(ctx context.Context, arenaID id.ID) (Arena, error)
-	ListArenasForGame(ctx context.Context, gameID id.ID) ([]Arena, error)
-	GetArenaByGame(ctx context.Context, gameID id.ID) (Arena, error)
-	GetArenaByTournament(ctx context.Context, tournamentID id.ID) (Arena, error)
-	// GetArenaByTenant returns a tenant's main arena (ADR-36); no rows
-	// (sqlc ErrNoRows) when the tenant has none.
-	GetArenaByTenant(ctx context.Context, tenantID id.ID) (Arena, error)
-	GetArenaPlayers(ctx context.Context, arenaID id.ID) ([]ArenaPlayer, error)
-	// GetArenaPlayersAt computes the arena standings as of a past moment
-	// (read-time over the settlement ledger) for the rank-change history.
-	GetArenaPlayersAt(ctx context.Context, arenaID id.ID, at time.Time) ([]ArenaPlayer, error)
-	// ListArenaFeedEvents selects one page of the arena feed (ADR-32): the
-	// merged match/market-resolution event keys in date order.
-	ListArenaFeedEvents(ctx context.Context, arg db.ListArenaFeedEventsParams) ([]db.ListArenaFeedEventsRow, error)
-	// ListFeedMatchesWithPlayers fetches the payload rows (per-player scores
-	// with this arena's settlement data) for the page's match-event ids.
-	ListFeedMatchesWithPlayers(ctx context.Context, arg db.ListFeedMatchesWithPlayersParams) ([]db.ListFeedMatchesWithPlayersRow, error)
-
-	// CRUD (editor-gated at the handler). Settings must be a document valid
-	// against the current arenasettings schema. Camp arenas take
-	// Camp + StartsAt + EndsAt instead of a filter and may not define leagues.
-	// actor is recorded in the audit log (camps only); zero skips the audit row.
-	CreateArena(ctx context.Context, actor id.ID, opts ArenaWriteOpts) (Arena, error)
-	UpdateArena(ctx context.Context, actor id.ID, arenaID id.ID, opts ArenaWriteOpts) (Arena, error)
-	DeleteArena(ctx context.Context, actor id.ID, arenaID id.ID) (Arena, error)
-
-	// Lifecycle hooks for auto-managed arenas; called inside the creating /
-	// renaming service's transaction. The created arenas start stale and are
-	// filled by the background worker.
-	EnsureGameArena(ctx context.Context, q *db.Queries, gameID id.ID, gameName string) error
-	// EnsureTenantArena creates a tenant's main arena when missing (ADR-36,
-	// at tenant creation); idempotent like EnsureGameArena.
-	EnsureTenantArena(ctx context.Context, q *db.Queries, tenantID id.ID, tenantName string) error
-	SyncArenaName(ctx context.Context, q *db.Queries, arena Arena, entityName string) error
-
-	// Update pipeline. MarkAndDrainAfterMatchWrite marks the affected arenas
-	// (never «Синие люди»'s main arena — it is maintained transactionally by
-	// the match settlement path) for an incremental recalculation from
-	// fromDate and drains them synchronously in the caller's transaction. The
-	// Mark*Stale variants only mark; the background worker drains later.
-	MarkAndDrainAfterMatchWrite(ctx context.Context, q *db.Queries, affected []id.ID, fromDate time.Time) error
-	MarkTagFilteredArenasStale(ctx context.Context, q *db.Queries) error
-	MarkAllStaleFull(ctx context.Context, q *db.Queries) error
-
-	// RecalculateAllArenas recalculates every arena from scratch — match
-	// settlements per arena, then the market-ledger sweep — and reports
-	// per-arena changed players (the /debug endpoint).
-	RecalculateAllArenas(ctx context.Context) ([]ArenaUpdateReport, error)
-
-	// ReplayStaleArenas drains every stale arena at boot (no debounce).
-	ReplayStaleArenas(ctx context.Context) error
-
-	// ScheduleNextUpdate runs the background update loop until ctx is
-	// cancelled: recalculate stale arenas whose debounce has elapsed.
-	ScheduleNextUpdate(ctx context.Context)
 }
 
 // ArenaWriteOpts carries the editable fields for CreateArena/UpdateArena.
