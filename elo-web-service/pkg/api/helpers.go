@@ -86,6 +86,25 @@ func MustGetCurrentUser(ctx *gin.Context, userService elo.IUserService) (*db.Use
 	return user, nil
 }
 
+// errAuthRequired marks a missing or dangling session (requireUser); the
+// handler maps it to its typed 401 response.
+var errAuthRequired = errors.New("authentication required")
+
+// requireUser resolves the authenticated user for a strict handler. A session
+// referencing a missing user is an invalid session, reported as
+// errAuthRequired; other errors are internal.
+func (s *StrictServer) requireUser(ctx context.Context) (*db.User, error) {
+	ginCtx := ginCtxFromContext(ctx)
+	if ginCtx == nil {
+		return nil, fmt.Errorf("no gin context in request")
+	}
+	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	if err != nil && domainStatusCode(err) == http.StatusNotFound {
+		return nil, errAuthRequired
+	}
+	return user, err
+}
+
 const CurrentPlayerIDKey = "currentPlayerID"
 
 // RequirePlayerID is a Gin middleware that aborts with 403 if the authenticated
@@ -211,43 +230,85 @@ func parseMatchScores(gameID id.ID, scores *IDMap[float64]) (id.ID, map[id.ID]fl
 	return gameID, playerScores, nil
 }
 
+// rfc3339Time is a cursor timestamp that (un)marshals as an RFC3339Nano
+// string — the shared encoding of every cursor payload.
+type rfc3339Time time.Time
+
+func (t rfc3339Time) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Time(t).UTC().Format(time.RFC3339Nano))
+}
+
+func (t *rfc3339Time) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return err
+	}
+	*t = rfc3339Time(parsed)
+	return nil
+}
+
+// encodeCursorToken base64-encodes a cursor payload (continuation tokens are
+// opaque base64 JSON everywhere).
+func encodeCursorToken(payload any) string {
+	b, _ := json.Marshal(payload)
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+// decodeCursorToken decodes a cursor payload; any malformation (bad base64,
+// bad JSON, bad embedded timestamp) is the caller's 400 "Invalid cursor".
+func decodeCursorToken[T any](token string) (T, error) {
+	var c T
+	raw, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return c, err
+	}
+	err = json.Unmarshal(raw, &c)
+	return c, err
+}
+
+// pageLimit clamps an optional ?limit= into the 1..100 window with def as the
+// page-1 default (the shared pagination convention).
+func pageLimit(p *int, def int32) int32 {
+	if p != nil && *p > 0 && *p <= 100 {
+		return int32(*p)
+	}
+	return def
+}
+
 // matchCursor is the continuation token encoded as base64 JSON.
 // It embeds all search parameters so the client doesn't need to repeat them.
 type matchCursor struct {
-	GameID       *string `json:"game_id,omitempty"`
-	PlayerID     *string `json:"player_id,omitempty"`
-	ClubID       *string `json:"club_id,omitempty"`
-	TournamentID *string `json:"tournament_id,omitempty"`
-	NoClub       bool    `json:"no_club,omitempty"`
-	Date         string  `json:"date"` // RFC3339Nano — date of the last returned match
+	GameID       *string     `json:"game_id,omitempty"`
+	PlayerID     *string     `json:"player_id,omitempty"`
+	ClubID       *string     `json:"club_id,omitempty"`
+	TournamentID *string     `json:"tournament_id,omitempty"`
+	NoClub       bool        `json:"no_club,omitempty"`
+	Date         rfc3339Time `json:"date"` // date of the last returned match
 }
 
 func encodeMatchCursor(gameID *string, playerID *string, clubID *string, tournamentID *string, noClub bool, date time.Time) string {
-	c := matchCursor{Date: date.UTC().Format(time.RFC3339Nano), NoClub: noClub}
-	c.GameID = gameID
-	c.PlayerID = playerID
-	c.ClubID = clubID
-	c.TournamentID = tournamentID
-	b, _ := json.Marshal(c)
-	return base64.StdEncoding.EncodeToString(b)
+	return encodeCursorToken(matchCursor{
+		GameID:       gameID,
+		PlayerID:     playerID,
+		ClubID:       clubID,
+		TournamentID: tournamentID,
+		NoClub:       noClub,
+		Date:         rfc3339Time(date),
+	})
 }
 
 // decodeMatchCursor returns gameID, playerID, clubID, tournamentID, noClub,
 // cursorDate decoded from the token.
 func decodeMatchCursor(token string) (*string, *string, *string, *string, bool, pgtype.Timestamptz, error) {
-	b, err := base64.StdEncoding.DecodeString(token)
+	c, err := decodeCursorToken[matchCursor](token)
 	if err != nil {
 		return nil, nil, nil, nil, false, pgtype.Timestamptz{}, err
 	}
-	var c matchCursor
-	if err := json.Unmarshal(b, &c); err != nil {
-		return nil, nil, nil, nil, false, pgtype.Timestamptz{}, err
-	}
-	t, err := time.Parse(time.RFC3339Nano, c.Date)
-	if err != nil {
-		return nil, nil, nil, nil, false, pgtype.Timestamptz{}, err
-	}
-	return c.GameID, c.PlayerID, c.ClubID, c.TournamentID, c.NoClub, pgtype.Timestamptz{Time: t, Valid: true}, nil
+	return c.GameID, c.PlayerID, c.ClubID, c.TournamentID, c.NoClub, pgtype.Timestamptz{Time: time.Time(c.Date), Valid: true}, nil
 }
 
 // tempMatch is an intermediate grouping for converting flat query rows into
@@ -291,6 +352,63 @@ func buildMatchesResponse(matchesMap map[id.ID]*tempMatch, order []id.ID) []matc
 		matchesJson = append(matchesJson, m)
 	}
 	return matchesJson
+}
+
+// matchRowParts is the shared column set of the three generated match row
+// shapes (paginated list, get-by-id, feed payload); the assembler is written
+// once against it. CalculatorData is only selected by the get-by-id query.
+type matchRowParts struct {
+	MatchID        id.ID
+	Date           time.Time
+	GameID         id.ID
+	GameName       string
+	CalculatorKind pgtype.Text
+	CalculatorData json.RawMessage
+	Mode           string
+	GameScore      pgtype.Float8
+	GameWon        pgtype.Bool
+	PlayerID       id.ID
+	Score          float64
+	RatingStaked   pgtype.Float8
+	RatingEarned   pgtype.Float8
+	RatingAfter    interface{}
+	HasMarkets     bool
+}
+
+// groupMatchRows folds flat per-player rows into ordered match groups (the
+// shape buildMatchesResponse consumes), grouped by MatchID in
+// first-appearance order.
+func groupMatchRows[R any](rows []R, part func(*R) matchRowParts) (map[id.ID]*tempMatch, []id.ID) {
+	matchesMap := make(map[id.ID]*tempMatch)
+	order := make([]id.ID, 0)
+	for i := range rows {
+		p := part(&rows[i])
+		tm := matchesMap[p.MatchID]
+		if tm == nil {
+			tm = &tempMatch{
+				Id:             p.MatchID,
+				GameId:         p.GameID,
+				GameName:       p.GameName,
+				Date:           p.Date,
+				Players:        make(map[id.ID]matchPlayerJson),
+				HasMarkets:     p.HasMarkets,
+				Mode:           p.Mode,
+				GameScore:      p.GameScore,
+				GameWon:        p.GameWon,
+				CalculatorKind: p.CalculatorKind,
+				CalculatorData: p.CalculatorData,
+			}
+			matchesMap[p.MatchID] = tm
+			order = append(order, p.MatchID)
+		}
+		tm.Players[p.PlayerID] = matchPlayerJson{
+			Score:        p.Score,
+			RatingStaked: float8Ptr(p.RatingStaked),
+			RatingEarned: float8Ptr(p.RatingEarned),
+			RatingAfter:  anyFloatPtr(p.RatingAfter),
+		}
+	}
+	return matchesMap, order
 }
 
 // ---------------------------------------------------------------------------
@@ -430,4 +548,22 @@ func boolPtr(v pgtype.Bool) *bool {
 	}
 	b := v.Bool
 	return &b
+}
+
+// timePtr shapes a nullable timestamp column for the response (null when
+// absent); optID copies an optional id so callers don't alias row memory.
+func timePtr(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	v := t.Time
+	return &v
+}
+
+func optID(v *id.ID) *id.ID {
+	if v == nil {
+		return nil
+	}
+	c := *v
+	return &c
 }

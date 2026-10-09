@@ -204,11 +204,7 @@ func (s *StrictServer) SubmitTable(ctx context.Context, request SubmitTableReque
 // may always re-claim (this is also host resume on another device); any
 // other user needs edit permission, checked here from the user record.
 func (s *StrictServer) TakeoverTable(ctx context.Context, request TakeoverTableRequestObject) (TakeoverTableResponseObject, error) {
-	ginCtx := ginCtxFromContext(ctx)
-	if ginCtx == nil {
-		return nil, errors.New("no request context")
-	}
-	userID, err := MustGetCurrentUserId(ginCtx)
+	user, err := s.requireUser(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -218,12 +214,7 @@ func (s *StrictServer) TakeoverTable(ctx context.Context, request TakeoverTableR
 		hostClientToken = *request.Body.HostClientToken
 	}
 
-	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
-	if err != nil {
-		return nil, err
-	}
-
-	table, err := s.api.TableService.TakeoverTable(ctx, parseIDParam(request.Id), userID, hostClientToken, user.AllowEditing)
+	table, err := s.api.TableService.TakeoverTable(ctx, parseIDParam(request.Id), user.ID, hostClientToken, user.AllowEditing)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		return TakeoverTable404JSONResponse{Status: StatusFail, Message: "table not found"}, nil
 	}

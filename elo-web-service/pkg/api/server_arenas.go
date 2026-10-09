@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -346,18 +345,18 @@ const (
 // date-only cursor's same-timestamp straddle. TenantID bakes the tenant
 // feed's identity (ADR-36); ClubID is the home-feed's club **filter**.
 type arenaFeedCursor struct {
-	Date     string  `json:"date"`
-	Type     string  `json:"type"`
-	ID       string  `json:"id"`
-	PlayerID *string `json:"player_id,omitempty"`
-	ClubID   *string `json:"club_id,omitempty"`
-	TenantID *string `json:"tenant_id,omitempty"`
-	GameID   *string `json:"game_id,omitempty"`
+	Date     rfc3339Time `json:"date"`
+	Type     string      `json:"type"`
+	ID       string      `json:"id"`
+	PlayerID *string     `json:"player_id,omitempty"`
+	ClubID   *string     `json:"club_id,omitempty"`
+	TenantID *string     `json:"tenant_id,omitempty"`
+	GameID   *string     `json:"game_id,omitempty"`
 }
 
 func encodeArenaFeedCursor(playerID, clubID, tenantID, gameID *string, date time.Time, eventType string, eventID id.ID) string {
-	token, _ := json.Marshal(arenaFeedCursor{
-		Date:     date.UTC().Format(time.RFC3339Nano),
+	return encodeCursorToken(arenaFeedCursor{
+		Date:     rfc3339Time(date),
 		Type:     eventType,
 		ID:       string(eventID),
 		PlayerID: playerID,
@@ -365,23 +364,14 @@ func encodeArenaFeedCursor(playerID, clubID, tenantID, gameID *string, date time
 		TenantID: tenantID,
 		GameID:   gameID,
 	})
-	return base64.StdEncoding.EncodeToString(token)
 }
 
 func decodeArenaFeedCursor(token string) (arenaFeedCursor, pgtype.Timestamptz, error) {
-	raw, err := base64.StdEncoding.DecodeString(token)
+	c, err := decodeCursorToken[arenaFeedCursor](token)
 	if err != nil {
 		return arenaFeedCursor{}, pgtype.Timestamptz{}, err
 	}
-	var c arenaFeedCursor
-	if err := json.Unmarshal(raw, &c); err != nil {
-		return arenaFeedCursor{}, pgtype.Timestamptz{}, err
-	}
-	t, err := time.Parse(time.RFC3339Nano, c.Date)
-	if err != nil {
-		return arenaFeedCursor{}, pgtype.Timestamptz{}, err
-	}
-	return c, pgtype.Timestamptz{Time: t, Valid: true}, nil
+	return c, pgtype.Timestamptz{Time: time.Time(c.Date), Valid: true}, nil
 }
 
 // feedRequest carries the parsed parameters shared by the arena feed
@@ -444,9 +434,7 @@ func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playe
 			req.gameID = &g
 		}
 	}
-	if limitParam != nil && *limitParam > 0 && *limitParam <= 100 {
-		req.limit = int32(*limitParam)
-	}
+	req.limit = pageLimit(limitParam, 30)
 	return req, nil
 }
 
@@ -589,83 +577,42 @@ func (s *StrictServer) feedMatches(ctx context.Context, arenaID id.ID, ids []id.
 		return nil, err
 	}
 
-	matchesMap := make(map[id.ID]*tempMatch, len(ids))
-	order := make([]id.ID, 0, len(ids))
-	for _, r := range rows {
-		if _, ok := matchesMap[r.MatchID]; !ok {
-			matchesMap[r.MatchID] = &tempMatch{
-				Id:             r.MatchID,
-				GameId:         r.GameID,
-				GameName:       r.GameName,
-				Date:           r.Date.Time,
-				Players:        make(map[id.ID]matchPlayerJson),
-				HasMarkets:     r.HasMarkets,
-				Mode:           r.Mode,
-				GameScore:      r.GameScore,
-				GameWon:        r.GameWon,
-				CalculatorKind: r.CalculatorKind,
-			}
-			order = append(order, r.MatchID)
-		}
-		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
-			Score:        r.Score,
-			RatingStaked: float8Ptr(r.RatingStaked),
-			RatingEarned: float8Ptr(r.RatingEarned),
-			RatingAfter:  anyFloatPtr(r.RatingAfter),
-		}
-	}
-
-	campsByMatch, err := s.campsByMatch(ctx, order)
+	matchesMap, order := groupMatchRows(rows, feedMatchRowParts)
+	data, err := s.matchesToAPI(ctx, matchesMap, order, false)
 	if err != nil {
 		return nil, err
 	}
-	tournamentByMatch, err := s.tournamentByMatch(ctx, order)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, mid := range order {
-		m := matchesMap[mid]
-		score := make(IDMap[MatchPlayer], len(m.Players))
-		for pid, p := range m.Players {
-			score[pid] = MatchPlayer{
-				RatingStaked: p.RatingStaked,
-				RatingEarned: p.RatingEarned,
-				Score:        p.Score,
-				RatingAfter:  p.RatingAfter,
-			}
-		}
-		match := Match{
-			Id:         m.Id,
-			GameId:     m.GameId,
-			GameName:   m.GameName,
-			Date:       m.Date,
-			Score:      score,
-			HasMarkets: m.HasMarkets,
-			Mode:       MatchesMatchMode(m.Mode),
-			GameScore:  float8Ptr(m.GameScore),
-			GameWon:    boolPtr(m.GameWon),
-		}
-		if cs := campsByMatch[m.Id]; len(cs) > 0 {
-			match.Camps = &cs
-		}
-		if t, ok := tournamentByMatch[m.Id]; ok {
-			tt := t
-			match.Tournament = &tt
-		}
-		if m.CalculatorKind.Valid {
-			kind := m.CalculatorKind.String
-			match.CalculatorKind = &kind
-		}
-		out[mid] = match
+	for _, m := range data {
+		out[m.Id] = m
 	}
 	return out, nil
 }
 
+// feedMatchRowParts adapts the feed payload row to the shared assembler.
+func feedMatchRowParts(r *db.ListFeedMatchesWithPlayersRow) matchRowParts {
+	return matchRowParts{
+		MatchID:        r.MatchID,
+		Date:           r.Date.Time,
+		GameID:         r.GameID,
+		GameName:       r.GameName,
+		CalculatorKind: r.CalculatorKind,
+		Mode:           r.Mode,
+		GameScore:      r.GameScore,
+		GameWon:        r.GameWon,
+		PlayerID:       r.PlayerID,
+		Score:          r.Score,
+		RatingStaked:   r.RatingStaked,
+		RatingEarned:   r.RatingEarned,
+		RatingAfter:    r.RatingAfter,
+		HasMarkets:     r.HasMarkets,
+	}
+}
+
 func (s *StrictServer) ListArenaFeed(ctx context.Context, request ListArenaFeedRequestObject) (ListArenaFeedResponseObject, error) {
+	arenaID := parseIDParam(request.Id)
 	req, err := parseFeedRequest(
-		parseIDParam(request.Id),
-		parseIDParam(request.Id) == elo.BlueMenArenaID,
+		arenaID,
+		arenaID == elo.BlueMenArenaID,
 		false,
 		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
 		request.Params.Next, request.Params.Limit,

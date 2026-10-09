@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"time"
 
@@ -20,42 +19,32 @@ type auditCursor struct {
 	EntityTypes []string `json:"entity_types,omitempty"`
 	// LegacyEntityType carries cursors issued before the filter became a list;
 	// still decoded so an in-flight pagination survives a deploy.
-	LegacyEntityType *string `json:"entity_type,omitempty"`
-	EntityID         *string `json:"entity_id,omitempty"`
-	CreatedAt        string  `json:"created_at"` // RFC3339Nano
-	ID               string  `json:"id"`         // canonical UUID
+	LegacyEntityType *string     `json:"entity_type,omitempty"`
+	EntityID         *string     `json:"entity_id,omitempty"`
+	CreatedAt        rfc3339Time `json:"created_at"`
+	ID               string      `json:"id"` // canonical UUID
 }
 
 func encodeAuditCursor(entityTypes []string, entityID *string, createdAt time.Time, id string) string {
-	c := auditCursor{
+	return encodeCursorToken(auditCursor{
 		EntityTypes: entityTypes,
 		EntityID:    entityID,
-		CreatedAt:   createdAt.UTC().Format(time.RFC3339Nano),
+		CreatedAt:   rfc3339Time(createdAt),
 		ID:          id,
-	}
-	b, _ := json.Marshal(c)
-	return base64.StdEncoding.EncodeToString(b)
+	})
 }
 
 func decodeAuditCursor(token string) (entityTypes []string, entityID *string, createdAt time.Time, id string, err error) {
-	b, derr := base64.StdEncoding.DecodeString(token)
-	if derr != nil {
-		return nil, nil, time.Time{}, "", derr
-	}
-	var c auditCursor
-	if uerr := json.Unmarshal(b, &c); uerr != nil {
-		return nil, nil, time.Time{}, "", uerr
-	}
-	t, terr := time.Parse(time.RFC3339Nano, c.CreatedAt)
-	if terr != nil {
-		return nil, nil, time.Time{}, "", terr
+	c, err := decodeCursorToken[auditCursor](token)
+	if err != nil {
+		return nil, nil, time.Time{}, "", err
 	}
 	if len(c.EntityTypes) > 0 {
 		entityTypes = c.EntityTypes
 	} else if c.LegacyEntityType != nil {
 		entityTypes = []string{*c.LegacyEntityType}
 	}
-	return entityTypes, c.EntityID, t, c.ID, nil
+	return entityTypes, c.EntityID, time.Time(c.CreatedAt), c.ID, nil
 }
 
 // ListAuditEvents serves the public audit feed (ADR-14): latest first,
@@ -94,10 +83,7 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 		}
 	}
 
-	limit := int32(30)
-	if params.Limit != nil && *params.Limit > 0 && *params.Limit <= 100 {
-		limit = int32(*params.Limit)
-	}
+	limit := pageLimit(params.Limit, 30)
 
 	// A nil slice means "no type filter" (NULL ::text[] in the query); an
 	// empty array would filter everything out.
@@ -156,6 +142,34 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 	}, nil
 }
 
+// decodePlainDetails unmarshals a shortened stored document into the
+// generated struct type T and loads it into the wire union via the passed
+// loader (an AuditEntry_Details method expression).
+func decodePlainDetails[T any](load func(*AuditEntry_Details, T) error) func(*AuditEntry_Details, json.RawMessage) error {
+	return func(d *AuditEntry_Details, raw json.RawMessage) error {
+		var v T
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return err
+		}
+		return load(d, v)
+	}
+}
+
+// auditDetailDecoders covers the plain detail kinds whose stored document and
+// wire union share the generated shape. Structurally-mapped kinds (camp
+// config, tournament config/start/state, slot links/rulings) live in the
+// switch in auditDetailsFromStored.
+var auditDetailDecoders = map[string]func(*AuditEntry_Details, json.RawMessage) error{
+	audit.KindEntity:       decodePlainDetails((*AuditEntry_Details).FromAuditEntityDetails),
+	audit.KindMatchUpdate:  decodePlainDetails((*AuditEntry_Details).FromAuditMatchUpdateDetails),
+	audit.KindTenantUpdate: decodePlainDetails((*AuditEntry_Details).FromAuditTenantUpdateDetails),
+	audit.KindUserUpdate:   decodePlainDetails((*AuditEntry_Details).FromAuditAuditUserUpdateDetails),
+	audit.KindClubUpdate:   decodePlainDetails((*AuditEntry_Details).FromAuditAuditClubUpdateDetails),
+	audit.KindGameUpdate:   decodePlainDetails((*AuditEntry_Details).FromAuditGameUpdateDetails),
+	audit.KindPlayerUpdate: decodePlainDetails((*AuditEntry_Details).FromAuditPlayerUpdateDetails),
+	audit.KindTagUpdate:    decodePlainDetails((*AuditEntry_Details).FromAuditTagUpdateDetails),
+}
+
 // auditDetailsFromStored shortens the canonical ids of a stored details
 // document (ADR-12 boundary conversion) and decodes it into the generated
 // union type.
@@ -165,71 +179,20 @@ func auditDetailsFromStored(kind string, raw json.RawMessage) (*AuditEntry_Detai
 		return nil, err
 	}
 	var details AuditEntry_Details
+
+	// The plain detail kinds share one shape — unmarshal into the generated
+	// struct and load it into the union — expressed as a decode table (the
+	// method expressions adapt each union loader).
+	if decode, ok := auditDetailDecoders[kind]; ok {
+		if err := decode(&details, shortened); err != nil {
+			return nil, err
+		}
+		return &details, nil
+	}
+
+	// The structurally-mapped kinds: the stored document (audit package) and
+	// the wire union field the generated names differ.
 	switch kind {
-	case audit.KindEntity:
-		var v AuditEntityDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditEntityDetails(v); err != nil {
-			return nil, err
-		}
-	case audit.KindMatchUpdate:
-		var v AuditMatchUpdateDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditMatchUpdateDetails(v); err != nil {
-			return nil, err
-		}
-	case audit.KindTenantUpdate:
-		var v AuditTenantUpdateDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditTenantUpdateDetails(v); err != nil {
-			return nil, err
-		}
-	case audit.KindUserUpdate:
-		var v AuditAuditUserUpdateDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditAuditUserUpdateDetails(v); err != nil {
-			return nil, err
-		}
-	case audit.KindClubUpdate:
-		var v AuditAuditClubUpdateDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditAuditClubUpdateDetails(v); err != nil {
-			return nil, err
-		}
-	case audit.KindGameUpdate:
-		var v AuditGameUpdateDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditGameUpdateDetails(v); err != nil {
-			return nil, err
-		}
-	case audit.KindPlayerUpdate:
-		var v AuditPlayerUpdateDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditPlayerUpdateDetails(v); err != nil {
-			return nil, err
-		}
-	case audit.KindTagUpdate:
-		var v AuditTagUpdateDetails
-		if err := json.Unmarshal(shortened, &v); err != nil {
-			return nil, err
-		}
-		if err := details.FromAuditTagUpdateDetails(v); err != nil {
-			return nil, err
-		}
 	case audit.KindArenaCampConf:
 		var v audit.ArenaCampConfigDetails
 		if err := json.Unmarshal(shortened, &v); err != nil {

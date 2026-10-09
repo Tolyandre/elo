@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -159,11 +158,7 @@ func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersReque
 }
 
 func (s *StrictServer) ListRecentPlayers(ctx context.Context, _ ListRecentPlayersRequestObject) (ListRecentPlayersResponseObject, error) {
-	ginCtx := ginCtxFromContext(ctx)
-	if ginCtx == nil {
-		return nil, fmt.Errorf("no gin context in request")
-	}
-	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	user, err := s.requireUser(ctx)
 	if err != nil {
 		return nil, err
 	}

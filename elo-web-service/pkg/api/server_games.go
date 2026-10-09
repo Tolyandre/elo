@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -43,11 +42,7 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 }
 
 func (s *StrictServer) ListFavoriteGames(ctx context.Context, _ ListFavoriteGamesRequestObject) (ListFavoriteGamesResponseObject, error) {
-	ginCtx := ginCtxFromContext(ctx)
-	if ginCtx == nil {
-		return nil, fmt.Errorf("no gin context in request")
-	}
-	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	user, err := s.requireUser(ctx)
 	if err != nil {
 		return nil, err
 	}

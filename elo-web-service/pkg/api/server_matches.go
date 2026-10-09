@@ -54,10 +54,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		}
 	}
 
-	limit := int32(30)
-	if params.Limit != nil && *params.Limit > 0 && *params.Limit <= 100 {
-		limit = int32(*params.Limit)
-	}
+	limit := pageLimit(params.Limit, 30)
 
 	// The display arena behind the per-player settlement columns: the
 	// ?tenant='s main arena (ADR-36) — required since phase 5, reads are
@@ -89,77 +86,10 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		return nil, err
 	}
 
-	matchesMap := make(map[id.ID]*tempMatch)
-	order := make([]id.ID, 0)
-
-	for _, r := range rows {
-		if _, ok := matchesMap[r.MatchID]; !ok {
-			matchesMap[r.MatchID] = &tempMatch{
-				Id:             r.MatchID,
-				GameId:         r.GameID,
-				GameName:       r.GameName,
-				Date:           r.Date.Time,
-				Players:        make(map[id.ID]matchPlayerJson),
-				HasMarkets:     r.HasMarkets,
-				Mode:           r.Mode,
-				GameScore:      r.GameScore,
-				GameWon:        r.GameWon,
-				CalculatorKind: r.CalculatorKind,
-			}
-			order = append(order, r.MatchID)
-		}
-		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
-			Score:        r.Score,
-			RatingStaked: float8Ptr(r.RatingStaked),
-			RatingEarned: float8Ptr(r.RatingEarned),
-			RatingAfter:  anyFloatPtr(r.RatingAfter),
-		}
-	}
-
-	campsByMatch, err := s.campsByMatch(ctx, order)
+	matchesMap, order := groupMatchRows(rows, listMatchRowParts)
+	data, err := s.matchesToAPI(ctx, matchesMap, order, false)
 	if err != nil {
 		return nil, err
-	}
-	tournamentByMatch, err := s.tournamentByMatch(ctx, order)
-	if err != nil {
-		return nil, err
-	}
-
-	matchesSlice := buildMatchesResponse(matchesMap, order)
-	data := make([]Match, 0, len(matchesSlice))
-	for _, m := range matchesSlice {
-		score := make(IDMap[MatchPlayer], len(m.Players))
-		for pid, p := range m.Players {
-			score[pid] = MatchPlayer{
-				RatingStaked: p.RatingStaked,
-				RatingEarned: p.RatingEarned,
-				Score:        p.Score,
-				RatingAfter:  p.RatingAfter,
-			}
-		}
-		match := Match{
-			Id:         m.Id,
-			GameId:     m.GameId,
-			GameName:   m.GameName,
-			Date:       m.Date,
-			Score:      score,
-			HasMarkets: m.HasMarkets,
-			Mode:       MatchesMatchMode(m.Mode),
-			GameScore:  float8Ptr(m.GameScore),
-			GameWon:    boolPtr(m.GameWon),
-		}
-		if cs := campsByMatch[m.Id]; len(cs) > 0 {
-			match.Camps = &cs
-		}
-		if t, ok := tournamentByMatch[m.Id]; ok {
-			tt := t
-			match.Tournament = &tt
-		}
-		if m.CalculatorKind.Valid {
-			kind := m.CalculatorKind.String
-			match.CalculatorKind = &kind
-		}
-		data = append(data, match)
 	}
 
 	var next *string
@@ -174,6 +104,26 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		Data:   data,
 		Next:   next,
 	}, nil
+}
+
+// listMatchRowParts adapts the paginated list row to the shared assembler.
+func listMatchRowParts(r *db.ListMatchesWithPlayersPaginatedRow) matchRowParts {
+	return matchRowParts{
+		MatchID:        r.MatchID,
+		Date:           r.Date.Time,
+		GameID:         r.GameID,
+		GameName:       r.GameName,
+		CalculatorKind: r.CalculatorKind,
+		Mode:           r.Mode,
+		GameScore:      r.GameScore,
+		GameWon:        r.GameWon,
+		PlayerID:       r.PlayerID,
+		Score:          r.Score,
+		RatingStaked:   r.RatingStaked,
+		RatingEarned:   r.RatingEarned,
+		RatingAfter:    r.RatingAfter,
+		HasMarkets:     r.HasMarkets,
+	}
 }
 
 // CreateTenantMatch adds a match under its owning tenant (ADR-36 phase 7):
@@ -329,32 +279,41 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		return GetMatchById404JSONResponse{Status: StatusFail, Message: "Match not found"}, nil
 	}
 
-	matchesMap := make(map[id.ID]*tempMatch)
-	order := make([]id.ID, 0)
-	for _, r := range rows {
-		if _, ok := matchesMap[r.MatchID]; !ok {
-			matchesMap[r.MatchID] = &tempMatch{
-				Id:             r.MatchID,
-				GameId:         r.GameID,
-				GameName:       r.GameName,
-				Date:           r.Date.Time,
-				Players:        make(map[id.ID]matchPlayerJson),
-				Mode:           r.Mode,
-				GameScore:      r.GameScore,
-				GameWon:        r.GameWon,
-				CalculatorKind: r.CalculatorKind,
-				CalculatorData: r.CalculatorData,
-			}
-			order = append(order, r.MatchID)
-		}
-		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
-			Score:        r.Score,
-			RatingStaked: float8Ptr(r.RatingStaked),
-			RatingEarned: float8Ptr(r.RatingEarned),
-			RatingAfter:  anyFloatPtr(r.RatingAfter),
-		}
+	matchesMap, order := groupMatchRows(rows, detailMatchRowParts)
+	data, err := s.matchesToAPI(ctx, matchesMap, order, true)
+	if err != nil {
+		return nil, err
 	}
 
+	return GetMatchById200JSONResponse{Status: StatusSuccess, Data: data[0]}, nil
+}
+
+// detailMatchRowParts adapts the get-by-id row (the only one that selects the
+// calculator document) to the shared assembler.
+func detailMatchRowParts(r *db.GetMatchWithPlayersRow) matchRowParts {
+	return matchRowParts{
+		MatchID:        r.MatchID,
+		Date:           r.Date.Time,
+		GameID:         r.GameID,
+		GameName:       r.GameName,
+		CalculatorKind: r.CalculatorKind,
+		CalculatorData: r.CalculatorData,
+		Mode:           r.Mode,
+		GameScore:      r.GameScore,
+		GameWon:        r.GameWon,
+		PlayerID:       r.PlayerID,
+		Score:          r.Score,
+		RatingStaked:   r.RatingStaked,
+		RatingEarned:   r.RatingEarned,
+		RatingAfter:    r.RatingAfter,
+	}
+}
+
+// matchesToAPI converts grouped match rows into the wire shape, wiring the
+// camp and tournament badges and the calculator kind. withCalculatorData also
+// includes the id-shortened calculator document (the get-by-id detail path;
+// the list and feed queries deliberately don't select the JSONB column).
+func (s *StrictServer) matchesToAPI(ctx context.Context, matchesMap map[id.ID]*tempMatch, order []id.ID, withCalculatorData bool) ([]Match, error) {
 	campsByMatch, err := s.campsByMatch(ctx, order)
 	if err != nil {
 		return nil, err
@@ -364,53 +323,53 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		return nil, err
 	}
 
-	result := buildMatchesResponse(matchesMap, order)
-	m := result[0]
-	score := make(IDMap[MatchPlayer], len(m.Players))
-	for pid, p := range m.Players {
-		score[pid] = MatchPlayer{
-			RatingStaked: p.RatingStaked,
-			RatingEarned: p.RatingEarned,
-			Score:        p.Score,
-			RatingAfter:  p.RatingAfter,
+	matchesSlice := buildMatchesResponse(matchesMap, order)
+	data := make([]Match, 0, len(matchesSlice))
+	for _, m := range matchesSlice {
+		score := make(IDMap[MatchPlayer], len(m.Players))
+		for pid, p := range m.Players {
+			score[pid] = MatchPlayer{
+				RatingStaked: p.RatingStaked,
+				RatingEarned: p.RatingEarned,
+				Score:        p.Score,
+				RatingAfter:  p.RatingAfter,
+			}
 		}
-	}
-
-	match := Match{
-		Id:         m.Id,
-		GameId:     m.GameId,
-		GameName:   m.GameName,
-		Date:       m.Date,
-		Score:      score,
-		HasMarkets: m.HasMarkets,
-		Mode:       MatchesMatchMode(m.Mode),
-		GameScore:  float8Ptr(m.GameScore),
-		GameWon:    boolPtr(m.GameWon),
-	}
-	if cs := campsByMatch[m.Id]; len(cs) > 0 {
-		match.Camps = &cs
-	}
-	if t, ok := tournamentByMatch[m.Id]; ok {
-		tt := t
-		match.Tournament = &tt
-	}
-	if m.CalculatorKind.Valid {
-		kind := m.CalculatorKind.String
-		match.CalculatorKind = &kind
-		if len(m.CalculatorData) > 0 {
-			// Stored docs hold canonical ids; the response carries the wire
-			// form (schema-driven, see pkg/calculator/ids.go).
-			short, err := calculator.ShortenIDs(kind, m.CalculatorData)
-			if err == nil {
-				var data map[string]interface{}
-				if err := json.Unmarshal(short, &data); err == nil {
-					match.CalculatorData = &data
+		match := Match{
+			Id:         m.Id,
+			GameId:     m.GameId,
+			GameName:   m.GameName,
+			Date:       m.Date,
+			Score:      score,
+			HasMarkets: m.HasMarkets,
+			Mode:       MatchesMatchMode(m.Mode),
+			GameScore:  float8Ptr(m.GameScore),
+			GameWon:    boolPtr(m.GameWon),
+		}
+		if cs := campsByMatch[m.Id]; len(cs) > 0 {
+			match.Camps = &cs
+		}
+		if t, ok := tournamentByMatch[m.Id]; ok {
+			tt := t
+			match.Tournament = &tt
+		}
+		if m.CalculatorKind.Valid {
+			kind := m.CalculatorKind.String
+			match.CalculatorKind = &kind
+			if withCalculatorData && len(m.CalculatorData) > 0 {
+				// Stored docs hold canonical ids; the response carries the wire
+				// form (schema-driven, see pkg/calculator/ids.go).
+				if short, err := calculator.ShortenIDs(kind, m.CalculatorData); err == nil {
+					var doc map[string]interface{}
+					if err := json.Unmarshal(short, &doc); err == nil {
+						match.CalculatorData = &doc
+					}
 				}
 			}
 		}
+		data = append(data, match)
 	}
-
-	return GetMatchById200JSONResponse{Status: StatusSuccess, Data: match}, nil
+	return data, nil
 }
 
 func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchRequestObject) (UpdateMatchResponseObject, error) {

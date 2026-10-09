@@ -2,10 +2,7 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -300,26 +297,11 @@ func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 		m.StartsAt = &t
 	}
 	m.ClosesAt = apiClosesAt(r.MarketType, r.ClosesAt)
-	if r.CreatedAt.Valid {
-		t := r.CreatedAt.Time
-		m.CreatedAt = &t
-	}
-	if r.ResolvedAt.Valid {
-		t := r.ResolvedAt.Time
-		m.ResolvedAt = &t
-	}
-	if r.BettingClosedAt.Valid {
-		t := r.BettingClosedAt.Time
-		m.BettingClosedAt = &t
-	}
-	if r.ResolutionOutcome != nil {
-		v := *r.ResolutionOutcome
-		m.ResolutionOutcomeId = &v
-	}
-	if r.ResolutionMatchID != nil {
-		v := *r.ResolutionMatchID
-		m.ResolutionMatchId = &v
-	}
+	m.CreatedAt = timePtr(r.CreatedAt)
+	m.ResolvedAt = timePtr(r.ResolvedAt)
+	m.BettingClosedAt = timePtr(r.BettingClosedAt)
+	m.ResolutionOutcomeId = optID(r.ResolutionOutcome)
+	m.ResolutionMatchId = optID(r.ResolutionMatchID)
 	return m
 }
 
@@ -328,33 +310,21 @@ func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 // struct leaves room for them so future filters ride in the token like
 // matchCursor's do.
 type marketCursor struct {
-	ResolvedAt string `json:"resolved_at"` // RFC3339Nano
-	ID         string `json:"id"`
+	ResolvedAt rfc3339Time `json:"resolved_at"`
+	ID         string      `json:"id"`
 }
 
 func encodeMarketCursor(resolvedAt time.Time, marketID id.ID) string {
-	b, _ := json.Marshal(marketCursor{
-		ResolvedAt: resolvedAt.UTC().Format(time.RFC3339Nano),
-		ID:         string(marketID),
-	})
-	return base64.StdEncoding.EncodeToString(b)
+	return encodeCursorToken(marketCursor{ResolvedAt: rfc3339Time(resolvedAt), ID: string(marketID)})
 }
 
 func decodeMarketCursor(token string) (pgtype.Timestamptz, *id.ID, error) {
-	raw, err := base64.StdEncoding.DecodeString(token)
-	if err != nil {
-		return pgtype.Timestamptz{}, nil, err
-	}
-	var c marketCursor
-	if err := json.Unmarshal(raw, &c); err != nil {
-		return pgtype.Timestamptz{}, nil, err
-	}
-	t, err := time.Parse(time.RFC3339Nano, c.ResolvedAt)
+	c, err := decodeCursorToken[marketCursor](token)
 	if err != nil {
 		return pgtype.Timestamptz{}, nil, err
 	}
 	mid := id.ID(c.ID)
-	return pgtype.Timestamptz{Time: t, Valid: true}, &mid, nil
+	return pgtype.Timestamptz{Time: time.Time(c.ResolvedAt), Valid: true}, &mid, nil
 }
 
 // marketsByIDs assembles full Market objects (outcomes with pools; for
@@ -396,10 +366,7 @@ func (s *StrictServer) marketsByIDs(ctx context.Context, ids []id.ID) (map[id.ID
 }
 
 func (s *StrictServer) ListMarkets(ctx context.Context, request ListMarketsRequestObject) (ListMarketsResponseObject, error) {
-	limit := int32(30)
-	if request.Params.Limit != nil && *request.Params.Limit > 0 && *request.Params.Limit <= 100 {
-		limit = int32(*request.Params.Limit)
-	}
+	limit := pageLimit(request.Params.Limit, 30)
 
 	var cursorDate pgtype.Timestamptz
 	var cursorID *id.ID
@@ -500,31 +467,13 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 	if feeCollected, err := s.api.MarketQueries.GetMarketFeeCollected(ctx, marketID); err == nil && feeCollected > 0 {
 		detail.FeeCollected = &feeCollected
 	}
-	if row.StartsAt.Valid {
-		t := row.StartsAt.Time
-		detail.StartsAt = &t
-	}
+	detail.StartsAt = timePtr(row.StartsAt)
 	detail.ClosesAt = apiClosesAt(row.MarketType, row.ClosesAt)
-	if row.CreatedAt.Valid {
-		t := row.CreatedAt.Time
-		detail.CreatedAt = &t
-	}
-	if row.ResolvedAt.Valid {
-		t := row.ResolvedAt.Time
-		detail.ResolvedAt = &t
-	}
-	if row.BettingClosedAt.Valid {
-		t := row.BettingClosedAt.Time
-		detail.BettingClosedAt = &t
-	}
-	if row.ResolutionOutcome != nil {
-		v := *row.ResolutionOutcome
-		detail.ResolutionOutcomeId = &v
-	}
-	if row.ResolutionMatchID != nil {
-		v := *row.ResolutionMatchID
-		detail.ResolutionMatchId = &v
-	}
+	detail.CreatedAt = timePtr(row.CreatedAt)
+	detail.ResolvedAt = timePtr(row.ResolvedAt)
+	detail.BettingClosedAt = timePtr(row.BettingClosedAt)
+	detail.ResolutionOutcomeId = optID(row.ResolutionOutcome)
+	detail.ResolutionMatchId = optID(row.ResolutionMatchID)
 	if row.Status == "resolved" {
 		if details, err := s.api.MarketQueries.GetSettlementDetails(ctx, &marketID); err == nil {
 			detail.Settlement = convertSettlement(details)
@@ -643,14 +592,9 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 const maxMatchWinnerTargets = 12
 
 func (s *StrictServer) CreateTenantMarket(ctx context.Context, request CreateTenantMarketRequestObject) (CreateTenantMarketResponseObject, error) {
-	ginCtx := ginCtxFromContext(ctx)
-	if ginCtx == nil {
-		return nil, fmt.Errorf("gin context not available")
-	}
-
-	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	user, err := s.requireUser(ctx)
 	if err != nil {
-		if domainStatusCode(err) == http.StatusNotFound {
+		if errors.Is(err, errAuthRequired) {
 			return CreateTenantMarket401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 		}
 		return nil, err
@@ -798,14 +742,9 @@ func (s *StrictServer) DeleteMarket(ctx context.Context, request DeleteMarketReq
 }
 
 func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObject) (PlaceBetResponseObject, error) {
-	ginCtx := ginCtxFromContext(ctx)
-	if ginCtx == nil {
-		return nil, fmt.Errorf("gin context not available")
-	}
-
-	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	user, err := s.requireUser(ctx)
 	if err != nil {
-		if domainStatusCode(err) == http.StatusNotFound {
+		if errors.Is(err, errAuthRequired) {
 			return PlaceBet401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 		}
 		return nil, err
@@ -857,14 +796,9 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 // (b = Σrisk/ln(n); the join reprices prices toward uniform over the fixed q,
 // ADR-22) (ADR-20).
 func (s *StrictServer) CreateMarketGuarantee(ctx context.Context, request CreateMarketGuaranteeRequestObject) (CreateMarketGuaranteeResponseObject, error) {
-	ginCtx := ginCtxFromContext(ctx)
-	if ginCtx == nil {
-		return nil, fmt.Errorf("gin context not available")
-	}
-
-	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	user, err := s.requireUser(ctx)
 	if err != nil {
-		if domainStatusCode(err) == http.StatusNotFound {
+		if errors.Is(err, errAuthRequired) {
 			return CreateMarketGuarantee401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 		}
 		return nil, err
