@@ -86,7 +86,18 @@ export function NavigationBar() {
           {tenants.length > 1 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 px-1" aria-label="Выбрать сообщество">
+                {/* size="sm" pads icons with has-[>svg]:px-2.5, which px-1
+                    doesn't override (tailwind-merge treats the variants as
+                    separate groups) — pin both sides so the chevron hugs the
+                    name instead of floating mid-gap before «Справка». -ml-2
+                    eats into the link's pr-2: the glyph lands 4px from the
+                    name, same as the Меню trigger's built-in chevron. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 h-8 px-1 has-[>svg]:px-1"
+                  aria-label="Выбрать сообщество"
+                >
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
