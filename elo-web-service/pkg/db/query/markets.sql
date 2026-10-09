@@ -196,6 +196,9 @@ LEFT JOIN tournaments t ON t.id = twp.tournament_id
 WHERE om.id = ANY(sqlc.arg('ids')::uuid[]);
 
 -- name: ListMarketsByResolutionMatch :many
+-- The markets a match resolved, scoped to a tenant (ADR-36): only the
+-- markets the tenant owns — the same ownership condition the feed's market
+-- events follow.
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
@@ -214,7 +217,8 @@ LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
 LEFT JOIN tournaments t ON t.id = twp.tournament_id
-WHERE om.resolution_match_id = $1;
+WHERE om.resolution_match_id = $1
+  AND om.tenant_id = sqlc.arg('tenant_id')::uuid;
 
 -- name: GetMatchWinnerParams :one
 SELECT * FROM market_match_winner_params WHERE market_id = $1;

@@ -4204,7 +4204,10 @@ export interface operations {
     };
     GetMarketsByMatchId: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Scopes the list to the community (ADR-36): only the markets the tenant owns — the same ownership condition the tenant feed's market events follow. Reads are tenant-scoped, there is no global default. Naming no existing tenant is a 404. */
+                tenant: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -4227,6 +4230,15 @@ export interface operations {
             };
             /** @description Bad request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant not found (the ?tenant= parameter names no existing tenant) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

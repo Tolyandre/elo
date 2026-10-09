@@ -145,11 +145,21 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
     };
   }, [matchId, matchFromContext, contextLoading, tenantId]);
 
+  // Related markets are tenant-scoped (ADR-36): only the markets the current
+  // community owns. The fetch follows the tenant switch like the settlement
+  // columns; a failure just keeps the auxiliary section hidden.
   useEffect(() => {
-    getMarketsByMatchIdPromise(matchId)
-      .then((data) => setRelatedMarkets(data ?? []))
+    if (!tenantId) return;
+    let cancelled = false;
+    getMarketsByMatchIdPromise(matchId, tenantId)
+      .then((data) => {
+        if (!cancelled) setRelatedMarkets(data ?? []);
+      })
       .catch(() => {});
-  }, [matchId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId, tenantId]);
 
   const match = matchFromApi ?? matchFromContext;
   // The context data is only trustworthy once it has settled for the current

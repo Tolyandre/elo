@@ -88,9 +88,11 @@ export async function closeMarketBettingPromise(id: Base58ID): Promise<void> {
     }));
 }
 
-export async function getMarketsByMatchIdPromise(matchId: Base58ID): Promise<Market[]> {
+export async function getMarketsByMatchIdPromise(matchId: Base58ID, tenant: Base58ID): Promise<Market[]> {
+    // Tenant-scoped read (ADR-36): only the markets the community owns —
+    // the feed's ownership condition.
     return (await unwrap(client.GET("/matches/{id}/markets", {
-        params: { path: { id: matchId } },
+        params: { path: { id: matchId }, query: { tenant } },
     }))).data ?? [];
 }
 

@@ -2979,6 +2979,12 @@ type UpdateMatchParams struct {
 	Tenant string `form:"tenant" json:"tenant"`
 }
 
+// GetMarketsByMatchIdParams defines parameters for GetMarketsByMatchId.
+type GetMarketsByMatchIdParams struct {
+	// Tenant Scopes the list to the community (ADR-36): only the markets the tenant owns — the same ownership condition the tenant feed's market events follow. Reads are tenant-scoped, there is no global default. Naming no existing tenant is a 404.
+	Tenant string `form:"tenant" json:"tenant"`
+}
+
 // ListPlayersParams defines parameters for ListPlayers.
 type ListPlayersParams struct {
 	// Tenant The tenant whose main arena the ratings and leagues are read from (ADR-36). Optional — omit it for the name catalog without ranking columns. Naming no existing tenant is a 404.
@@ -4345,7 +4351,7 @@ type ServerInterface interface {
 	UpdateMatch(c *gin.Context, id string, params UpdateMatchParams)
 	// GetMarketsByMatchId Get markets associated with a match
 	// (GET /matches/{id}/markets)
-	GetMarketsByMatchId(c *gin.Context, id string)
+	GetMarketsByMatchId(c *gin.Context, id string, params GetMarketsByMatchIdParams)
 	// GetPing Health check
 	// (GET /ping)
 	GetPing(c *gin.Context)
@@ -5690,6 +5696,17 @@ func (siw *ServerInterfaceWrapper) GetMarketsByMatchId(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMarketsByMatchIdParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5697,7 +5714,7 @@ func (siw *ServerInterfaceWrapper) GetMarketsByMatchId(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetMarketsByMatchId(c, id)
+	siw.Handler.GetMarketsByMatchId(c, id, params)
 }
 
 // GetPing operation middleware
@@ -9596,7 +9613,8 @@ func (response UpdateMatch409JSONResponse) VisitUpdateMatchResponse(w http.Respo
 }
 
 type GetMarketsByMatchIdRequestObject struct {
-	Id string `json:"id"`
+	Id     string `json:"id"`
+	Params GetMarketsByMatchIdParams
 }
 
 type GetMarketsByMatchIdResponseObject interface {
@@ -9630,6 +9648,20 @@ func (response GetMarketsByMatchId400JSONResponse) VisitGetMarketsByMatchIdRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMarketsByMatchId404JSONResponse ApiError
+
+func (response GetMarketsByMatchId404JSONResponse) VisitGetMarketsByMatchIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14352,10 +14384,11 @@ func (sh *strictHandler) UpdateMatch(ctx *gin.Context, id string, params UpdateM
 }
 
 // GetMarketsByMatchId operation middleware
-func (sh *strictHandler) GetMarketsByMatchId(ctx *gin.Context, id string) {
+func (sh *strictHandler) GetMarketsByMatchId(ctx *gin.Context, id string, params GetMarketsByMatchIdParams) {
 	var request GetMarketsByMatchIdRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMarketsByMatchId(ctx, request.(GetMarketsByMatchIdRequestObject))

@@ -907,9 +907,27 @@ func (s *StrictServer) CreateMarketGuarantee(ctx context.Context, request Create
 }
 
 func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarketsByMatchIdRequestObject) (GetMarketsByMatchIdResponseObject, error) {
+	// The read is tenant-scoped (ADR-36): no community named is a 400, an
+	// unknown one a 404 — there is no global default. The query keeps only
+	// the markets the tenant owns, the feed's ownership condition.
+	if request.Params.Tenant == "" {
+		return GetMarketsByMatchId400JSONResponse{Status: StatusFail, Message: "tenant query parameter is required"}, nil
+	}
+	tenantRows, err := s.api.TenantService.GetTenant(ctx, parseIDParam(request.Params.Tenant))
+	if err != nil {
+		return nil, err
+	}
+	if len(tenantRows) == 0 {
+		return GetMarketsByMatchId404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+	}
+	tenantID := tenantRows[0].TenantID
+
 	matchID := parseIDParam(request.Id)
 
-	rows, err := s.api.MarketQueries.ListMarketsByResolutionMatch(ctx, &matchID)
+	rows, err := s.api.MarketQueries.ListMarketsByResolutionMatch(ctx, db.ListMarketsByResolutionMatchParams{
+		ResolutionMatchID: &matchID,
+		TenantID:          tenantID,
+	})
 	if err != nil {
 		return nil, err
 	}

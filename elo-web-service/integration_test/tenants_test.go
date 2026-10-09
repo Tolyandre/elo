@@ -1083,6 +1083,120 @@ func TestTenants_MarketMembersOnly(t *testing.T) {
 	}
 }
 
+// TestTenants_MatchMarketsTenantScope pins the tenant scoping of the match's
+// related-markets read (ADR-36): GET /matches/{id}/markets keeps only the
+// markets the tenant OWNS — the same ownership condition the tenant feed's
+// market events follow. A member's participation in a foreign market (a
+// guarantee here) does not surface it, and a tenant with no relation sees
+// nothing; the parameter itself is required (400) and must name an existing
+// tenant (404).
+func TestTenants_MatchMarketsTenantScope(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	token, _ := createTestUserWithID(t, pool, true)
+
+	// The owning tenant and a bystander one whose member takes part in the
+	// market as a guarantor; a third tenant has no relation of either kind.
+	tenantA, clubA, _ := createTenant(t, router, token, "Рыночная", "any_member", "open")
+	tenantB, clubB, _ := createTenant(t, router, token, "Боковая", "any_member", "open")
+	tenantC, clubC, _ := createTenant(t, router, token, "Никакая", "any_member", "open")
+	memberA := createBareTestPlayer(t, pool, "Рыночный член")
+	guest := createBareTestPlayer(t, pool, "Рыночный гость")
+	memberB := createBareTestPlayer(t, pool, "Боковой член")
+	memberC := createBareTestPlayer(t, pool, "Никакой член")
+	addClubMember(t, router, token, clubA.String(), memberA)
+	addClubMember(t, router, token, clubB.String(), memberB)
+	addClubMember(t, router, token, clubC.String(), memberC)
+
+	game := createTestGame(t, pool, "Рыночная игра")
+	marketSvc := elo.NewMarketService(pool)
+	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
+		TenantID:   tenantA,
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  createTestAdmin(t, pool),
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerIDs:   []idpkg.ID{memberA, guest},
+			AllowOtherPlayers: true,
+			GameIDs:           []idpkg.ID{game},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket: %v", err)
+	}
+
+	// The bystander tenant's member stands guarantor on the foreign market —
+	// any_member admits non-members — which is tenant B's only tie to it.
+	setBetLimit(t, pool, tenantA, memberB, 100)
+	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, memberB, 10, 0); err != nil {
+		t.Fatalf("memberB guarantee: %v", err)
+	}
+
+	// The resolving match lands the market's resolution_match_id on itself.
+	if _, err := newMatchService(pool).AddMatch(ctx, tenantA, game, map[idpkg.ID]float64{memberA: 60, guest: 30}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch: %v", err)
+	}
+
+	matchID := ""
+	listPage := decodeMatchesPage(t, router, "/matches?tenant="+tenantA.String())
+	for _, m := range listPage.Data {
+		matchID = m.Id
+		break
+	}
+	if matchID == "" {
+		t.Fatalf("owning tenant list holds no match")
+	}
+
+	marketIDs := func(path string) []string {
+		t.Helper()
+		w := doJSON(t, router, http.MethodGet, path, "", "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s: %d %s", path, w.Code, w.Body.String())
+		}
+		var resp struct {
+			Data []struct {
+				Id string `json:"id"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode markets: %v", err)
+		}
+		out := make([]string, 0, len(resp.Data))
+		for _, m := range resp.Data {
+			out = append(out, m.Id)
+		}
+		return out
+	}
+
+	// The owner sees its market. The bystander does not: its member stands
+	// guarantor on the foreign market, but participation alone is not the
+	// community's stake — ownership is. The unrelated tenant sees nothing.
+	want := short(market.ID)
+	if got := marketIDs("/matches/" + url.PathEscape(matchID) + "/markets?tenant=" + tenantA.String()); len(got) != 1 || got[0] != want {
+		t.Fatalf("owning tenant markets = %v, want [%s]", got, want)
+	}
+	if got := marketIDs("/matches/" + url.PathEscape(matchID) + "/markets?tenant=" + tenantB.String()); len(got) != 0 {
+		t.Fatalf("bystander tenant markets = %v, want none (participation is not ownership)", got)
+	}
+	if got := marketIDs("/matches/" + url.PathEscape(matchID) + "/markets?tenant=" + tenantC.String()); len(got) != 0 {
+		t.Fatalf("unrelated tenant markets = %v, want none", got)
+	}
+
+	// The read is tenant-scoped: no community named is a 400, an unknown one
+	// a 404.
+	if code := decodeFeedStatus(t, router, "/matches/"+url.PathEscape(matchID)+"/markets"); code != http.StatusBadRequest {
+		t.Fatalf("markets without tenant gave %d, want 400", code)
+	}
+	if code := decodeFeedStatus(t, router, "/matches/"+url.PathEscape(matchID)+"/markets?tenant="+newID(t).String()); code != http.StatusNotFound {
+		t.Fatalf("markets with unknown tenant gave %d, want 404", code)
+	}
+}
+
 // TestMatchUpdate_RequiresTenantMembership pins the edit-side tenant gate
 // (ADR-36): an update submitted under a ?tenant= is rejected when after it
 // none of the participants remains a current member of that tenant — the

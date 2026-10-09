@@ -435,7 +435,10 @@ type Querier interface {
 	// Full market rows for an explicit id set — payload fetch for the markets
 	// lobby page and the arena feed (ADR-32).
 	ListMarketsByIDs(ctx context.Context, ids []id.ID) ([]ListMarketsByIDsRow, error)
-	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]ListMarketsByResolutionMatchRow, error)
+	// The markets a match resolved, scoped to a tenant (ADR-36): only the
+	// markets the tenant owns — the same ownership condition the feed's market
+	// events follow.
+	ListMarketsByResolutionMatch(ctx context.Context, arg ListMarketsByResolutionMatchParams) ([]ListMarketsByResolutionMatchRow, error)
 	// Live markets whose AMM state vector diverged from the outstanding shares
 	// stored in bets — the signature of the removed price-preserving rescale
 	// (ADR-22). Resolved markets get the same q repair but need no settlement.

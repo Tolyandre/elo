@@ -1307,7 +1307,13 @@ LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
 LEFT JOIN tournaments t ON t.id = twp.tournament_id
 WHERE om.resolution_match_id = $1
+  AND om.tenant_id = $2::uuid
 `
+
+type ListMarketsByResolutionMatchParams struct {
+	ResolutionMatchID *id.ID `json:"resolution_match_id"`
+	TenantID          id.ID  `json:"tenant_id"`
+}
 
 type ListMarketsByResolutionMatchRow struct {
 	ID                id.ID              `json:"id"`
@@ -1334,8 +1340,11 @@ type ListMarketsByResolutionMatchRow struct {
 	TwTournamentName  pgtype.Text        `json:"tw_tournament_name"`
 }
 
-func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]ListMarketsByResolutionMatchRow, error) {
-	rows, err := q.db.Query(ctx, listMarketsByResolutionMatch, resolutionMatchID)
+// The markets a match resolved, scoped to a tenant (ADR-36): only the
+// markets the tenant owns — the same ownership condition the feed's market
+// events follow.
+func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, arg ListMarketsByResolutionMatchParams) ([]ListMarketsByResolutionMatchRow, error) {
+	rows, err := q.db.Query(ctx, listMarketsByResolutionMatch, arg.ResolutionMatchID, arg.TenantID)
 	if err != nil {
 		return nil, err
 	}

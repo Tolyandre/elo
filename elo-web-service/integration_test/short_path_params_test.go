@@ -83,7 +83,9 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	}
 	shortMatch := string(match.ID.Base58())
 	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/matches/"+shortMatch+"/markets", nil))
+	// The read is tenant-scoped (ADR-36); the market and the match belong to
+	// «Синие люди», so scoping to it keeps the row.
+	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/matches/"+shortMatch+"/markets?tenant="+blueMenTenantUUID, nil))
 	if w2.Code != http.StatusOK {
 		t.Fatalf("GET /matches/{short id}/markets: %d: %s (want 200)", w2.Code, w2.Body.String())
 	}

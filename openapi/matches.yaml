@@ -435,6 +435,16 @@ MatchMarketsPath:
         required: true
         schema:
           type: string
+      - name: tenant
+        in: query
+        required: true
+        schema:
+          type: string
+        description: >-
+          Scopes the list to the community (ADR-36): only the markets the
+          tenant owns — the same ownership condition the tenant feed's market
+          events follow. Reads are tenant-scoped, there is no global default.
+          Naming no existing tenant is a 404.
     responses:
       "200":
         description: Markets for the match
@@ -452,6 +462,12 @@ MatchMarketsPath:
               required: [status, data]
       "400":
         description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found (the ?tenant= parameter names no existing tenant)
         content:
           application/json:
             schema:
