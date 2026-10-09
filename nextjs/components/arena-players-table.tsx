@@ -8,6 +8,7 @@ import { ClubIcons } from "@/components/player-name";
 import { RankChangeIndicator, RatingDiff } from "@/components/rank-change-indicator";
 import { useSettings } from "@/app/settingsContext";
 import { useTenantScope } from "@/app/tenantScopeContext";
+import { useMe } from "@/app/meContext";
 import { winsNeededForAmateur } from "@/app/eloCalculation";
 
 const LEAGUE_TITLES: Record<string, string> = {
@@ -35,6 +36,7 @@ export function ArenaPlayersTable({
   // Player links carry the current tenant (ADR-36): the profile opens scoped
   // to the community whose ranking this table renders.
   const { playerHref } = useTenantScope();
+  const { playerId: myPlayerId } = useMe();
   if (players.length === 0) {
     return <p className="text-sm text-muted-foreground">Нет игроков</p>;
   }
@@ -59,7 +61,11 @@ export function ArenaPlayersTable({
               <td className="px-1 py-2">
                 <ClubIcons playerId={player.player_id} className="mr-1 align-text-bottom" />
                 <Link href={playerHref(player.player_id)} className="hover:underline">
-                  {player.name}
+                  {player.player_id === myPlayerId ? (
+                    <span className="bg-info/15 rounded px-1">{player.name}</span>
+                  ) : (
+                    player.name
+                  )}
                 </Link>
                 {player.league === "newbie" && player.wins_needed_for_amateur > 0 && (
                   <span className="text-xs text-muted-foreground ml-1">
