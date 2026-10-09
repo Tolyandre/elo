@@ -1650,6 +1650,53 @@ func decodeFeedStatus(t *testing.T, router http.Handler, path string) int {
 	return doJSON(t, router, http.MethodGet, path, "", "").Code
 }
 
+// TestTenants_FeedKeepsDepartedMembersMatches pins the date-scoped feed
+// membership (ADR-36): stints are evaluated at the match date, so a member's
+// departure never retroactively ejects their matches from the tenant feed —
+// under any_member (the departed member anchored the match) nor under
+// members_only (the whole roster was members on the play date).
+func TestTenants_FeedKeepsDepartedMembersMatches(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	admin, _ := createTestUserWithID(t, pool, true)
+	svc := newMatchService(pool)
+
+	for _, mode := range []string{"any_member", "members_only"} {
+		tenantID, club, _ := createTenant(t, router, admin, "Ушедшие-"+mode, mode, "open")
+		member := createTestPlayer(t, pool, "Ленточник ушедший "+mode)
+		fellow := createTestPlayer(t, pool, "Ленточник оставшийся "+mode)
+		addClubMember(t, router, admin, club.String(), member)
+		addClubMember(t, router, admin, club.String(), fellow)
+		game := createTestGame(t, pool, "Игра ушедших "+mode)
+
+		// An all-members match: in the feed while both are members.
+		if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{member: 60, fellow: 20}, time.Now(), newMatchOpts(t)); err != nil {
+			t.Fatalf("[%s] AddMatch: %v", mode, err)
+		}
+		feed := "/tenants/" + tenantID.String() + "/feed"
+		if got := countFeedEventsOfType(decodeFeedPage(t, router, feed), "match"); got != 1 {
+			t.Fatalf("[%s] feed holds %d matches before the departure, want 1", mode, got)
+		}
+
+		// The member leaves the club: the stint closes at now(), the match's
+		// date stays inside it, and the feed keeps the match.
+		removeClubMember(t, router, admin, club.String(), member)
+		if got := countFeedEventsOfType(decodeFeedPage(t, router, feed), "match"); got != 1 {
+			t.Fatalf("[%s] feed holds %d matches after the departure, want 1 (membership is read at the match date)", mode, got)
+		}
+
+		// When the last member leaves too, the match still stays: both
+		// closed stints cover the play date.
+		removeClubMember(t, router, admin, club.String(), fellow)
+		if got := countFeedEventsOfType(decodeFeedPage(t, router, feed), "match"); got != 1 {
+			t.Fatalf("[%s] feed holds %d matches after both departed, want 1 (closed stints cover their dates)", mode, got)
+		}
+	}
+}
+
 func feedEventTypesOf(page feedPageJSON) []string {
 	out := make([]string, 0, len(page.Data))
 	for _, e := range page.Data {

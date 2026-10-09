@@ -135,10 +135,11 @@ SELECT EXISTS (
 
 -- name: TenantHasActiveMemberAmong :one
 -- Whether ANY of the players currently has an active stint in any club of
--- the tenant (ADR-36) — the tenant-feed membership predicate: a match lands
--- in the tenant's feed iff at least one participant is a current member.
--- The match update path rejects edits that would drop the last one. A row
--- comes from tenants, so an unknown tenant is no rows (ErrTenantNotFound).
+-- the tenant (ADR-36) — the create/edit guard predicate: under any_member a
+-- match or seating must keep at least one CURRENT member, else it would
+-- never reach the feed or rating going forward (the feed read itself is
+-- date-scoped and keeps departed members' history). A row comes from
+-- tenants, so an unknown tenant is no rows (ErrTenantNotFound).
 SELECT EXISTS (
     SELECT 1
     FROM clubs c
@@ -156,10 +157,13 @@ WHERE t.id = sqlc.arg('tenant_id');
 -- arena-attribution-scoped, so a tournament match appears even when it does
 -- not count into the tenant's main arena rating. Under arena_membership_mode
 -- 'all' the match branch widens to every match; under 'members_only' it
--- tightens to matches whose WHOLE roster are current members — the openness
--- rule the creation and edit guards enforce, applied to the feed too, so a
--- guest-carrying (historical) match stays out (ADR-36 phase 7). Match events
--- otherwise go to any current member's matches — of any club of the tenant
+-- tightens to matches whose WHOLE roster were members at the match date —
+-- the openness rule of the rating (tenant_arena_contains_match, migration
+-- 075) applied to the feed too, so a guest-carrying (historical) match stays
+-- out (ADR-36 phase 7) and a member's departure keeps their historical
+-- matches in (closed stints still cover their dates — the feed is never
+-- narrower than the rating). Match events otherwise go to any member's
+-- matches at the play date — of any club of the tenant
 -- (coop included: community life, not just rating); market events to the
 -- markets the tenant OWNS (a member's bet on another tenant's market is that
 -- tenant's news). The player/club/game filters apply to both branches (the
@@ -175,16 +179,21 @@ WITH events AS (
       AND (
           t.arena_membership_mode = 'all'
           OR (
-              -- any_member / members_only base: a current member took part.
+              -- any_member / members_only base: a participant who was a
+              -- member of any club of the tenant at the match date took
+              -- part — stints overlap m.date, so a member's departure does
+              -- not retroactively eject their matches from the feed.
               EXISTS (
                   SELECT 1
                   FROM clubs c
                   JOIN player_club_membership pcm ON pcm.club_id = c.id
                   WHERE c.tenant_id = sqlc.arg('tenant_id')::uuid
-                    AND pcm.left_at IS NULL
                     AND pcm.player_id = ms.player_id
+                    AND pcm.joined_at <= m.date
+                    AND (pcm.left_at IS NULL OR pcm.left_at > m.date)
               )
-              -- members_only: no participant outside the current membership.
+              -- members_only: no participant outside the membership at the
+              -- match date.
               AND (
                   t.arena_membership_mode <> 'members_only'
                   OR NOT EXISTS (
@@ -196,8 +205,9 @@ WITH events AS (
                             FROM clubs c2
                             JOIN player_club_membership pcm2 ON pcm2.club_id = c2.id
                             WHERE c2.tenant_id = sqlc.arg('tenant_id')::uuid
-                              AND pcm2.left_at IS NULL
                               AND pcm2.player_id = ms2.player_id
+                              AND pcm2.joined_at <= m.date
+                              AND (pcm2.left_at IS NULL OR pcm2.left_at > m.date)
                         )
                   )
               )

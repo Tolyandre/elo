@@ -207,13 +207,18 @@ always about its own.
 
 `GET /tenants/{id}/feed` is the community's feed, **membership-scoped by
 design, not arena-attribution-scoped**: under `any_member` match events go to
-any current member's matches — of any club of the tenant (coop included), so
-friends' matches appear through the member they play with; market events to
+any member-at-the-match-date's matches — of any club of the tenant (coop
+included), so friends' matches appear through the member they play with;
+market events to
 the markets the tenant OWNS (a member's bet on another tenant's market is
 that tenant's news). Under `members_only` the match branch tightens to the
-openness rule itself: every participant must be a current member — the same
-strictness the creation and edit guards enforce, so a guest-carrying
-(historical) match stays out of the feed as well as the rating; under `all`
+openness rule itself: every participant was a member at the match date — the
+same date-scoped rule the rating applies (`tenant_arena_contains_match`),
+while the creation and edit guards keep their current-member strictness for
+new rosters; so a guest-carrying (historical) match stays out of the feed as
+well as the rating, and a member's departure keeps their historical matches
+in — closed stints still cover their dates, the feed is never narrower than
+the rating; under `all`
 it widens to every match — the feed is never narrower than the rating. A
 tournament match therefore appears in the tenant feed even
 when it does not count into the main arena rating; a tournament's own arena

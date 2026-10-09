@@ -522,10 +522,13 @@ type Querier interface {
 	// arena-attribution-scoped, so a tournament match appears even when it does
 	// not count into the tenant's main arena rating. Under arena_membership_mode
 	// 'all' the match branch widens to every match; under 'members_only' it
-	// tightens to matches whose WHOLE roster are current members — the openness
-	// rule the creation and edit guards enforce, applied to the feed too, so a
-	// guest-carrying (historical) match stays out (ADR-36 phase 7). Match events
-	// otherwise go to any current member's matches — of any club of the tenant
+	// tightens to matches whose WHOLE roster were members at the match date —
+	// the openness rule of the rating (tenant_arena_contains_match, migration
+	// 075) applied to the feed too, so a guest-carrying (historical) match stays
+	// out (ADR-36 phase 7) and a member's departure keeps their historical
+	// matches in (closed stints still cover their dates — the feed is never
+	// narrower than the rating). Match events otherwise go to any member's
+	// matches at the play date — of any club of the tenant
 	// (coop included: community life, not just rating); market events to the
 	// markets the tenant OWNS (a member's bet on another tenant's market is that
 	// tenant's news). The player/club/game filters apply to both branches (the
@@ -610,10 +613,11 @@ type Querier interface {
 	// match_scores itself and lives in migration 069).
 	TenantContainsPlayers(ctx context.Context, arg TenantContainsPlayersParams) (bool, error)
 	// Whether ANY of the players currently has an active stint in any club of
-	// the tenant (ADR-36) — the tenant-feed membership predicate: a match lands
-	// in the tenant's feed iff at least one participant is a current member.
-	// The match update path rejects edits that would drop the last one. A row
-	// comes from tenants, so an unknown tenant is no rows (ErrTenantNotFound).
+	// the tenant (ADR-36) — the create/edit guard predicate: under any_member a
+	// match or seating must keep at least one CURRENT member, else it would
+	// never reach the feed or rating going forward (the feed read itself is
+	// date-scoped and keeps departed members' history). A row comes from
+	// tenants, so an unknown tenant is no rows (ErrTenantNotFound).
 	TenantHasActiveMemberAmong(ctx context.Context, arg TenantHasActiveMemberAmongParams) (bool, error)
 	// Uniqueness guard for tenant create/rename (case-insensitive, mirroring
 	// clubs). @exclude_id skips the tenant being updated; NULL on create.
