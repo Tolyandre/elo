@@ -152,20 +152,21 @@ func determineArenaLeague(prev *string, newRating, newElo float64, count6M, coun
 }
 
 // ---------------------------------------------------------------------------
-// Newbie rating scaling (ADR-03), parameterized by the arena's newbie league.
+// Rating catch-up scaling (ADR-03), parameterized by the arena's catch_up
+// settings (v2 — no longer tied to the newbie league).
 // ---------------------------------------------------------------------------
 
 // scaleRatingEarned amplifies rating_earned when elo > rating (rating still
 // catching up). Maps ratingEarnedRaw ∈ [0, K] to [earnedMin·t, K+(earnedMax−K)·t]
 // where t depends on the gap. When rating >= elo, earned is unchanged.
-func scaleRatingEarned(ratingEarnedRaw, prevElo, prevRating float64, nl arenasettings.League, s EloSettings) float64 {
+func scaleRatingEarned(ratingEarnedRaw, prevElo, prevRating float64, cu arenasettings.CatchUp, s EloSettings) float64 {
 	if prevRating >= prevElo {
 		return ratingEarnedRaw
 	}
 	gap := prevElo - prevRating
-	t := 1 - math.Exp(-gap/nl.Tau)
-	earnedMin := nl.EarnedMin * t
-	earnedMax := s.K + (nl.EarnedMax-s.K)*t
+	t := 1 - math.Exp(-gap/cu.Tau)
+	earnedMin := cu.EarnedMin * t
+	earnedMax := s.K + (cu.EarnedMax-s.K)*t
 	if s.K == 0 {
 		return earnedMin
 	}
@@ -174,13 +175,13 @@ func scaleRatingEarned(ratingEarnedRaw, prevElo, prevRating float64, nl arenaset
 
 // scaleRatingStaked amplifies rating_staked when rating > elo (rating has
 // overshot). When rating <= elo, staked is unchanged.
-func scaleRatingStaked(ratingStakedRaw, prevElo, prevRating float64, nl arenasettings.League, s EloSettings) float64 {
+func scaleRatingStaked(ratingStakedRaw, prevElo, prevRating float64, cu arenasettings.CatchUp, s EloSettings) float64 {
 	if prevRating <= prevElo || s.K == 0 {
 		return ratingStakedRaw
 	}
 	gap := prevRating - prevElo
-	t := 1 - math.Exp(-gap/nl.Tau)
-	stakedScale := s.K + (nl.EarnedMax-s.K)*t
+	t := 1 - math.Exp(-gap/cu.Tau)
+	stakedScale := s.K + (cu.EarnedMax-s.K)*t
 	return ratingStakedRaw * (stakedScale / s.K)
 }
 
@@ -190,15 +191,16 @@ func scaleRatingStaked(ratingStakedRaw, prevElo, prevRating float64, nl arenaset
 
 // buildArenaResults computes the dual-track (elo + rating) settlement for
 // every player in the match, in the given arena. Pure calculation — no DB
-// writes. An arena without a newbie league has rating ≡ elo: the rating track
-// receives no scaling and (with starting rating = starting elo) mirrors the
-// elo track exactly.
+// writes. The catch-up scaling always applies (it is a no-op while
+// rating >= elo), so an arena whose starting rating equals the starting elo
+// has rating ≡ elo: the two tracks mirror each other exactly. With a lower
+// starting rating the visible rating catches up to elo through the scaled
+// earned — with or without leagues.
 func buildArenaResults(playerScores map[id.ID]float64, prev ArenaPrevState, arena Arena) map[id.ID]arenaPlayerResult {
 	s := prev.Settings
 
 	newElos := CalculateNewElo(prev.Elo, s.StartingElo, playerScores, s.K, s.D, s.WinReward)
 	absoluteLoserScore := ratingmath.GetAbsoluteLoserScore(playerScores)
-	nl, hasNewbie := arena.Settings.Newbie()
 
 	results := make(map[id.ID]arenaPlayerResult, len(playerScores))
 	for pid, score := range playerScores {
@@ -216,11 +218,8 @@ func buildArenaResults(playerScores map[id.ID]float64, prev ArenaPrevState, aren
 
 		ratingStakedRaw := -s.K * WinExpectation(prev.Rating[pid], playerScores, s.StartingElo, prevEloForRating, s.D)
 		ratingEarnedRaw := s.K * ratingmath.NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
-		ratingStaked, ratingEarned := ratingStakedRaw, ratingEarnedRaw
-		if hasNewbie {
-			ratingStaked = scaleRatingStaked(ratingStakedRaw, prev.Elo[pid], prev.Rating[pid], nl, s)
-			ratingEarned = scaleRatingEarned(ratingEarnedRaw, prev.Elo[pid], prev.Rating[pid], nl, s)
-		}
+		ratingStaked := scaleRatingStaked(ratingStakedRaw, prev.Elo[pid], prev.Rating[pid], arena.Settings.CatchUp, s)
+		ratingEarned := scaleRatingEarned(ratingEarnedRaw, prev.Elo[pid], prev.Rating[pid], arena.Settings.CatchUp, s)
 		newRating := prev.Rating[pid] + ratingStaked + ratingEarned
 		league := determineArenaLeague(prev.League[pid], newRating, newElos[pid], prev.Count6M[pid], prev.Count2M[pid], arena)
 

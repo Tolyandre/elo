@@ -197,7 +197,7 @@ func applyArenaPlayerHints(p *ArenaPlayer, eloAfter float64, cnt60, cnt180 int, 
 	if *p.League == LeagueNewbie {
 		if gap := eloAfter - p.Rating; gap > 0 {
 			if nl, ok := arena.Settings.Newbie(); ok {
-				p.WinsNeededForAmateurLower, p.WinsNeededForAmateurUpper = calcWinsNeededForAmateur(gap, nl, s)
+				p.WinsNeededForAmateurLower, p.WinsNeededForAmateurUpper = calcWinsNeededForAmateur(gap, nl, arena.Settings.CatchUp, s)
 			}
 		}
 	}

@@ -1480,7 +1480,7 @@ export interface components {
             game_ids: components["schemas"]["Base58ID"][];
             tag_ids: components["schemas"]["Base58ID"][];
         };
-        /** @description Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}. */
+        /** @description Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v2: {starting_rating: number, catch_up: {earned_min, earned_max, tau}, leagues: [{kind: newbie|amateur|elite, ...params}]}. The catch-up parameters drive the rating↔elo convergence in every arena; the newbie league carries only its goal_gap. */
         ArenaSettings: {
             [key: string]: unknown;
         };
@@ -2104,6 +2104,8 @@ export interface components {
                 to: number;
             } | null;
             leagues_changed: boolean;
+            /** @description The main arena's rating catch-up parameters changed (arena settings v2 moved them out of the newbie league into the top-level catch_up). */
+            catch_up_changed: boolean;
             /** @description Icon change; a null side means "no icon" there. */
             icon?: {
                 from: string | null;

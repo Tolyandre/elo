@@ -18,6 +18,23 @@ reads named "served from the global arena" are tenant-scoped (a required
 transactional sweep maintains is the anchor arena (the converted global
 one). See ADR-36 for the authoritative wording.
 
+**Update (settings v2):** the rating catch-up parameters (`earned_min`,
+`earned_max`, `tau`) moved out of the newbie league into a required
+top-level `catch_up` object; the newbie league keeps only `goal_gap` — how
+big the elo−rating gap may stay before the player leaves the league. The
+catch-up scaling now applies in **every** arena (a no-op while
+rating ≥ elo), because `starting_rating` is freely configurable: an arena
+whose starting rating sits below the starting elo (the settings UI allows
+exactly that, camps included) gets a working catch-up instead of a
+permanently deflated rating. An arena with `starting_rating = starting_elo`
+still has rating ≡ elo, so league-less arenas seeded that way (camps,
+tournament arenas) are unaffected. The v1→v2 migrator lifts the newbie
+league's parameters (or the historical defaults when there was no newbie
+league) at startup. Tournament arenas are now seeded with
+`starting_rating = starting_elo` as this ADR's body already specified — the
+code had copied the game arenas' 900 there, leaving tournament ratings
+permanently ~100 below elo with no league to explain the gap.
+
 ## Problem
 
 - Per-game arenas are not configurable, and an arena spanning several games

@@ -78,7 +78,7 @@ func NewPlayerService(pool *pgxpool.Pool) IPlayerService {
 //	n_upper = ∫ dg / (Δ_win(g) − K/2)
 //
 // E(g) = 1/(1+10^(g/D)): 2-player win expectation at rating gap g.
-func calcWinsNeededForAmateur(gap float64, nl arenasettings.League, s EloSettings) (lower, upper int) {
+func calcWinsNeededForAmateur(gap float64, nl arenasettings.League, cu arenasettings.CatchUp, s EloSettings) (lower, upper int) {
 	goalGap := nl.GoalGap
 	if gap <= goalGap || s.D == 0 {
 		return 0, 0
@@ -89,7 +89,7 @@ func calcWinsNeededForAmateur(gap float64, nl arenasettings.League, s EloSetting
 	for g := goalGap; g < gap; g += step {
 		delta := math.Min(step, gap-g)
 		mid := g + delta/2
-		earnedMax := s.K + (nl.EarnedMax-s.K)*(1-math.Exp(-mid/nl.Tau))
+		earnedMax := s.K + (cu.EarnedMax-s.K)*(1-math.Exp(-mid/cu.Tau))
 		eWin := 1.0 / (1.0 + math.Pow(10, mid/s.D))
 		netRating := earnedMax - s.K*eWin
 		if netRating > 0 {
@@ -178,7 +178,7 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, arenaID id.ID, w
 		if league == LeagueNewbie {
 			if nl, ok := arena.Settings.Newbie(); ok {
 				gap := eloVal - ratingVal // directed: only positive when elo > rating
-				winsLower, winsUpper = calcWinsNeededForAmateur(gap, nl, settings)
+				winsLower, winsUpper = calcWinsNeededForAmateur(gap, nl, arena.Settings.CatchUp, settings)
 			}
 		}
 

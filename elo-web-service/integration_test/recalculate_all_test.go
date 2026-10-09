@@ -164,7 +164,7 @@ func TestTenantSettingsChange_RecalculatesFromNewStartingRating(t *testing.T) {
 
 	before := chain()
 	w := doJSON(t, router, http.MethodPatch, "/tenants/"+blueMenTenantUUID, token,
-		`{"settings": {"starting_rating": 100, "leagues": []}}`)
+		`{"settings": {"starting_rating": 100, "catch_up": {"earned_min": 2, "earned_max": 64, "tau": 100}, "leagues": []}}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH tenant settings: %d %s", w.Code, w.Body.String())
 	}

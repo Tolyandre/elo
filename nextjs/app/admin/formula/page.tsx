@@ -154,7 +154,7 @@ export default function FormulaAdminPage() {
                                     </div>
                                     <div>
                                         <p className="font-medium">Нач. Elo = {current.starting_elo}</p>
-                                        <p className="text-muted-foreground text-xs mt-0.5">Стартовый рейтинг новых игроков</p>
+                                        <p className="text-muted-foreground text-xs mt-0.5">Стартовое эло новых игроков — с него начинается скрытое эло (стартовый рейтинг задаётся на каждой арене)</p>
                                     </div>
                                     <div>
                                         <p className="font-medium">Win Reward = {current.win_reward}</p>

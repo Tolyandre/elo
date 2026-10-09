@@ -11,12 +11,14 @@ import {
     type ArenaSettingsValues,
 } from "@/components/arena-settings-editor";
 
-function renderFields(values: ArenaSettingsValues) {
+function renderFields(values: ArenaSettingsValues, props: { startingElo?: number; withLeagues?: boolean } = {}) {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
     act(() => {
-        root.render(<ArenaSettingsFields values={values} onChange={() => {}} />);
+        root.render(
+            <ArenaSettingsFields values={values} onChange={() => {}} {...props} />,
+        );
     });
     const text = () => container.textContent ?? "";
     return {
@@ -51,10 +53,43 @@ describe("ArenaSettingsFields", () => {
         rendered.unmount();
     });
 
-    it("hides the newbie params when the newbie league is off", () => {
+    it("keeps the catch-up params when the newbie league is off — the catch-up works in any arena", () => {
         const values = initialSettingsValues(null);
         values.leagues.newbie = false;
         const rendered = renderFields(values);
+        expect(rendered.text()).toContain("Мин. очков за победу");
+        expect(rendered.text()).toContain("Макс. очков за победу");
+        expect(rendered.text()).toContain("τ");
+        // Разрыв эло stays a newbie-league setting.
+        expect(rendered.text()).not.toContain("Разрыв эло");
+        rendered.unmount();
+    });
+
+    it("shows the goal gap only with the newbie league", () => {
+        const values = initialSettingsValues(null);
+        const rendered = renderFields(values);
+        expect(rendered.text()).toContain("Разрыв эло");
+        rendered.unmount();
+    });
+
+    it("shows the starting elo for reference when provided", () => {
+        const values = initialSettingsValues(null);
+        const rendered = renderFields(values, { startingElo: 1000 });
+        expect(rendered.text()).toContain("Стартовое эло:");
+        expect(rendered.text()).toContain("1000");
+        rendered.unmount();
+
+        const without = renderFields(values);
+        expect(without.text()).not.toContain("Стартовое эло:");
+        without.unmount();
+    });
+
+    it("renders a camp (withLeagues=false) as the rating group alone", () => {
+        const values = initialSettingsValues(null, { startingRating: "1000", withLeagues: false });
+        const rendered = renderFields(values, { withLeagues: false });
+        expect(rendered.text()).toContain("Стартовый рейтинг:");
+        expect(rendered.text()).toContain("Мин. очков за победу");
+        expect(rendered.text()).not.toContain("Новички");
         expect(rendered.text()).not.toContain("Разрыв эло");
         rendered.unmount();
     });

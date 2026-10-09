@@ -392,8 +392,11 @@ ArenaSettings:
   type: object
   description: >-
     Versioned arena settings document (ADR-24), validated server-side against
-    the JSON Schema in pkg/arenasettings. Shape v1:
-    {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
+    the JSON Schema in pkg/arenasettings. Shape v2:
+    {starting_rating: number, catch_up: {earned_min, earned_max, tau},
+    leagues: [{kind: newbie|amateur|elite, ...params}]}. The catch-up
+    parameters drive the rating↔elo convergence in every arena; the newbie
+    league carries only its goal_gap.
   additionalProperties: true
 
 Arena:

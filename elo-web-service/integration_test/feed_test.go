@@ -214,7 +214,7 @@ func TestArena_Feed_TournamentOnlyMatches(t *testing.T) {
 	tournArenaID := idpkg.NewMonotonic()
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO arenas (id, name, settings, settings_schema_version, tournament_id, camp)
-		 VALUES ($1, 'Арена ленты', '{"starting_rating":900,"leagues":[]}', 1, $2, false)`,
+		 VALUES ($1, 'Арена ленты', '{"starting_rating":900,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}', 2, $2, false)`,
 		tournArenaID, tournID); err != nil {
 		t.Fatalf("insert probe arena: %v", err)
 	}

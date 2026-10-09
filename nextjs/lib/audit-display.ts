@@ -31,6 +31,7 @@ export type TenantUpdateRow =
     | { kind: "tournaments-openness"; old: string; new: string }
     | { kind: "starting-rating"; old: number; new: number }
     | { kind: "leagues" }
+    | { kind: "catch-up" }
     | { kind: "icon"; old: string | null; new: string | null }
     | { kind: "clubs"; added: Base58ID[]; removed: Base58ID[] };
 
@@ -129,6 +130,7 @@ export function tenantUpdateRows(changes: {
     tournaments_openness?: { from: string; to: string } | null;
     starting_rating?: { from: number; to: number } | null;
     leagues_changed?: boolean;
+    catch_up_changed?: boolean;
     icon?: { from: string | null; to: string | null } | null;
     clubs?: { added_club_ids: Base58ID[]; removed_club_ids: Base58ID[] } | null;
 }): TenantUpdateRow[] {
@@ -147,6 +149,9 @@ export function tenantUpdateRows(changes: {
     }
     if (changes.leagues_changed) {
         rows.push({ kind: "leagues" });
+    }
+    if (changes.catch_up_changed) {
+        rows.push({ kind: "catch-up" });
     }
     if (changes.icon) {
         rows.push({ kind: "icon", old: changes.icon.from, new: changes.icon.to });

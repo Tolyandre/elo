@@ -391,12 +391,20 @@ func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tourn
 
 // ensureTournamentArena creates the auto-managed tournament arena (ADR-24
 // anchor, no filter row, no leagues — rating ≡ elo) with a name derived from
-// the unique tournament name.
+// the unique tournament name. The starting rating is the current starting
+// elo (ADR-24 seeds tournament arenas with starting_rating = starting_elo;
+// the game-arena 900 copied here earlier left every rating permanently below
+// elo with no catch-up).
 func (s *TournamentService) ensureTournamentArena(ctx context.Context, q *db.Queries, tid id.ID, name string) error {
 	if _, err := q.GetArenaByTournament(ctx, &tid); !db.IsNoRows(err) {
 		return err // exists (or real error)
 	}
-	settings, err := settingsDoc(startingRatingGameArenaDefault, nil)
+	settingsRow, err := q.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
+	if err != nil {
+		return fmt.Errorf("get elo settings: %w", err)
+	}
+	es := EloSettingsFromDB(settingsRow)
+	settings, err := settingsDoc(es.StartingElo, catchUpFromEloSettings(es), nil)
 	if err != nil {
 		return err
 	}

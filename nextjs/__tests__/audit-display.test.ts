@@ -71,7 +71,7 @@ describe("auditIsExpandable", () => {
         expect(auditIsExpandable(entry({ action: "deleted" }))).toBe(false);
         expect(auditIsExpandable(entry({ entity_type: "match", action: "updated", details: { kind: "match-update", changes: { schema_version: 1, date: null, game: null, player_changes: [], calculator_changed: false } } }))).toBe(true);
         expect(auditIsExpandable(entry({ action: "updated", details: { kind: "player-update", changes: { schema_version: 1, name: { from: "a", to: "b" } } } }))).toBe(true);
-        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "updated", details: { kind: "tenant-update", changes: { schema_version: 1, name: null, arena_membership_mode: null, tournaments_openness: null, starting_rating: null, leagues_changed: false, icon: null, clubs: null } } }))).toBe(true);
+        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "updated", details: { kind: "tenant-update", changes: { schema_version: 2, name: null, arena_membership_mode: null, tournaments_openness: null, starting_rating: null, leagues_changed: false, catch_up_changed: false, icon: null, clubs: null } } }))).toBe(true);
         // Legacy updated rows with the plain entity shape have no diff to show.
         expect(auditIsExpandable(entry({ action: "updated", details: { kind: "entity", name: "x" } }))).toBe(false);
         expect(auditIsExpandable(entry({ entity_type: "match", action: "updated" }))).toBe(false);
@@ -147,7 +147,7 @@ describe("tenantUpdateRows", () => {
 
 describe("auditIsExpandable for tenants", () => {
     it("expands tenant settings updates", () => {
-        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "updated", details: { kind: "tenant-update", changes: { schema_version: 1, name: null, arena_membership_mode: null, tournaments_openness: null, starting_rating: null, leagues_changed: false, icon: null, clubs: null } } }))).toBe(true);
+        expect(auditIsExpandable(entry({ entity_type: "tenant", action: "updated", details: { kind: "tenant-update", changes: { schema_version: 2, name: null, arena_membership_mode: null, tournaments_openness: null, starting_rating: null, leagues_changed: false, catch_up_changed: false, icon: null, clubs: null } } }))).toBe(true);
         expect(auditIsExpandable(entry({ entity_type: "tenant", action: "created" }))).toBe(false);
     });
 });

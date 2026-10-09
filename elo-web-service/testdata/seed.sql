@@ -78,18 +78,21 @@ WHERE g.id = '00000000-0000-0000-0000-000000000009'
 ON CONFLICT (id) DO NOTHING;
 
 WITH s AS (SELECT * FROM elo_settings ORDER BY effective_date DESC LIMIT 1)
-INSERT INTO arenas (id, name, match_filter_id, settings, game_id, stale_at)
+INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, stale_at)
 SELECT 'a2ec0000-0000-0000-0000-000000000188', g.name,
        'a2ed0000-0000-0000-0000-000000000188',
+       2,
        jsonb_build_object(
            'starting_rating', 900,
+           'catch_up', jsonb_build_object(
+               'earned_min', s.newbie_league_earned_min,
+               'earned_max', s.newbie_league_earned_max,
+               'tau', s.newbie_league_earned_tau
+           ),
            'leagues', jsonb_build_array(
                jsonb_build_object(
                    'kind', 'newbie',
-                   'goal_gap', s.newbie_league_goal_gap,
-                   'earned_min', s.newbie_league_earned_min,
-                   'earned_max', s.newbie_league_earned_max,
-                   'tau', s.newbie_league_earned_tau
+                   'goal_gap', s.newbie_league_goal_gap
                ),
                jsonb_build_object('kind', 'amateur')
            )
@@ -101,18 +104,21 @@ WHERE g.id = '00000000-0000-0000-0000-000000000188'
 ON CONFLICT (id) DO NOTHING;
 
 WITH s AS (SELECT * FROM elo_settings ORDER BY effective_date DESC LIMIT 1)
-INSERT INTO arenas (id, name, match_filter_id, settings, game_id, stale_at)
+INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, stale_at)
 SELECT 'a2ec0000-0000-0000-0000-000000000009', g.name,
        'a2ed0000-0000-0000-0000-000000000009',
+       2,
        jsonb_build_object(
            'starting_rating', 900,
+           'catch_up', jsonb_build_object(
+               'earned_min', s.newbie_league_earned_min,
+               'earned_max', s.newbie_league_earned_max,
+               'tau', s.newbie_league_earned_tau
+           ),
            'leagues', jsonb_build_array(
                jsonb_build_object(
                    'kind', 'newbie',
-                   'goal_gap', s.newbie_league_goal_gap,
-                   'earned_min', s.newbie_league_earned_min,
-                   'earned_max', s.newbie_league_earned_max,
-                   'tau', s.newbie_league_earned_tau
+                   'goal_gap', s.newbie_league_goal_gap
                ),
                jsonb_build_object('kind', 'amateur')
            )

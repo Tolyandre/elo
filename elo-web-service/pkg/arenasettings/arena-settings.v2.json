@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Arena settings",
+  "description": "Versioned settings document for an arena instance (ADR-24), stored in arenas.settings. Unlike elo_settings (a date-keyed series) these settings are date-independent: changing them affects every match of the arena. v2 moved the rating catch-up parameters (earned_min, earned_max, tau) out of the newbie league into the top-level catch_up object: the catch-up is driven by the starting_rating vs starting_elo gap and applies to every arena regardless of leagues (a no-op while rating >= elo). What remains league-specific is goal_gap — how big the gap keeps a player in the newbie league. leagues lists the leagues that exist in the arena in promotion order; an empty array means no leagues (league is NULL on settlements), and a single league is rejected — either none, or at least two. v1 carried no entity references, so no x-entity-id marking is needed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["starting_rating", "catch_up", "leagues"],
+  "properties": {
+    "starting_rating": {
+      "type": "number",
+      "description": "Initial display rating for players with no prior settlement in this arena."
+    },
+    "catch_up": {
+      "type": "object",
+      "description": "Rating catch-up parameters (ADR-03): while a player's rating is below their elo, wins earn between earned_min and earned_max rating points, the exact amount scaling with the gap; above elo, stakes are amplified the same way. A no-op when the starting rating equals the starting elo (rating mirrors elo exactly).",
+      "additionalProperties": false,
+      "required": ["earned_min", "earned_max", "tau"],
+      "properties": {
+        "earned_min": { "type": "number", "minimum": 0 },
+        "earned_max": { "type": "number", "minimum": 0 },
+        "tau": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "leagues": {
+      "type": "array",
+      "description": "Either no leagues at all (players render as one caption-less list), or at least two in promotion order — a single league is rejected: it would only rename the list's caption, and a lone newbie league would leave the «wins needed» hints pointing at a promotion that does not exist.",
+      "oneOf": [
+        { "maxItems": 0 },
+        { "minItems": 2 }
+      ],
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/league_newbie" },
+          { "$ref": "#/$defs/league_amateur" },
+          { "$ref": "#/$defs/league_elite" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "league_newbie": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "goal_gap"],
+      "properties": {
+        "kind": { "const": "newbie" },
+        "goal_gap": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Player stays in newbie while elo - rating > goal_gap."
+        }
+      }
+    },
+    "league_amateur": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "amateur" }
+      }
+    },
+    "league_elite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "matches_6m", "matches_2m"],
+      "properties": {
+        "kind": { "const": "elite" },
+        "matches_6m": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Matches within the last 6 months required to reach/stay in elite."
+        },
+        "matches_2m": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Matches within the last 2 months required to reach/stay in elite."
+        }
+      }
+    }
+  }
+}

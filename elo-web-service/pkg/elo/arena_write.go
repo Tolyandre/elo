@@ -283,27 +283,30 @@ func timePtrTz(t *time.Time) pgtype.Timestamptz {
 // Lifecycle hooks for auto-managed arenas
 // ---------------------------------------------------------------------------
 
-// settingsDoc builds a settings document for auto-created arenas.
-func settingsDoc(startingRating float64, leagues []arenasettings.League) (json.RawMessage, error) {
+// settingsDoc builds a settings document (v2) for auto-created arenas.
+func settingsDoc(startingRating float64, catchUp arenasettings.CatchUp, leagues []arenasettings.League) (json.RawMessage, error) {
+	catchUpDoc := struct {
+		EarnedMin float64 `json:"earned_min"`
+		EarnedMax float64 `json:"earned_max"`
+		Tau       float64 `json:"tau"`
+	}{EarnedMin: catchUp.EarnedMin, EarnedMax: catchUp.EarnedMax, Tau: catchUp.Tau}
 	type leagueDoc struct {
 		Kind      string   `json:"kind"`
 		GoalGap   *float64 `json:"goal_gap,omitempty"`
-		EarnedMin *float64 `json:"earned_min,omitempty"`
-		EarnedMax *float64 `json:"earned_max,omitempty"`
-		Tau       *float64 `json:"tau,omitempty"`
 		Matches6M *int     `json:"matches_6m,omitempty"`
 		Matches2M *int     `json:"matches_2m,omitempty"`
 	}
 	doc := struct {
 		StartingRating float64     `json:"starting_rating"`
+		CatchUp        interface{} `json:"catch_up"`
 		Leagues        []leagueDoc `json:"leagues"`
-	}{StartingRating: startingRating, Leagues: make([]leagueDoc, 0, len(leagues))}
+	}{StartingRating: startingRating, CatchUp: catchUpDoc, Leagues: make([]leagueDoc, 0, len(leagues))}
 	for _, l := range leagues {
 		d := leagueDoc{Kind: l.Kind}
 		switch l.Kind {
 		case LeagueNewbie:
-			gap, emin, emax, tau := l.GoalGap, l.EarnedMin, l.EarnedMax, l.Tau
-			d.GoalGap, d.EarnedMin, d.EarnedMax, d.Tau = &gap, &emin, &emax, &tau
+			gap := l.GoalGap
+			d.GoalGap = &gap
 		case LeagueElite:
 			m6, m2 := l.Matches6M, l.Matches2M
 			d.Matches6M, d.Matches2M = &m6, &m2
@@ -317,18 +320,26 @@ func settingsDoc(startingRating float64, leagues []arenasettings.League) (json.R
 	return raw, nil
 }
 
-// defaultLeagueParams copies the current newbie/elite league parameters from
-// the live elo settings, preserving the pre-rework behavior.
-func (s *ArenaService) defaultLeagueParams(ctx context.Context) (newbie arenasettings.League, elite arenasettings.League, startingElo float64, err error) {
+// catchUpFromEloSettings maps the live elo settings' (historically
+// newbie-league-named) catch-up defaults onto the arena catch_up params.
+func catchUpFromEloSettings(es EloSettings) arenasettings.CatchUp {
+	return arenasettings.CatchUp{
+		EarnedMin: es.NewbieLeagueEarnedMin, EarnedMax: es.NewbieLeagueEarnedMax, Tau: es.NewbieLeagueEarnedTau,
+	}
+}
+
+// defaultLeagueParams copies the current league parameters from the live elo
+// settings, preserving the pre-rework behavior: the catch-up parameters, the
+// newbie goal gap and the elite thresholds.
+func (s *ArenaService) defaultLeagueParams(ctx context.Context) (catchUp arenasettings.CatchUp, newbieGoalGap float64, elite arenasettings.League, startingElo float64, err error) {
 	row, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
 	if err != nil {
-		return arenasettings.League{}, arenasettings.League{}, 0, fmt.Errorf("get elo settings: %w", err)
+		return arenasettings.CatchUp{}, 0, arenasettings.League{}, 0, fmt.Errorf("get elo settings: %w", err)
 	}
 	es := EloSettingsFromDB(row)
-	return arenasettings.League{
-		Kind: LeagueNewbie, GoalGap: es.NewbieLeagueGoalGap,
-		EarnedMin: es.NewbieLeagueEarnedMin, EarnedMax: es.NewbieLeagueEarnedMax, Tau: es.NewbieLeagueEarnedTau,
-	}, arenasettings.League{Kind: LeagueElite, Matches6M: es.EliteMatches6M, Matches2M: es.EliteMatches2M}, es.StartingElo, nil
+	return catchUpFromEloSettings(es), es.NewbieLeagueGoalGap,
+		arenasettings.League{Kind: LeagueElite, Matches6M: es.EliteMatches6M, Matches2M: es.EliteMatches2M},
+		es.StartingElo, nil
 }
 
 // EnsureGameArena creates the per-game arena when the game is created. The
@@ -338,11 +349,14 @@ func (s *ArenaService) EnsureGameArena(ctx context.Context, q *db.Queries, gameI
 	if _, err := q.GetArenaByGame(ctx, &gameID); !db.IsNoRows(err) {
 		return err // exists (or real error)
 	}
-	newbie, _, startingElo, err := s.defaultLeagueParams(ctx)
+	catchUp, newbieGoalGap, _, startingElo, err := s.defaultLeagueParams(ctx)
 	if err != nil {
 		return err
 	}
-	raw, err := settingsDoc(startingRatingGameArenaDefault, []arenasettings.League{newbie, {Kind: LeagueAmateur}})
+	raw, err := settingsDoc(startingRatingGameArenaDefault, catchUp, []arenasettings.League{
+		{Kind: LeagueNewbie, GoalGap: newbieGoalGap},
+		{Kind: LeagueAmateur},
+	})
 	if err != nil {
 		return err
 	}
@@ -365,11 +379,15 @@ func (s *ArenaService) EnsureTenantArena(ctx context.Context, q *db.Queries, ten
 	if _, err := q.GetArenaByTenant(ctx, &tenantID); !db.IsNoRows(err) {
 		return err // exists (or real error)
 	}
-	newbie, elite, startingElo, err := s.defaultLeagueParams(ctx)
+	catchUp, newbieGoalGap, elite, startingElo, err := s.defaultLeagueParams(ctx)
 	if err != nil {
 		return err
 	}
-	raw, err := settingsDoc(startingElo, []arenasettings.League{newbie, {Kind: LeagueAmateur}, elite})
+	raw, err := settingsDoc(startingElo, catchUp, []arenasettings.League{
+		{Kind: LeagueNewbie, GoalGap: newbieGoalGap},
+		{Kind: LeagueAmateur},
+		elite,
+	})
 	if err != nil {
 		return err
 	}
