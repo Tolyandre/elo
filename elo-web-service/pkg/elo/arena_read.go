@@ -150,7 +150,7 @@ func (s *ArenaService) GetArenaPlayersAt(ctx context.Context, arenaID id.ID, at 
 
 	rows, err := s.Queries.ListArenaPlayersAt(ctx, db.ListArenaPlayersAtParams{
 		ArenaID: arenaID,
-		Date:    pgtype.Timestamptz{Time: at, Valid: true},
+		At:      at,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list arena players at %v: %w", at, err)
