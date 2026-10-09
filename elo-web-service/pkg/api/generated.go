@@ -1281,7 +1281,7 @@ type AuditEntry struct {
 	ActorUserId Base58ID  `json:"actor_user_id"`
 	CreatedAt   time.Time `json:"created_at"`
 
-	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
+	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditArenaUpdateDetails (user-managed arena name/filter/settings, ADR-24) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
 	Details *AuditEntry_Details `json:"details,omitempty"`
 
 	// EntityId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -1295,7 +1295,7 @@ type AuditEntry struct {
 // AuditEntryAction A rename is an `updated` whose details carry the name's before → after (migration 079 retired the dedicated action).
 type AuditEntryAction string
 
-// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
+// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditArenaUpdateDetails (user-managed arena name/filter/settings, ADR-24) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
 type AuditEntry_Details struct {
 	union json.RawMessage
 }
@@ -2409,6 +2409,27 @@ type AuditAuditArenaCampConfigDetails struct {
 		From *time.Time `json:"from,omitempty"`
 		To   *time.Time `json:"to,omitempty"`
 	} `json:"starts_at"`
+}
+
+// AuditAuditArenaUpdateDetails What changed in one user-managed arena update (ADR-24): the name, the match filter, the settings document. Untouched fields stay null/false; an update that changed nothing produces no arena-update row.
+type AuditAuditArenaUpdateDetails struct {
+	// CatchUpChanged The rating catch-up parameters changed.
+	CatchUpChanged bool `json:"catch_up_changed"`
+
+	// FilterChanged The match filter (dates, games, tags) changed.
+	FilterChanged bool `json:"filter_changed"`
+
+	// LeaguesChanged The league list (kinds or parameters) changed.
+	LeaguesChanged bool `json:"leagues_changed"`
+	Name           *struct {
+		From *string `json:"from,omitempty"`
+		To   *string `json:"to,omitempty"`
+	} `json:"name,omitempty"`
+	SchemaVersion  int `json:"schema_version"`
+	StartingRating *struct {
+		From *float32 `json:"from,omitempty"`
+		To   *float32 `json:"to,omitempty"`
+	} `json:"starting_rating,omitempty"`
 }
 
 // AuditAuditCampLinkDetails One match attach/detach on the camp arena the audit row points at.
@@ -3589,6 +3610,32 @@ func (t *AuditEntry_Details) FromAuditAuditArenaCampConfigDetails(v AuditAuditAr
 
 // MergeAuditAuditArenaCampConfigDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditArenaCampConfigDetails
 func (t *AuditEntry_Details) MergeAuditAuditArenaCampConfigDetails(v AuditAuditArenaCampConfigDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditAuditArenaUpdateDetails returns the union data inside the AuditEntry_Details as a AuditAuditArenaUpdateDetails
+func (t AuditEntry_Details) AsAuditAuditArenaUpdateDetails() (AuditAuditArenaUpdateDetails, error) {
+	var body AuditAuditArenaUpdateDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditAuditArenaUpdateDetails overwrites any union data inside the AuditEntry_Details as the provided AuditAuditArenaUpdateDetails
+func (t *AuditEntry_Details) FromAuditAuditArenaUpdateDetails(v AuditAuditArenaUpdateDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditAuditArenaUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditArenaUpdateDetails
+func (t *AuditEntry_Details) MergeAuditAuditArenaUpdateDetails(v AuditAuditArenaUpdateDetails) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

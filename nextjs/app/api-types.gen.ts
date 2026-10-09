@@ -2047,8 +2047,8 @@ export interface components {
              * @enum {string}
              */
             action: "created" | "updated" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
-            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditTenantUpdateDetails"] | components["schemas"]["AuditUserUpdateDetails"] | components["schemas"]["AuditClubUpdateDetails"] | components["schemas"]["AuditGameUpdateDetails"] | components["schemas"]["AuditPlayerUpdateDetails"] | components["schemas"]["AuditTagUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditArenaUpdateDetails (user-managed arena name/filter/settings, ADR-24) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
+            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditTenantUpdateDetails"] | components["schemas"]["AuditUserUpdateDetails"] | components["schemas"]["AuditClubUpdateDetails"] | components["schemas"]["AuditGameUpdateDetails"] | components["schemas"]["AuditPlayerUpdateDetails"] | components["schemas"]["AuditTagUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditArenaUpdateDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
         };
         AuditEntityDetails: {
             schema_version: number;
@@ -2392,6 +2392,24 @@ export interface components {
                 /** Format: date-time */
                 to?: string | null;
             } | null;
+        };
+        /** @description What changed in one user-managed arena update (ADR-24): the name, the match filter, the settings document. Untouched fields stay null/false; an update that changed nothing produces no arena-update row. */
+        AuditArenaUpdateDetails: {
+            schema_version: number;
+            name?: {
+                from?: string | null;
+                to?: string | null;
+            } | null;
+            starting_rating?: {
+                from?: number;
+                to?: number;
+            } | null;
+            /** @description The league list (kinds or parameters) changed. */
+            leagues_changed: boolean;
+            /** @description The rating catch-up parameters changed. */
+            catch_up_changed: boolean;
+            /** @description The match filter (dates, games, tags) changed. */
+            filter_changed: boolean;
         };
         /** @description One match attach/detach on the camp arena the audit row points at. */
         AuditCampLinkDetails: {

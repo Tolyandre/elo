@@ -192,7 +192,7 @@ func arenaFromParts(arenaID id.ID, name string, raw json.RawMessage, version int
 	gameID, tournamentID, tenantID *id.ID, camp bool, startsAt, endsAt, recalcFrom, staleAt, dateFrom, dateTo pgtype.Timestamptz,
 	filterGameIDs, filterTagIDs []id.ID,
 ) (Arena, error) {
-	settings, err := arenasettings.Parse(raw)
+	settings, err := arenasettings.Parse(raw, int(version))
 	if err != nil {
 		return Arena{}, fmt.Errorf("arena %s: %w", arenaID, err)
 	}

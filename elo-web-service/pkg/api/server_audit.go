@@ -168,6 +168,7 @@ var auditDetailDecoders = map[string]func(*AuditEntry_Details, json.RawMessage) 
 	audit.KindGameUpdate:   decodePlainDetails((*AuditEntry_Details).FromAuditGameUpdateDetails),
 	audit.KindPlayerUpdate: decodePlainDetails((*AuditEntry_Details).FromAuditPlayerUpdateDetails),
 	audit.KindTagUpdate:    decodePlainDetails((*AuditEntry_Details).FromAuditTagUpdateDetails),
+	audit.KindArenaUpdate:  decodePlainDetails((*AuditEntry_Details).FromAuditAuditArenaUpdateDetails),
 }
 
 // auditDetailsFromStored shortens the canonical ids of a stored details

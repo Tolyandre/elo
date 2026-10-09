@@ -163,6 +163,17 @@ func decodeSubmit(data []byte, v any) error {
 	return nil
 }
 
+// strictDecode decodes a stored/host-provided game state with the same
+// unknown-field strictness as decodeSubmit: the re-marshal in a game's
+// normalize would otherwise silently erase a field the typed state does not
+// know (client/server shape drift), so it fails the write loudly instead
+// (ADR-18).
+func strictDecode(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	return dec.Decode(v)
+}
+
 // toSummary renders a row for clients; HostConnected is derived from the
 // presence registry (open SSE streams).
 func (s *TableService) toSummary(row db.GameTable) (TableSummary, error) {

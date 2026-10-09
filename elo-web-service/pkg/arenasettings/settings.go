@@ -89,7 +89,14 @@ type document struct {
 // Parse converts a validated settings document into the typed Settings. It
 // enforces what JSON Schema cannot: league kinds are unique and follow the
 // canonical promotion order (a subsequence of newbie → amateur → elite).
-func Parse(raw json.RawMessage) (Settings, error) {
+// schemaVersion must be the stored document's version: parsing a document the
+// boot data migration has not upgraded yet would silently read zero-valued
+// parameters (the v1→v2 catch-up lift), so a stale version fails loudly
+// instead.
+func Parse(raw json.RawMessage, schemaVersion int) (Settings, error) {
+	if schemaVersion != CurrentVersion {
+		return Settings{}, fmt.Errorf("%w: settings schema version %d, want %d — the data migration has not run", ErrInvalid, schemaVersion, CurrentVersion)
+	}
 	var doc document
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return Settings{}, fmt.Errorf("%w: %v", ErrInvalid, err)

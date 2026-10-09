@@ -71,7 +71,7 @@ func TestValidateLeaguesCardinality(t *testing.T) {
 // league may exist from before the prohibition; reads must keep rendering
 // them (only writes are gated).
 func TestParseToleratesSingleLeague(t *testing.T) {
-	settings, err := Parse(settingsJSON(t, "elite"))
+	settings, err := Parse(settingsJSON(t, "elite"), CurrentVersion)
 	if err != nil {
 		t.Fatalf("Parse(single league) = %v, want nil", err)
 	}
@@ -83,7 +83,7 @@ func TestParseToleratesSingleLeague(t *testing.T) {
 func TestParseReadsCatchUp(t *testing.T) {
 	raw := marshalSettings(t, 950.0, map[string]any{"earned_min": 1.5, "earned_max": 50.0, "tau": 80.0},
 		[]map[string]any{leagueDoc("newbie"), leagueDoc("amateur")})
-	settings, err := Parse(raw)
+	settings, err := Parse(raw, CurrentVersion)
 	if err != nil {
 		t.Fatalf("Parse = %v, want nil", err)
 	}
@@ -120,7 +120,7 @@ func TestMigrateV1ToV2(t *testing.T) {
 		if err != nil || version != 2 {
 			t.Fatalf("MigrateData = (%v), %d, %v — want v2, nil", doc, version, err)
 		}
-		settings, err := Parse(doc)
+		settings, err := Parse(doc, version)
 		if err != nil {
 			t.Fatalf("Parse(migrated) = %v, want nil", err)
 		}
@@ -133,11 +133,11 @@ func TestMigrateV1ToV2(t *testing.T) {
 	})
 
 	t.Run("no newbie league falls back to the historical defaults", func(t *testing.T) {
-		doc, _, err := MigrateData(1, v1([]map[string]any{{"kind": "amateur"}, {"kind": "elite", "matches_6m": 20, "matches_2m": 3}}))
+		doc, version, err := MigrateData(1, v1([]map[string]any{{"kind": "amateur"}, {"kind": "elite", "matches_6m": 20, "matches_2m": 3}}))
 		if err != nil {
 			t.Fatalf("MigrateData = %v, want nil", err)
 		}
-		settings, err := Parse(doc)
+		settings, err := Parse(doc, version)
 		if err != nil {
 			t.Fatalf("Parse(migrated) = %v, want nil", err)
 		}
@@ -147,12 +147,22 @@ func TestMigrateV1ToV2(t *testing.T) {
 	})
 
 	t.Run("no leagues (camp/tournament arena)", func(t *testing.T) {
-		doc, _, err := MigrateData(1, v1(nil))
+		doc, version, err := MigrateData(1, v1(nil))
 		if err != nil {
 			t.Fatalf("MigrateData = %v, want nil", err)
 		}
-		if _, err := Parse(doc); err != nil {
+		if _, err := Parse(doc, version); err != nil {
 			t.Errorf("Parse(migrated) = %v, want nil", err)
 		}
 	})
+}
+
+// A document the boot data migration has not upgraded yet must never parse
+// into zero-valued catch-up parameters — the read-side guard fails loudly.
+func TestParseRejectsStaleVersion(t *testing.T) {
+	raw := marshalSettings(t, 950.0, map[string]any{"earned_min": 1.5, "earned_max": 50.0, "tau": 80.0},
+		[]map[string]any{leagueDoc("newbie"), leagueDoc("amateur")})
+	if _, err := Parse(raw, CurrentVersion-1); !errors.Is(err, ErrInvalid) {
+		t.Errorf("Parse(stale version) = %v, want ErrInvalid", err)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -18,12 +19,14 @@ import (
 // ---------------------------------------------------------------------------
 
 // validateSettings validates a settings document and returns it with the
-// current schema version stamped by the caller.
+// current schema version stamped by the caller. Only current-version
+// documents validate against the current schema, so Parse runs under
+// CurrentVersion.
 func validateSettings(raw json.RawMessage) (arenasettings.Settings, error) {
 	if err := arenasettings.Validate(raw); err != nil {
 		return arenasettings.Settings{}, err
 	}
-	settings, err := arenasettings.Parse(raw)
+	settings, err := arenasettings.Parse(raw, arenasettings.CurrentVersion)
 	if err != nil {
 		return arenasettings.Settings{}, err
 	}
@@ -129,6 +132,7 @@ func (s *ArenaService) UpdateArena(ctx context.Context, actor id.ID, arenaID id.
 		}
 
 		var details audit.ArenaCampConfigDetails
+		var arenaDetails audit.ArenaUpdateDetails
 		if existing.Camp {
 			if err := validateCampWrite(settings, opts.StartsAt, opts.EndsAt); err != nil {
 				return Arena{}, err
@@ -145,6 +149,8 @@ func (s *ArenaService) UpdateArena(ctx context.Context, actor id.ID, arenaID id.
 				}
 			}
 			details = campConfigDiff(existing, opts)
+		} else {
+			arenaDetails = arenaUpdateDiff(existing, opts, settings)
 		}
 
 		var filterID *id.ID
@@ -177,6 +183,14 @@ func (s *ArenaService) UpdateArena(ctx context.Context, actor id.ID, arenaID id.
 				audit.KindArenaCampConf, details); err != nil {
 				return Arena{}, err
 			}
+		} else if !arenaDetails.IsEmpty() {
+			// A name/filter/settings change on a user-managed arena is audited
+			// like the tenant settings it mirrors (ADR-24); a no-op update
+			// emits no row.
+			if err := recordAuditEvent(ctx, q, actor, audit.EntityArena, audit.ActionUpdated, arenaID,
+				audit.KindArenaUpdate, arenaDetails); err != nil {
+				return Arena{}, err
+			}
 		}
 		updated, err := q.GetArena(ctx, arenaID)
 		if err != nil {
@@ -204,6 +218,44 @@ func campConfigDiff(existing Arena, opts ArenaWriteOpts) audit.ArenaCampConfigDe
 		endsAt = &[2]*string{strPtr(existing.EndsAt.Format(time.RFC3339Nano)), strPtr(opts.EndsAt.Format(time.RFC3339Nano))}
 	}
 	return audit.NewCampConfigChanged(name, startsAt, endsAt)
+}
+
+// arenaUpdateDiff builds the before → after audit details for a user-managed
+// arena update: name, settings document (starting rating / leagues /
+// catch-up) and match filter.
+func arenaUpdateDiff(existing Arena, opts ArenaWriteOpts, settings arenasettings.Settings) audit.ArenaUpdateDetails {
+	d := audit.NewArenaUpdateDetails()
+	if existing.Name != opts.Name {
+		d.Name = &audit.ValueChange{From: &existing.Name, To: &opts.Name}
+	}
+	if existing.Settings.StartingRating != settings.StartingRating {
+		d.StartingRating = &audit.NumberChange{From: existing.Settings.StartingRating, To: settings.StartingRating}
+	}
+	if existing.Settings.CatchUp != settings.CatchUp {
+		d.CatchUpChanged = true
+	}
+	if !leaguesEqual(existing.Settings.Leagues, settings.Leagues) {
+		d.LeaguesChanged = true
+	}
+	if !matchFiltersEqual(existing.Filter, opts.Filter) {
+		d.FilterChanged = true
+	}
+	return d
+}
+
+// matchFiltersEqual compares the two filter shapes field by field.
+func matchFiltersEqual(a, b MatchFilter) bool {
+	if !timePtrsEqual(a.DateFrom, b.DateFrom) || !timePtrsEqual(a.DateTo, b.DateTo) {
+		return false
+	}
+	return slices.Equal(a.GameIDs, b.GameIDs) && slices.Equal(a.TagIDs, b.TagIDs)
+}
+
+func timePtrsEqual(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
 }
 
 func (s *ArenaService) DeleteArena(ctx context.Context, actor id.ID, arenaID id.ID) (Arena, error) {

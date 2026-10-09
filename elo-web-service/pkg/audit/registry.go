@@ -35,6 +35,7 @@ const (
 	KindPlayerUpdate     = "player-update"     // player name change
 	KindTagUpdate        = "tag-update"        // tag name change
 	KindArenaCampConf    = "arena-camp-config" // camp arena create/update/delete (ADR-27)
+	KindArenaUpdate      = "arena-update"      // user-managed arena name/filter/settings update (ADR-24)
 	KindCampLink         = "camp-link"         // match attached to / detached from a camp (ADR-27)
 	KindTournamentConfig = "tournament-config" // tournament create / config update (ADR-26)
 	KindTournamentStart  = "tournament-start"  // plan + seed + participants at start (ADR-26)

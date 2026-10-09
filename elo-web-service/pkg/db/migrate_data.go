@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/audit"
+	"github.com/tolyandre/elo-web-service/pkg/bracket"
 	"github.com/tolyandre/elo-web-service/pkg/calculator"
 )
 
@@ -193,6 +194,14 @@ func documentMigratePlans() documentMigration {
 			SET plan_schema_version = $2, plan = $3
 			WHERE id = $1
 		`,
+		// Plans have no schema registry, but the typed parser rejects
+		// malformed structures — enough for the same post-write
+		// belt-and-suspenders the registry families get.
+		reread: `SELECT plan FROM tournaments WHERE id = $1`,
+		validate: func(_ string, data json.RawMessage) error {
+			_, err := bracket.ParsePlan(data)
+			return err
+		},
 	}
 }
 

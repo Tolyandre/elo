@@ -198,3 +198,21 @@ from *rolling the game back* instead of just freezing it:
   `minPlayers`, …); `components/tables/registry.tsx` binds each game to its
   view component (and optional header extras). A new game ships a registry
   entry plus a view component — nothing generic changes.
+
+## Addendum (2026-10): normalize decodes strictly
+
+`game_state` remains the one document family without a version column, a
+schema, or migrators — it leans on normalize-on-write plus the 1-day TTL
+(ADR-16's newest-writer-wins and the short lifetime bound any mixed-generation
+window). But the original `normalize` used plain `json.Unmarshal`, so a field
+the server's typed state did not know was **silently erased** by the
+re-marshal on the next host write: a client-deployed-first extra field (or a
+server rollback) lost data without any error.
+
+Normalize now decodes with `DisallowUnknownFields` (`strictDecode` next to
+`decodeSubmit`): a shape the server does not know fails the write loudly with
+`invalid game state` instead of silently shrinking the document. The typed
+state structs evolve together with the OpenAPI `TableGameState` union the
+frontend is generated from, so a schema-conformant client never trips this;
+when the shape must change, both sides change together — the loud failure is
+the point.

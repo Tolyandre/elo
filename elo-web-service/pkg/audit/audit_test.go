@@ -64,6 +64,22 @@ func TestValidateDetailsDocuments(t *testing.T) {
 		{"slot-adjust game ok", KindSlotAdjust, NewSlotGameAdjust("018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e60"), true},
 		{"slot-adjust unknown op", KindSlotAdjust, map[string]any{"schema_version": 1, "op": "seat-count", "slot_id": "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f"}, false},
 		{"slot-adjust missing slot", KindSlotAdjust, map[string]any{"schema_version": 1, "op": "game"}, false},
+		{
+			"arena-update full ok",
+			KindArenaUpdate,
+			func() ArenaUpdateDetails {
+				d := NewArenaUpdateDetails()
+				d.Name = valueChange(strPtr("Старое"), strPtr("Новое"))
+				d.StartingRating = &NumberChange{From: 900, To: 950}
+				d.LeaguesChanged = true
+				d.CatchUpChanged = true
+				d.FilterChanged = true
+				return d
+			}(),
+			true,
+		},
+		{"arena-update empty ok", KindArenaUpdate, NewArenaUpdateDetails(), true},
+		{"arena-update extra field", KindArenaUpdate, map[string]any{"schema_version": 1, "leagues_changed": false, "catch_up_changed": false, "filter_changed": false, "nope": 1}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

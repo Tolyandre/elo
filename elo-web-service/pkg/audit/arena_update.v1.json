@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/arena-update.v1.json",
+  "title": "Audit arena-update details (v1)",
+  "description": "What changed in one user-managed arena update (ADR-24): the name, the match filter, the settings document (starting rating, leagues, catch-up). Camp arenas carry arena-camp-config instead; auto-managed and tenant main arenas cannot be edited on this path. Untouched fields stay null/false; an update that changed nothing produces no arena-update row.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "leagues_changed", "catch_up_changed", "filter_changed"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"] },
+        "to": { "type": ["string", "null"] }
+      }
+    },
+    "starting_rating": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "number" },
+        "to": { "type": "number" }
+      }
+    },
+    "leagues_changed": { "type": "boolean" },
+    "catch_up_changed": { "type": "boolean" },
+    "filter_changed": { "type": "boolean" }
+  }
+}

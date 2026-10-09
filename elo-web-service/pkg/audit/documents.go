@@ -22,6 +22,7 @@ func init() {
 	reg.Register(KindPlayerUpdate, 1, "player_update.v1.json")
 	reg.Register(KindTagUpdate, 1, "tag_update.v1.json")
 	reg.Register(KindArenaCampConf, 1, "arena_camp_config.v1.json")
+	reg.Register(KindArenaUpdate, 1, "arena_update.v1.json")
 	reg.Register(KindCampLink, 1, "camp_link.v1.json")
 	reg.Register(KindTournamentConfig, 1, "tournament_config.v1.json")
 	reg.Register(KindTournamentStart, 1, "tournament_start.v1.json")
@@ -390,6 +391,30 @@ func NewCampConfigChanged(name *[2]*string, startsAt, endsAt *[2]*string) ArenaC
 		d.EndsAt = valueChange(endsAt[0], endsAt[1])
 	}
 	return d
+}
+
+// ArenaUpdateDetails is the diff document of one user-managed arena update
+// (ADR-24): the name, the match filter, the settings document. Camp arenas
+// carry ArenaCampConfigDetails instead.
+type ArenaUpdateDetails struct {
+	SchemaVersion  int           `json:"schema_version"`
+	Name           *ValueChange  `json:"name"`
+	StartingRating *NumberChange `json:"starting_rating"`
+	LeaguesChanged bool          `json:"leagues_changed"`
+	CatchUpChanged bool          `json:"catch_up_changed"`
+	FilterChanged  bool          `json:"filter_changed"`
+}
+
+// NewArenaUpdateDetails returns the empty v1 diff; setters fill the changed
+// fields, and an all-empty document emits no audit row (IsEmpty).
+func NewArenaUpdateDetails() ArenaUpdateDetails {
+	return ArenaUpdateDetails{SchemaVersion: 1}
+}
+
+// IsEmpty reports whether the details describe no changes at all.
+func (d ArenaUpdateDetails) IsEmpty() bool {
+	return d.Name == nil && d.StartingRating == nil &&
+		!d.LeaguesChanged && !d.CatchUpChanged && !d.FilterChanged
 }
 
 // ---------------------------------------------------------------------------

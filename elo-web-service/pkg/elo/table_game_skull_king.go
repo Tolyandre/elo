@@ -42,7 +42,7 @@ type skullKingTableGame struct{}
 
 func (skullKingTableGame) normalize(raw json.RawMessage) (json.RawMessage, error) {
 	var gs skullKingGameState
-	if err := json.Unmarshal(raw, &gs); err != nil {
+	if err := strictDecode(raw, &gs); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidState, err)
 	}
 	if !skullKingPhases[gs.Phase] {

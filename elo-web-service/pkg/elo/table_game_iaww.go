@@ -56,7 +56,7 @@ type iawwTableGame struct{}
 
 func (iawwTableGame) normalize(raw json.RawMessage) (json.RawMessage, error) {
 	var gs iawwGameState
-	if err := json.Unmarshal(raw, &gs); err != nil {
+	if err := strictDecode(raw, &gs); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidState, err)
 	}
 	// "setup" is a client-only pre-table phase; tables are created in scoring,
