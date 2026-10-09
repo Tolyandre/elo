@@ -44,6 +44,9 @@ type ITenantService interface {
 	// A settings change re-derives every rating from the settlement history,
 	// so the arena is queued for a full recalculation.
 	UpdateTenantArenaSettings(ctx context.Context, tenantID id.ID, settingsRaw json.RawMessage, actor id.ID) (db.Tenant, error)
+	// PatchTenant applies several optional tenant changes atomically (one
+	// transaction, one combined audit row) — the PATCH /tenants/{id} path.
+	PatchTenant(ctx context.Context, tenantID id.ID, patch TenantPatch, actor id.ID) (db.Tenant, error)
 	// FeedArena returns the tenant's main arena id — the tenant feed's
 	// settlement source (ADR-36). No rows means the tenant is missing.
 	FeedArena(ctx context.Context, tenantID id.ID) (id.ID, error)
@@ -399,6 +402,125 @@ func (s *TenantService) UpdateTenantArenaSettings(ctx context.Context, tenantID 
 		details := audit.NewTenantUpdateDetails()
 		setSettingsDiff(&details, current.Settings, settings)
 		return recordTenantUpdate(ctx, q, actor, tenantID, details, tenant.Name)
+	})
+	if err == nil && recalcQueued {
+		s.publishArenasChanged()
+	}
+	return updated, err
+}
+
+// TenantPatch is the optional-field set of PATCH /tenants/{id}: nil pointers
+// leave the field untouched (the handler's tri-state body); an empty Icon
+// clears it; ArenaSettings replaces the main arena's settings document; the
+// openness pair arrives together (validated below).
+type TenantPatch struct {
+	Name                *string
+	Icon                *string
+	ArenaSettings       json.RawMessage
+	ArenaMembershipMode *string
+	TournamentsOpenness *string
+}
+
+// PatchTenant applies every present field of the patch atomically: one
+// transaction carries the settings document, the openness settings, the icon
+// and the rename — a mid-way failure can no longer leave a half-applied
+// PATCH — and one audit row records the combined diff. A genuine settings or
+// openness change queues the main arena for a full recalculation as usual
+// (ADR-36 phase 6).
+func (s *TenantService) PatchTenant(ctx context.Context, tenantID id.ID, patch TenantPatch, actor id.ID) (db.Tenant, error) {
+	var (
+		updated      db.Tenant
+		recalcQueued bool
+	)
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		old, err := q.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		details := audit.NewTenantUpdateDetails()
+
+		// The main arena's settings document (starting rating, leagues) is
+		// edited through the tenant (ADR-36 phase 5).
+		if patch.ArenaSettings != nil {
+			settings, err := validateSettings(patch.ArenaSettings)
+			if err != nil {
+				return err
+			}
+			row, err := q.GetArenaByTenant(ctx, &tenantID)
+			if err != nil {
+				return err
+			}
+			current, err := arenaFromGetArenaByTenantRow(row)
+			if err != nil {
+				return err
+			}
+			if err := q.UpdateArenaSettings(ctx, db.UpdateArenaSettingsParams{
+				ID:                    current.ID,
+				Settings:              patch.ArenaSettings,
+				SettingsSchemaVersion: arenasettings.CurrentVersion,
+			}); err != nil {
+				return err
+			}
+			if !settingsEqual(current.Settings, settings) {
+				queued, err := s.markMainArenaForRecalc(ctx, q, tenantID)
+				if err != nil {
+					return err
+				}
+				recalcQueued = recalcQueued || queued
+			}
+			setSettingsDiff(&details, current.Settings, settings)
+		}
+
+		if patch.ArenaMembershipMode != nil && patch.TournamentsOpenness != nil {
+			if err := validateTenantSettings(*patch.ArenaMembershipMode, *patch.TournamentsOpenness); err != nil {
+				return err
+			}
+			if _, err := q.UpdateTenantSettings(ctx, db.UpdateTenantSettingsParams{
+				ID:                  tenantID,
+				ArenaMembershipMode: *patch.ArenaMembershipMode,
+				TournamentsOpenness: *patch.TournamentsOpenness,
+			}); err != nil {
+				return err
+			}
+			if old.ArenaMembershipMode != *patch.ArenaMembershipMode {
+				queued, err := s.markMainArenaForRecalc(ctx, q, tenantID)
+				if err != nil {
+					return err
+				}
+				recalcQueued = recalcQueued || queued
+			}
+			setModeDiff(&details, old.ArenaMembershipMode, *patch.ArenaMembershipMode)
+			setOpennessDiff(&details, old.TournamentsOpenness, *patch.TournamentsOpenness)
+		}
+
+		if patch.Icon != nil {
+			if _, err := q.UpdateTenantIcon(ctx, db.UpdateTenantIconParams{ID: tenantID, Icon: *patch.Icon}); err != nil {
+				return err
+			}
+			setIconDiff(&details, old.Icon, *patch.Icon)
+		}
+
+		if patch.Name != nil && *patch.Name != old.Name {
+			if _, err := q.UpdateTenantName(ctx, db.UpdateTenantNameParams{ID: tenantID, Name: *patch.Name}); err != nil {
+				return err
+			}
+			// The main arena is named after the tenant (system-managed, like
+			// game/tournament arenas) — keep it in sync.
+			if arena, err := q.GetArenaByTenant(ctx, &tenantID); err == nil {
+				if err := q.UpdateArenaName(ctx, db.UpdateArenaNameParams{ID: arena.ID, Name: *patch.Name}); err != nil {
+					return err
+				}
+			} else if !db.IsNoRows(err) {
+				return err
+			}
+			setNameDiff(&details, old.Name, *patch.Name)
+		}
+
+		updated, err = q.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		return recordTenantUpdate(ctx, q, actor, tenantID, details, updated.Name)
 	})
 	if err == nil && recalcQueued {
 		s.publishArenasChanged()

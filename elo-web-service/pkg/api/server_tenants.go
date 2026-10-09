@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
@@ -139,7 +140,6 @@ func (s *StrictServer) PatchTenant(ctx context.Context, request PatchTenantReque
 	}
 
 	updateName := request.Body.Name != nil
-	var modeArg, opennessArg string
 	updateSettings := false
 	if request.Body.ArenaMembershipMode != nil || request.Body.TournamentsOpenness != nil {
 		// The openness pair is always provided together (mirrors the old
@@ -147,8 +147,6 @@ func (s *StrictServer) PatchTenant(ctx context.Context, request PatchTenantReque
 		if request.Body.ArenaMembershipMode == nil || request.Body.TournamentsOpenness == nil {
 			return PatchTenant400JSONResponse{Status: StatusFail, Message: "arena_membership_mode and tournaments_openness must be provided together"}, nil
 		}
-		modeArg = string(*request.Body.ArenaMembershipMode)
-		opennessArg = string(*request.Body.TournamentsOpenness)
 		updateSettings = true
 	}
 	// The icon follows the club convention: an empty string clears it, a
@@ -179,56 +177,37 @@ func (s *StrictServer) PatchTenant(ctx context.Context, request PatchTenantReque
 
 	tenantID := parseIDParam(request.Id)
 
-	if request.Body.Settings != nil {
-		if _, err := s.api.TenantService.UpdateTenantArenaSettings(ctx, tenantID, settingsArg, currentActorID(ctx)); err != nil {
-			if msg, ok := invalidSettings(err); ok {
-				return PatchTenant400JSONResponse{Status: StatusFail, Message: msg}, nil
-			}
-			switch domainStatusCode(err) {
-			case http.StatusNotFound:
-				return PatchTenant404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
-			case http.StatusBadRequest:
-				return PatchTenant400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
-			default:
-				return nil, err
-			}
-		}
-	}
-
-	if updateSettings {
-		if _, err := s.api.TenantService.UpdateTenantSettings(ctx, tenantID, modeArg, opennessArg, currentActorID(ctx)); err != nil {
-			switch domainStatusCode(err) {
-			case http.StatusNotFound:
-				return PatchTenant404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
-			case http.StatusBadRequest:
-				return PatchTenant400JSONResponse{Status: StatusFail, Message: "invalid tenant settings"}, nil
-			default:
-				return nil, err
-			}
-		}
-	}
-
-	if updateIcon {
-		if _, err := s.api.TenantService.UpdateTenantIcon(ctx, tenantID, *request.Body.Icon, currentActorID(ctx)); err != nil {
-			switch domainStatusCode(err) {
-			case http.StatusNotFound:
-				return PatchTenant404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
-			default:
-				return nil, err
-			}
-		}
-	}
-
+	// One service call = one transaction + one combined audit row; a mid-way
+	// failure can no longer leave a half-applied PATCH.
+	patch := elo.TenantPatch{}
 	if updateName {
-		if _, err := s.api.TenantService.UpdateTenantName(ctx, tenantID, *request.Body.Name, currentActorID(ctx)); err != nil {
-			switch domainStatusCode(err) {
-			case http.StatusNotFound:
-				return PatchTenant404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
-			case http.StatusConflict:
-				return PatchTenant409JSONResponse{Status: StatusFail, Message: "tenant with this name already exists"}, nil
-			default:
-				return nil, err
-			}
+		patch.Name = request.Body.Name
+	}
+	if updateIcon {
+		patch.Icon = request.Body.Icon
+	}
+	if request.Body.Settings != nil {
+		patch.ArenaSettings = settingsArg
+	}
+	if updateSettings {
+		mode := string(*request.Body.ArenaMembershipMode)
+		openness := string(*request.Body.TournamentsOpenness)
+		patch.ArenaMembershipMode = &mode
+		patch.TournamentsOpenness = &openness
+	}
+	if _, err := s.api.TenantService.PatchTenant(ctx, tenantID, patch, currentActorID(ctx)); err != nil {
+		if msg, ok := invalidSettings(err); ok {
+			return PatchTenant400JSONResponse{Status: StatusFail, Message: msg}, nil
+		}
+		switch domainStatusCode(err) {
+		case http.StatusNotFound:
+			return PatchTenant404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+		case http.StatusConflict:
+			return PatchTenant409JSONResponse{Status: StatusFail, Message: "tenant with this name already exists"}, nil
+		case http.StatusBadRequest:
+			return PatchTenant400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		default:
+			return nil, err
 		}
 	}
 

@@ -25,6 +25,13 @@ func recordTenantUpdate(ctx context.Context, q *db.Queries, actor id.ID, tenantI
 	return recordAuditEvent(ctx, q, actor, audit.EntityTenant, audit.ActionUpdated, tenantID, audit.KindTenantUpdate, details)
 }
 
+// setNameDiff records a tenant rename.
+func setNameDiff(details *audit.TenantUpdateDetails, old, new string) {
+	if old != new {
+		details.Name = &audit.ValueChange{From: &old, To: &new}
+	}
+}
+
 // setModeDiff records an arena_membership_mode change.
 func setModeDiff(details *audit.TenantUpdateDetails, old, new string) {
 	if old != new {

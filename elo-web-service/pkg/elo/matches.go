@@ -239,6 +239,21 @@ func pgBool(b *bool) pgtype.Bool {
 	return pgtype.Bool{Bool: *b, Valid: true}
 }
 
+// writeMatchScores upserts one score row per participant. The rows are what
+// the arena replays and the market resolution read.
+func writeMatchScores(ctx context.Context, q *db.Queries, matchID id.ID, playerScores map[id.ID]float64) error {
+	for playerID, score := range playerScores {
+		if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
+			MatchID:  matchID,
+			PlayerID: playerID,
+			Score:    score,
+		}); err != nil {
+			return fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
+		}
+	}
+	return nil
+}
+
 // AddMatch adds a single match with Elo calculations. The match is created
 // under a tenant (ADR-36 phase 7): the tenant must exist and at least one
 // participant must be a current member of it — the same predicate the tenant
@@ -251,173 +266,156 @@ func (s *MatchService) AddMatch(ctx context.Context, tenantID id.ID, gameID id.I
 		}
 	}
 
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to begin tx: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
+	return runInTxResult(ctx, s.Pool, func(q *db.Queries) (db.Match, error) {
 
-	q := s.Queries.WithTx(tx)
-
-	// The path tenant must exist (a 404, not a silent default — ADR-36 phase
-	// 5 retired the fallback). Its row drives the participant rule below.
-	tenant, err := q.GetTenantByID(ctx, tenantID)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return db.Match{}, ErrTenantNotFound
+		// The path tenant must exist (a 404, not a silent default — ADR-36 phase
+		// 5 retired the fallback). Its row drives the participant rule below.
+		tenant, err := q.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return db.Match{}, ErrTenantNotFound
+			}
+			return db.Match{}, fmt.Errorf("get tenant: %w", err)
 		}
-		return db.Match{}, fmt.Errorf("get tenant: %w", err)
-	}
 
-	// The match settles into the creating tenant's main arena (ADR-36); when
-	// that arena is the sweep anchor (the converted global arena) the
-	// settlement is transactional, otherwise the arena replay below handles
-	// it. Resolved before the write so the settlement branch is a plain
-	// decision on the row.
-	mainArenaRow, err := q.GetArenaByTenant(ctx, &tenantID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("get tenant main arena: %w", err)
-	}
-	mainArena, err := arenaFromGetArenaByTenantRow(mainArenaRow)
-	if err != nil {
-		return db.Match{}, err
-	}
-
-	// The arena whose settlements this write maintains transactionally, if
-	// any — the affected-arena drain at the end skips exactly that arena
-	// (zero: everything goes through the replay).
-	var settledArenaID id.ID
-
-	// The game's mode decides (with the request, for mixed games) whether this
-	// is a rating match or a coop one (ADR-33).
-	game, err := q.GetGameByID(ctx, gameID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to get game: %w", err)
-	}
-	mode, err := resolveMatchMode(game.GameMode, opts.Mode, opts.Calculator != nil)
-	if err != nil {
-		return db.Match{}, err
-	}
-	playerScores, err = normalizeMatchParticipants(mode, playerScores, opts.PlayerIDs)
-	if err != nil {
-		return db.Match{}, err
-	}
-	if err := validateMatchResult(mode, opts.GameScore, opts.GameWon); err != nil {
-		return db.Match{}, err
-	}
-
-	// The feed guard at creation (ADR-36 phase 7): the match must relate to
-	// the tenant it is created under, per its openness rule — members_only
-	// admits current members only, any_member and all demand at least one
-	// current member. The same predicate the edit applies and the tenant feed
-	// selects by; without it a match could never appear in the community it
-	// was recorded for. Coop matches are gated the same way (they are
-	// community news even though they settle no rating, ADR-33).
-	if err := checkTenantParticipantRule(ctx, q, tenant, playerIDsOf(playerScores), ErrMatchMembersOnly, ErrMatchOutsideTenant); err != nil {
-		return db.Match{}, err
-	}
-
-	if mode == MatchModeCoop && len(opts.CampArenaIDs) > 0 {
-		return db.Match{}, ErrCoopLinksRejected
-	}
-
-	dt := pgtype.Timestamptz{Time: date, Valid: true}
-
-	calcKind, calcVer, calcData := calculatorColumns(opts.Calculator)
-
-	// Audit "created" only for genuinely new rows: CreateMatch upserts on id,
-	// and an offline-sync replay must not emit a second created event. A zero
-	// id cannot exist yet — skip the probe and let CreateMatch surface the
-	// missing-id error on its original code path.
-	isNew := true
-	if !opts.ID.IsZero() {
-		_, err = q.GetMatch(ctx, opts.ID)
-		isNew = db.IsNoRows(err)
-		if err != nil && !isNew {
-			return db.Match{}, fmt.Errorf("unable to check match existence: %w", err)
+		// The match settles into the creating tenant's main arena (ADR-36); when
+		// that arena is the sweep anchor (the converted global arena) the
+		// settlement is transactional, otherwise the arena replay below handles
+		// it. Resolved before the write so the settlement branch is a plain
+		// decision on the row.
+		mainArenaRow, err := q.GetArenaByTenant(ctx, &tenantID)
+		if err != nil {
+			return db.Match{}, fmt.Errorf("get tenant main arena: %w", err)
 		}
-	}
-
-	// create match (foreign key will validate game_id exists)
-	// ON CONFLICT (id) DO UPDATE returns the existing row on retry (idempotency).
-	createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
-		ID:                      opts.ID,
-		Date:                    dt,
-		GameID:                  gameID,
-		CalculatorKind:          calcKind,
-		CalculatorSchemaVersion: calcVer,
-		CalculatorData:          calcData,
-		Mode:                    mode,
-		GameScore:               pgFloat8(opts.GameScore),
-		GameWon:                 pgBool(opts.GameWon),
-	})
-	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to create match: %w", err)
-	}
-
-	if isNew {
-		if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityMatch, audit.ActionCreated, createdMatch.ID, "", nil); err != nil {
+		mainArena, err := arenaFromGetArenaByTenantRow(mainArenaRow)
+		if err != nil {
 			return db.Match{}, err
 		}
-	}
 
-	if opts.ClientDate {
-		// Client-supplied (possibly backdated) date: write scores, then replay all
-		// events from that date so this match and every later one settle in order.
-		// The sweep is anchored at the converted global arena (ADR-36 phase 7);
-		// every other arena — the creating tenant's own main arena included,
-		// when it is not the anchor — is refreshed by the affected-arena drain
-		// at the end of this transaction.
-		for playerID, score := range playerScores {
-			if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-				MatchID:  createdMatch.ID,
-				PlayerID: playerID,
-				Score:    score,
-			}); err != nil {
-				return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
+		// The arena whose settlements this write maintains transactionally, if
+		// any — the affected-arena drain at the end skips exactly that arena
+		// (zero: everything goes through the replay).
+		var settledArenaID id.ID
+
+		// The game's mode decides (with the request, for mixed games) whether this
+		// is a rating match or a coop one (ADR-33).
+		game, err := q.GetGameByID(ctx, gameID)
+		if err != nil {
+			return db.Match{}, fmt.Errorf("unable to get game: %w", err)
+		}
+		mode, err := resolveMatchMode(game.GameMode, opts.Mode, opts.Calculator != nil)
+		if err != nil {
+			return db.Match{}, err
+		}
+		playerScores, err = normalizeMatchParticipants(mode, playerScores, opts.PlayerIDs)
+		if err != nil {
+			return db.Match{}, err
+		}
+		if err := validateMatchResult(mode, opts.GameScore, opts.GameWon); err != nil {
+			return db.Match{}, err
+		}
+
+		// The feed guard at creation (ADR-36 phase 7): the match must relate to
+		// the tenant it is created under, per its openness rule — members_only
+		// admits current members only, any_member and all demand at least one
+		// current member. The same predicate the edit applies and the tenant feed
+		// selects by; without it a match could never appear in the community it
+		// was recorded for. Coop matches are gated the same way (they are
+		// community news even though they settle no rating, ADR-33).
+		if err := checkTenantParticipantRule(ctx, q, tenant, playerIDsOf(playerScores), ErrMatchMembersOnly, ErrMatchOutsideTenant); err != nil {
+			return db.Match{}, err
+		}
+
+		if mode == MatchModeCoop && len(opts.CampArenaIDs) > 0 {
+			return db.Match{}, ErrCoopLinksRejected
+		}
+
+		dt := pgtype.Timestamptz{Time: date, Valid: true}
+
+		calcKind, calcVer, calcData := calculatorColumns(opts.Calculator)
+
+		// Audit "created" only for genuinely new rows: CreateMatch upserts on id,
+		// and an offline-sync replay must not emit a second created event. A zero
+		// id cannot exist yet — skip the probe and let CreateMatch surface the
+		// missing-id error on its original code path.
+		isNew := true
+		if !opts.ID.IsZero() {
+			_, err = q.GetMatch(ctx, opts.ID)
+			isNew = db.IsNoRows(err)
+			if err != nil && !isNew {
+				return db.Match{}, fmt.Errorf("unable to check match existence: %w", err)
 			}
 		}
 
-		if err := s.recalculateEloFromDate(ctx, q, date); err != nil {
-			return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
+		// create match (foreign key will validate game_id exists)
+		// ON CONFLICT (id) DO UPDATE returns the existing row on retry (idempotency).
+		createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
+			ID:                      opts.ID,
+			Date:                    dt,
+			GameID:                  gameID,
+			CalculatorKind:          calcKind,
+			CalculatorSchemaVersion: calcVer,
+			CalculatorData:          calcData,
+			Mode:                    mode,
+			GameScore:               pgFloat8(opts.GameScore),
+			GameWon:                 pgBool(opts.GameWon),
+		})
+		if err != nil {
+			return db.Match{}, fmt.Errorf("unable to create match: %w", err)
 		}
-		settledArenaID = BlueMenArenaID
-	} else {
-		if mode == MatchModeCompetitive {
-			// The transactional settlement path serves the sweep anchor arena
-			// (the converted global arena) — the one arena whose settlement
-			// chain the sweep maintains (ADR-24, ADR-36 phase 7). A match
-			// created under another tenant settles into that tenant's main
-			// arena through the arena replay instead: the score rows written
-			// here are what the replay reads, and the affected-arena drain at
-			// the end of this transaction refreshes every arena whose
-			// membership function matches — that tenant's own main arena
-			// included. settles=false when the tenant predicate (ADR-36) keeps
-			// the match out of the arena's rating.
-			if mainArena.ID == BlueMenArenaID {
-				state, settles, err := s.lockAndGetPrevElos(ctx, q, mainArena, createdMatch, playerScores)
-				if err != nil {
-					return db.Match{}, err
-				}
-				settledArenaID = mainArena.ID
 
+		if isNew {
+			if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityMatch, audit.ActionCreated, createdMatch.ID, "", nil); err != nil {
+				return db.Match{}, err
+			}
+		}
+
+		if opts.ClientDate {
+			// Client-supplied (possibly backdated) date: write scores, then replay all
+			// events from that date so this match and every later one settle in order.
+			// The sweep is anchored at the converted global arena (ADR-36 phase 7);
+			// every other arena — the creating tenant's own main arena included,
+			// when it is not the anchor — is refreshed by the affected-arena drain
+			// at the end of this transaction.
+			if err := writeMatchScores(ctx, q, createdMatch.ID, playerScores); err != nil {
+				return db.Match{}, err
+			}
+
+			if err := s.recalculateEloFromDate(ctx, q, date); err != nil {
+				return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
+			}
+			settledArenaID = BlueMenArenaID
+		} else {
+			if mode == MatchModeCompetitive {
+				// The transactional settlement path serves the sweep anchor arena
+				// (the converted global arena) — the one arena whose settlement
+				// chain the sweep maintains (ADR-24, ADR-36 phase 7). A match
+				// created under another tenant settles into that tenant's main
+				// arena through the arena replay instead: the score rows written
+				// here are what the replay reads, and the affected-arena drain at
+				// the end of this transaction refreshes every arena whose
+				// membership function matches — that tenant's own main arena
+				// included. settles=false when the tenant predicate (ADR-36) keeps
+				// the match out of the arena's rating.
+				var state MatchPrevState
+				settles := false
+				if mainArena.ID == BlueMenArenaID {
+					state, settles, err = s.lockAndGetPrevElos(ctx, q, mainArena, createdMatch, playerScores)
+					if err != nil {
+						return db.Match{}, err
+					}
+					settledArenaID = mainArena.ID
+				}
+				// When the arena settles nothing (a replay arena, or the anchor
+				// refusing the match per its tenant predicate) the participant
+				// rows are written here — they are what a later mode change or
+				// recalculation reads. The settlement path writes them itself
+				// otherwise.
 				if !settles {
-					// No Elo settlement — the participant rows still record the
-					// match's players (they are what the tenant predicate of a
-					// later mode change / recalculation reads).
-					for playerID, score := range playerScores {
-						if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-							MatchID:  createdMatch.ID,
-							PlayerID: playerID,
-							Score:    score,
-						}); err != nil {
-							return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
-						}
+					if err := writeMatchScores(ctx, q, createdMatch.ID, playerScores); err != nil {
+						return db.Match{}, err
 					}
 				}
-
 				if err := s.EventProcessor.processMatchSettlements(
 					ctx, q, createdMatch.ID, playerScores,
 					state, date,
@@ -428,103 +426,70 @@ func (s *MatchService) AddMatch(ctx context.Context, tenantID id.ID, gameID id.I
 					return db.Match{}, err
 				}
 			} else {
-				// A non-anchor tenant's main arena is a replay arena: record
-				// the participants, run the market side of the settlement
-				// (resolution and expiry are arena-independent), and let the
-				// drain settle the arena from the match date.
-				for playerID, score := range playerScores {
-					if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-						MatchID:  createdMatch.ID,
-						PlayerID: playerID,
-						Score:    score,
-					}); err != nil {
-						return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
-					}
+				// A coop match settles nothing (ADR-33): no Elo, no market
+				// resolution. Its zero-score participant rows are still written —
+				// they are the participant list — and time-based market expiry
+				// still advances: the match is a point on the replay timeline
+				// regardless of its mode.
+				if err := writeMatchScores(ctx, q, createdMatch.ID, playerScores); err != nil {
+					return db.Match{}, err
 				}
-				if err := s.EventProcessor.processMatchSettlements(
-					ctx, q, createdMatch.ID, playerScores,
-					MatchPrevState{}, date,
-					mode,
-					false,
-					s.calculateAndStoreEloWithScores,
-				); err != nil {
+				if err := s.MarketService.ExpireMarketsAtDate(ctx, q, date); err != nil {
+					return db.Match{}, fmt.Errorf("expire markets at date %v: %w", date, err)
+				}
+			}
+		}
+
+		// ADR-27: link the match to the requested camp arenas. Each id is
+		// validated (exists, is a camp, window contains the date); the links are
+		// written once and never altered afterwards. Coop matches join no camps
+		// (ADR-33) — rejected above with the rest of the link requests.
+		campArenas, err := resolveCampArenas(ctx, q, opts.CampArenaIDs, date)
+		if err != nil {
+			return db.Match{}, err
+		}
+		if isNew {
+			for _, c := range campArenas {
+				if err := q.AddArenaMatch(ctx, db.AddArenaMatchParams{ArenaID: c.ID, MatchID: createdMatch.ID}); err != nil {
+					return db.Match{}, fmt.Errorf("link match %s to camp %s: %w", createdMatch.ID, c.ID, err)
+				}
+				if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityArena, audit.ActionCreated, c.ID,
+					audit.KindCampLink, audit.NewCampLinkDetails(audit.CampLinkAttach, string(createdMatch.ID))); err != nil {
 					return db.Match{}, err
 				}
 			}
-		} else {
-			// A coop match settles nothing (ADR-33): no Elo, no market
-			// resolution. Its zero-score participant rows are still written —
-			// they are the participant list — and time-based market expiry
-			// still advances: the match is a point on the replay timeline
-			// regardless of its mode.
-			for playerID := range playerScores {
-				if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-					MatchID:  createdMatch.ID,
-					PlayerID: playerID,
-					Score:    0,
-				}); err != nil {
-					return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
-				}
-			}
-			if err := s.MarketService.ExpireMarketsAtDate(ctx, q, date); err != nil {
-				return db.Match{}, fmt.Errorf("expire markets at date %v: %w", date, err)
-			}
 		}
-	}
 
-	// ADR-27: link the match to the requested camp arenas. Each id is
-	// validated (exists, is a camp, window contains the date); the links are
-	// written once and never altered afterwards. Coop matches join no camps
-	// (ADR-33) — rejected above with the rest of the link requests.
-	campArenas, err := resolveCampArenas(ctx, q, opts.CampArenaIDs, date)
-	if err != nil {
-		return db.Match{}, err
-	}
-	if isNew {
-		for _, c := range campArenas {
-			if err := q.AddArenaMatch(ctx, db.AddArenaMatchParams{ArenaID: c.ID, MatchID: createdMatch.ID}); err != nil {
-				return db.Match{}, fmt.Errorf("link match %s to camp %s: %w", createdMatch.ID, c.ID, err)
-			}
-			if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityArena, audit.ActionCreated, c.ID,
-				audit.KindCampLink, audit.NewCampLinkDetails(audit.CampLinkAttach, string(createdMatch.ID))); err != nil {
+		// ADR-26: tournament bracket acceptance. The match links to its unique
+		// fitting playing slot when the checkbox is on (the default); the link,
+		// the placement points, and any completion cascade happen in this
+		// transaction. Must run before the arena drain below: the tournament
+		// arena's membership is the arena_matches link written here. Coop matches
+		// never enter a bracket (ADR-33).
+		if mode == MatchModeCompetitive && !opts.SkipTournamentLink && s.Tournaments != nil {
+			if err := s.Tournaments.AcceptMatch(ctx, q, createdMatch.ID, gameID, playerIDsOf(playerScores), opts.ActorUserID); err != nil {
 				return db.Match{}, err
 			}
 		}
-	}
 
-	// ADR-26: tournament bracket acceptance. The match links to its unique
-	// fitting playing slot when the checkbox is on (the default); the link,
-	// the placement points, and any completion cascade happen in this
-	// transaction. Must run before the arena drain below: the tournament
-	// arena's membership is the arena_matches link written here. Coop matches
-	// never enter a bracket (ADR-33).
-	if mode == MatchModeCompetitive && !opts.SkipTournamentLink && s.Tournaments != nil {
-		if err := s.Tournaments.AcceptMatch(ctx, q, createdMatch.ID, gameID, playerIDsOf(playerScores), opts.ActorUserID); err != nil {
-			return db.Match{}, err
+		// ADR-24: the match write touches every arena containing it — the
+		// membership function covers camps via their arena_matches links (written
+		// above) — update them synchronously in this transaction (the global
+		// arena was already replayed above; the drain skips it). A coop match
+		// belongs to no arena (the membership function rejects its mode), so the
+		// drain is skipped for it.
+		if mode == MatchModeCompetitive {
+			affected, err := q.ListArenasMatchingMatch(ctx, createdMatch.ID)
+			if err != nil {
+				return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
+			}
+			if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, affected, date, settledArenaID); err != nil {
+				return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
+			}
 		}
-	}
 
-	// ADR-24: the match write touches every arena containing it — the
-	// membership function covers camps via their arena_matches links (written
-	// above) — update them synchronously in this transaction (the global
-	// arena was already replayed above; the drain skips it). A coop match
-	// belongs to no arena (the membership function rejects its mode), so the
-	// drain is skipped for it.
-	if mode == MatchModeCompetitive {
-		affected, err := q.ListArenasMatchingMatch(ctx, createdMatch.ID)
-		if err != nil {
-			return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
-		}
-		if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, affected, date, settledArenaID); err != nil {
-			return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return db.Match{}, fmt.Errorf("unable to commit tx: %w", err)
-	}
-
-	return createdMatch, nil
+		return createdMatch, nil
+	})
 }
 
 // UpdateMatch updates an existing match and recalculates Elo ratings for all affected matches
@@ -539,250 +504,233 @@ func (s *MatchService) AddMatch(ctx context.Context, tenantID id.ID, gameID id.I
 // when it is &CalculatorUpdate{Kind: nil} they are cleared; otherwise they are
 // replaced with the validated document.
 func (s *MatchService) UpdateMatch(ctx context.Context, tenantID id.ID, matchID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error) {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to begin tx: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
+	return runInTxResult(ctx, s.Pool, func(q *db.Queries) (db.Match, error) {
 
-	q := s.Queries.WithTx(tx)
-
-	existingMatch, err := q.GetMatch(ctx, matchID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("%w: %v", ErrMatchNotFound, err)
-	}
-
-	oldDate := existingMatch.Date.Time
-	if err := validateMatchDateChange(oldDate, date); err != nil {
-		return db.Match{}, err
-	}
-
-	// The game's mode decides (with the request, for mixed games) whether
-	// this stays a rating match or becomes a coop one (ADR-33); calculator
-	// columns keep the match competitive.
-	game, err := q.GetGameByID(ctx, gameID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to get game: %w", err)
-	}
-	hasCalculator := existingMatch.CalculatorKind.Valid ||
-		(opts.Calculator != nil && opts.Calculator.Kind != nil)
-	mode, err := resolveMatchMode(game.GameMode, opts.Mode, hasCalculator)
-	if err != nil {
-		return db.Match{}, err
-	}
-	playerScores, err = normalizeMatchParticipants(mode, playerScores, opts.PlayerIDs)
-	if err != nil {
-		return db.Match{}, err
-	}
-	if err := validateMatchResult(mode, opts.GameScore, opts.GameWon); err != nil {
-		return db.Match{}, err
-	}
-
-	// ADR-36 (revised phase 7): the edit keeps the match inside the tenant's
-	// feed and openness rule — the same predicate creation applies:
-	// members_only admits current members only, any_member and all demand at
-	// least one current member among the participants. Checked inside the
-	// write transaction, so a concurrent membership change cannot slip past
-	// it. An unknown tenant is a 404, a failed check a 400.
-	tenant, err := q.GetTenantByID(ctx, tenantID)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return db.Match{}, ErrTenantNotFound
+		existingMatch, err := q.GetMatch(ctx, matchID)
+		if err != nil {
+			return db.Match{}, fmt.Errorf("%w: %v", ErrMatchNotFound, err)
 		}
-		return db.Match{}, fmt.Errorf("get tenant: %w", err)
-	}
-	if err := checkTenantParticipantRule(ctx, q, tenant, playerIDsOf(playerScores), ErrMatchMembersOnly, ErrMatchOutsideTenant); err != nil {
-		return db.Match{}, err
-	}
 
-	// ADR-27 (revised): camp links are editable — editing a match exists to
-	// fix mistakes, and the recalculation machinery rewrites the camps'
-	// settlements and medal stats accordingly. The optional body set is the
-	// desired set: every requested arena is validated (exists, is a camp,
-	// window contains the date); a body without the key keeps the stored
-	// links, which the new date must still stay inside.
-	linkedCamps, err := campArenasOfMatch(ctx, q, matchID)
-	if err != nil {
-		return db.Match{}, err
-	}
-	desiredCamps := linkedCamps
-	if opts.CampArenaIDs != nil {
-		desiredCamps, err = resolveCampArenas(ctx, q, *opts.CampArenaIDs, date)
+		oldDate := existingMatch.Date.Time
+		if err := validateMatchDateChange(oldDate, date); err != nil {
+			return db.Match{}, err
+		}
+
+		// The game's mode decides (with the request, for mixed games) whether
+		// this stays a rating match or becomes a coop one (ADR-33); calculator
+		// columns keep the match competitive.
+		game, err := q.GetGameByID(ctx, gameID)
+		if err != nil {
+			return db.Match{}, fmt.Errorf("unable to get game: %w", err)
+		}
+		hasCalculator := existingMatch.CalculatorKind.Valid ||
+			(opts.Calculator != nil && opts.Calculator.Kind != nil)
+		mode, err := resolveMatchMode(game.GameMode, opts.Mode, hasCalculator)
 		if err != nil {
 			return db.Match{}, err
 		}
-	} else {
-		for _, c := range linkedCamps {
-			if !campWindowContains(c, date) {
-				return db.Match{}, ErrMatchOutsideCampWindows
+		playerScores, err = normalizeMatchParticipants(mode, playerScores, opts.PlayerIDs)
+		if err != nil {
+			return db.Match{}, err
+		}
+		if err := validateMatchResult(mode, opts.GameScore, opts.GameWon); err != nil {
+			return db.Match{}, err
+		}
+
+		// ADR-36 (revised phase 7): the edit keeps the match inside the tenant's
+		// feed and openness rule — the same predicate creation applies:
+		// members_only admits current members only, any_member and all demand at
+		// least one current member among the participants. Checked inside the
+		// write transaction, so a concurrent membership change cannot slip past
+		// it. An unknown tenant is a 404, a failed check a 400.
+		tenant, err := q.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return db.Match{}, ErrTenantNotFound
+			}
+			return db.Match{}, fmt.Errorf("get tenant: %w", err)
+		}
+		if err := checkTenantParticipantRule(ctx, q, tenant, playerIDsOf(playerScores), ErrMatchMembersOnly, ErrMatchOutsideTenant); err != nil {
+			return db.Match{}, err
+		}
+
+		// ADR-27 (revised): camp links are editable — editing a match exists to
+		// fix mistakes, and the recalculation machinery rewrites the camps'
+		// settlements and medal stats accordingly. The optional body set is the
+		// desired set: every requested arena is validated (exists, is a camp,
+		// window contains the date); a body without the key keeps the stored
+		// links, which the new date must still stay inside.
+		linkedCamps, err := campArenasOfMatch(ctx, q, matchID)
+		if err != nil {
+			return db.Match{}, err
+		}
+		desiredCamps := linkedCamps
+		if opts.CampArenaIDs != nil {
+			desiredCamps, err = resolveCampArenas(ctx, q, *opts.CampArenaIDs, date)
+			if err != nil {
+				return db.Match{}, err
+			}
+		} else {
+			for _, c := range linkedCamps {
+				if !campWindowContains(c, date) {
+					return db.Match{}, ErrMatchOutsideCampWindows
+				}
 			}
 		}
-	}
-	// A coop match belongs to no camp (ADR-33): converting one requires
-	// detaching it from every camp in the same edit.
-	if mode == MatchModeCoop && len(desiredCamps) > 0 {
-		return db.Match{}, ErrCoopLinksRejected
-	}
-
-	// ADR-26: a tournament-linked match keeps its exact player set and game —
-	// editing never silently changes whether the match counts for the bracket
-	// (the organizer detaches first). Scores, date and calculator data stay
-	// freely editable below; a non-linked match can never become linked here.
-	if s.Tournaments != nil {
-		if err := s.Tournaments.CheckAssociationEditable(ctx, q, matchID, gameID, playerIDsOf(playerScores)); err != nil {
-			return db.Match{}, err
+		// A coop match belongs to no camp (ADR-33): converting one requires
+		// detaching it from every camp in the same edit.
+		if mode == MatchModeCoop && len(desiredCamps) > 0 {
+			return db.Match{}, ErrCoopLinksRejected
 		}
-	}
 
-	// Capture the arenas containing the match BEFORE the row changes — after a
-	// date/game change they need a recalculation even when the new state no
-	// longer contains them.
-	affectedBefore, err := q.ListArenasMatchingMatch(ctx, matchID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
-	}
+		// ADR-26: a tournament-linked match keeps its exact player set and game —
+		// editing never silently changes whether the match counts for the bracket
+		// (the organizer detaches first). Scores, date and calculator data stay
+		// freely editable below; a non-linked match can never become linked here.
+		if s.Tournaments != nil {
+			if err := s.Tournaments.CheckAssociationEditable(ctx, q, matchID, gameID, playerIDsOf(playerScores)); err != nil {
+				return db.Match{}, err
+			}
+		}
 
-	recalcStartDate := date
-	if existingMatch.Date.Valid && existingMatch.Date.Time.Before(date) {
-		recalcStartDate = existingMatch.Date.Time
-	}
-
-	updateParams := db.UpdateMatchParams{
-		ID:                      matchID,
-		Date:                    pgtype.Timestamptz{Time: date, Valid: true},
-		GameID:                  gameID,
-		CalculatorKind:          existingMatch.CalculatorKind,
-		CalculatorSchemaVersion: existingMatch.CalculatorSchemaVersion,
-		CalculatorData:          existingMatch.CalculatorData,
-		Mode:                    mode,
-		GameScore:               pgFloat8(opts.GameScore),
-		GameWon:                 pgBool(opts.GameWon),
-	}
-	if opts.Calculator != nil {
-		k, v, d := calculatorColumnsFromUpdate(opts.Calculator)
-		updateParams.CalculatorKind = k
-		updateParams.CalculatorSchemaVersion = v
-		updateParams.CalculatorData = d
-	}
-	if err = q.UpdateMatch(ctx, updateParams); err != nil {
-		return db.Match{}, fmt.Errorf("unable to update match: %w", err)
-	}
-
-	// Audit diff inputs. Old scores must be read before the rewrite deletes
-	// them; the calculator columns are compared as resolved above (tri-state)
-	// against the row as stored.
-	oldScores, err := q.GetMatchScores(ctx, matchID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to read old match scores: %w", err)
-	}
-	calcVerChanged := updateParams.CalculatorSchemaVersion.Valid != existingMatch.CalculatorSchemaVersion.Valid ||
-		(updateParams.CalculatorSchemaVersion.Valid && updateParams.CalculatorSchemaVersion.Int32 != existingMatch.CalculatorSchemaVersion.Int32)
-	calculatorChanged := !textEqual(updateParams.CalculatorKind, existingMatch.CalculatorKind) ||
-		calcVerChanged || !jsonEqual(updateParams.CalculatorData, existingMatch.CalculatorData)
-
-	// Delete old scores to handle player list changes. The arena settlement
-	// rows are removed by the replays below: the global replay deletes from
-	// the recalc start date, the arena drain deletes from its replay date —
-	// both windows cover the match's old date.
-	err = q.DeleteMatchScores(ctx, matchID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to delete old match scores: %w", err)
-	}
-
-	for playerID, score := range playerScores {
-		err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-			MatchID:  matchID,
-			PlayerID: playerID,
-			Score:    score,
-		})
+		// Capture the arenas containing the match BEFORE the row changes — after a
+		// date/game change they need a recalculation even when the new state no
+		// longer contains them.
+		affectedBefore, err := q.ListArenasMatchingMatch(ctx, matchID)
 		if err != nil {
-			return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
+			return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
 		}
-	}
 
-	if err := s.recalculateEloFromDate(ctx, q, recalcStartDate); err != nil {
-		return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
-	}
+		recalcStartDate := date
+		if existingMatch.Date.Valid && existingMatch.Date.Time.Before(date) {
+			recalcStartDate = existingMatch.Date.Time
+		}
 
-	// Apply the desired camp-link diff (attach/detach, each audited). Must
-	// run before the drain below: the camp replay reads arena_matches.
-	if err := applyCampLinkDiff(ctx, q, opts.ActorUserID, matchID, linkedCamps, desiredCamps); err != nil {
-		return db.Match{}, err
-	}
+		updateParams := db.UpdateMatchParams{
+			ID:                      matchID,
+			Date:                    pgtype.Timestamptz{Time: date, Valid: true},
+			GameID:                  gameID,
+			CalculatorKind:          existingMatch.CalculatorKind,
+			CalculatorSchemaVersion: existingMatch.CalculatorSchemaVersion,
+			CalculatorData:          existingMatch.CalculatorData,
+			Mode:                    mode,
+			GameScore:               pgFloat8(opts.GameScore),
+			GameWon:                 pgBool(opts.GameWon),
+		}
+		if opts.Calculator != nil {
+			k, v, d := calculatorColumnsFromUpdate(opts.Calculator)
+			updateParams.CalculatorKind = k
+			updateParams.CalculatorSchemaVersion = v
+			updateParams.CalculatorData = d
+		}
+		if err = q.UpdateMatch(ctx, updateParams); err != nil {
+			return db.Match{}, fmt.Errorf("unable to update match: %w", err)
+		}
 
-	// ADR-26: the edit form's desired tournament-link state, applied before
-	// OnMatchChanged below (a just-unlinked match then has no slot to
-	// re-evaluate; a just-linked one is re-evaluated by the attach itself).
-	// A change is refused while it would void already-played downstream
-	// matches — that stays the organizer's explicit tool.
-	if s.Tournaments != nil && opts.SkipTournamentLink != nil {
-		if err := s.Tournaments.SetMatchLinkState(ctx, q, matchID, *opts.SkipTournamentLink, opts.ActorUserID); err != nil {
+		// Audit diff inputs. Old scores must be read before the rewrite deletes
+		// them; the calculator columns are compared as resolved above (tri-state)
+		// against the row as stored.
+		oldScores, err := q.GetMatchScores(ctx, matchID)
+		if err != nil {
+			return db.Match{}, fmt.Errorf("unable to read old match scores: %w", err)
+		}
+		calcVerChanged := updateParams.CalculatorSchemaVersion.Valid != existingMatch.CalculatorSchemaVersion.Valid ||
+			(updateParams.CalculatorSchemaVersion.Valid && updateParams.CalculatorSchemaVersion.Int32 != existingMatch.CalculatorSchemaVersion.Int32)
+		calculatorChanged := !textEqual(updateParams.CalculatorKind, existingMatch.CalculatorKind) ||
+			calcVerChanged || !jsonEqual(updateParams.CalculatorData, existingMatch.CalculatorData)
+
+		// Delete old scores to handle player list changes. The arena settlement
+		// rows are removed by the replays below: the global replay deletes from
+		// the recalc start date, the arena drain deletes from its replay date —
+		// both windows cover the match's old date.
+		if err := q.DeleteMatchScores(ctx, matchID); err != nil {
+			return db.Match{}, fmt.Errorf("unable to delete old match scores: %w", err)
+		}
+
+		if err := writeMatchScores(ctx, q, matchID, playerScores); err != nil {
 			return db.Match{}, err
 		}
-	}
-	// A coop match must be out of the bracket (ADR-33): converting one
-	// detaches it (the same guarded detach; an unsafe detach refuses the
-	// whole edit). A no-op when already unlinked.
-	if mode == MatchModeCoop && s.Tournaments != nil {
-		if err := s.Tournaments.SetMatchLinkState(ctx, q, matchID, true, opts.ActorUserID); err != nil {
+
+		if err := s.recalculateEloFromDate(ctx, q, recalcStartDate); err != nil {
+			return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
+		}
+
+		// Apply the desired camp-link diff (attach/detach, each audited). Must
+		// run before the drain below: the camp replay reads arena_matches.
+		if err := applyCampLinkDiff(ctx, q, opts.ActorUserID, matchID, linkedCamps, desiredCamps); err != nil {
 			return db.Match{}, err
 		}
-	}
 
-	// ADR-26: scores changed → points recompute → completion re-evaluates →
-	// possibly a different advancement set (with the cascade invalidation) —
-	// still inside the match-write transaction, before the arena drain. A
-	// coop match has no slot to re-evaluate (ADR-33).
-	if s.Tournaments != nil && mode == MatchModeCompetitive {
-		if err := s.Tournaments.OnMatchChanged(ctx, q, matchID, opts.ActorUserID); err != nil {
-			return db.Match{}, err
+		// ADR-26: the edit form's desired tournament-link state, applied before
+		// OnMatchChanged below (a just-unlinked match then has no slot to
+		// re-evaluate; a just-linked one is re-evaluated by the attach itself).
+		// A change is refused while it would void already-played downstream
+		// matches — that stays the organizer's explicit tool.
+		if s.Tournaments != nil && opts.SkipTournamentLink != nil {
+			if err := s.Tournaments.SetMatchLinkState(ctx, q, matchID, *opts.SkipTournamentLink, opts.ActorUserID); err != nil {
+				return db.Match{}, err
+			}
 		}
-	}
-
-	// ADR-24: update every arena whose membership the edit affects — the
-	// union of the arenas containing the old and the new match state —
-	// synchronously. The membership function includes camps: affectedBefore
-	// runs before the link diff (old links), affectedAfter after it (new
-	// links), so a detach replays the old camp to remove its settlements and
-	// stats.
-	affectedAfter, err := q.ListArenasMatchingMatch(ctx, matchID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
-	}
-	union := make([]id.ID, 0, len(affectedBefore)+len(affectedAfter))
-	seen := make(map[id.ID]bool, len(affectedBefore)+len(affectedAfter))
-	for _, aid := range append(affectedBefore, affectedAfter...) {
-		if !seen[aid] {
-			seen[aid] = true
-			union = append(union, aid)
+		// A coop match must be out of the bracket (ADR-33): converting one
+		// detaches it (the same guarded detach; an unsafe detach refuses the
+		// whole edit). A no-op when already unlinked.
+		if mode == MatchModeCoop && s.Tournaments != nil {
+			if err := s.Tournaments.SetMatchLinkState(ctx, q, matchID, true, opts.ActorUserID); err != nil {
+				return db.Match{}, err
+			}
 		}
-	}
-	// The edit's sweep re-settled the sweep anchor's settlements from
-	// recalcStartDate (ADR-36 phase 7); every other affected arena replays.
-	if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, union, recalcStartDate, BlueMenArenaID); err != nil {
-		return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
-	}
 
-	// Record the edit in the audit log. An edit that changed nothing produces
-	// no audit row.
-	details := buildMatchUpdateDetails(existingMatch, oldScores, date, gameID, playerScores, calculatorChanged)
-	if !details.IsEmpty() {
-		if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityMatch, audit.ActionUpdated, matchID, audit.KindMatchUpdate, details); err != nil {
-			return db.Match{}, err
+		// ADR-26: scores changed → points recompute → completion re-evaluates →
+		// possibly a different advancement set (with the cascade invalidation) —
+		// still inside the match-write transaction, before the arena drain. A
+		// coop match has no slot to re-evaluate (ADR-33).
+		if s.Tournaments != nil && mode == MatchModeCompetitive {
+			if err := s.Tournaments.OnMatchChanged(ctx, q, matchID, opts.ActorUserID); err != nil {
+				return db.Match{}, err
+			}
 		}
-	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return db.Match{}, fmt.Errorf("unable to commit tx: %w", err)
-	}
+		// ADR-24: update every arena whose membership the edit affects — the
+		// union of the arenas containing the old and the new match state —
+		// synchronously. The membership function includes camps: affectedBefore
+		// runs before the link diff (old links), affectedAfter after it (new
+		// links), so a detach replays the old camp to remove its settlements and
+		// stats.
+		affectedAfter, err := q.ListArenasMatchingMatch(ctx, matchID)
+		if err != nil {
+			return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
+		}
+		union := make([]id.ID, 0, len(affectedBefore)+len(affectedAfter))
+		seen := make(map[id.ID]bool, len(affectedBefore)+len(affectedAfter))
+		for _, aid := range append(affectedBefore, affectedAfter...) {
+			if !seen[aid] {
+				seen[aid] = true
+				union = append(union, aid)
+			}
+		}
+		// The edit's sweep re-settled the sweep anchor's settlements from
+		// recalcStartDate (ADR-36 phase 7); every other affected arena replays.
+		if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, union, recalcStartDate, BlueMenArenaID); err != nil {
+			return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
+		}
 
-	updatedMatch, err := s.Queries.GetMatch(ctx, matchID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to fetch updated match: %v", matchID)
-	}
-	return updatedMatch, nil
+		// Record the edit in the audit log. An edit that changed nothing produces
+		// no audit row.
+		details := buildMatchUpdateDetails(existingMatch, oldScores, date, gameID, playerScores, calculatorChanged)
+		if !details.IsEmpty() {
+			if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityMatch, audit.ActionUpdated, matchID, audit.KindMatchUpdate, details); err != nil {
+				return db.Match{}, err
+			}
+		}
+
+		// The committed row is what this transaction just wrote; re-read inside
+		// the tx so the caller gets it even though runInTxResult commits after.
+		updatedMatch, err := q.GetMatch(ctx, matchID)
+		if err != nil {
+			return db.Match{}, fmt.Errorf("unable to fetch updated match: %v", matchID)
+		}
+		return updatedMatch, nil
+	})
 }
 
 // DeleteMarketAndRecalculate hard-deletes an open market and recalculates Elo
@@ -919,23 +867,10 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 	if err != nil {
 		return fmt.Errorf("get match %s: %w", matchID, err)
 	}
-	for playerID, score := range playerScores {
-		if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-			MatchID:  matchID,
-			PlayerID: playerID,
-			Score:    score,
-		}); err != nil {
-			return fmt.Errorf("unable to upsert match score for player %s: %w", playerID, err)
-		}
+	if err := writeMatchScores(ctx, q, matchID, playerScores); err != nil {
+		return err
 	}
-	return storeArenaMatchSettlements(ctx, q, state.Arena, match, playerScores, ArenaPrevState{
-		Elo:      state.Elo,
-		Rating:   state.Rating,
-		League:   state.League,
-		Count6M:  state.Count6M,
-		Count2M:  state.Count2M,
-		Settings: state.Settings,
-	})
+	return storeArenaMatchSettlements(ctx, q, state.Arena, match, playerScores, arenaPrevState(state))
 }
 
 // calculateAndUpdateElo upserts the global arena settlement records without
@@ -945,14 +880,20 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 	if err != nil {
 		return fmt.Errorf("get match %s: %w", matchID, err)
 	}
-	return storeArenaMatchSettlements(ctx, q, state.Arena, match, playerScores, ArenaPrevState{
-		Elo:      state.Elo,
-		Rating:   state.Rating,
-		League:   state.League,
-		Count6M:  state.Count6M,
-		Count2M:  state.Count2M,
-		Settings: state.Settings,
-	})
+	return storeArenaMatchSettlements(ctx, q, state.Arena, match, playerScores, arenaPrevState(state))
+}
+
+// arenaPrevState projects the match settlement's previous state onto the
+// arena settlement write (the Arena field is carried separately).
+func arenaPrevState(s MatchPrevState) ArenaPrevState {
+	return ArenaPrevState{
+		Elo:      s.Elo,
+		Rating:   s.Rating,
+		League:   s.League,
+		Count6M:  s.Count6M,
+		Count2M:  s.Count2M,
+		Settings: s.Settings,
+	}
 }
 
 // playerIDsOf returns the keys of a player→score map as a slice.
