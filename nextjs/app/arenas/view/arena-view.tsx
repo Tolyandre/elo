@@ -103,9 +103,16 @@ export function ArenaView() {
   // feed (membership-scoped, ADR-36); an explicit arena loads that arena's
   // own feed.
   const tenantFeed = explicitId == null && tenant != null;
+  // On the main page of a members-only tenant («Только участники
+  // сообщества») the community membership is the boundary already — the
+  // players and feed tabs drop the club filter there.
+  const showClubFilter = !(tenantFeed && tenant.arena_membership_mode === "members_only");
+  // A ?club= left in the URL from before the mode switched must not keep
+  // filtering the feed invisibly once the select is gone.
+  const effectiveFilters = showClubFilter ? filters : { playerId: filters.playerId, gameId: filters.gameId };
   const feed = useArenaFeed(
     { arenaId: effectiveId, tenantId: tenantFeed ? tenant.id : null },
-    filters,
+    effectiveFilters,
   );
 
   // Players tab: period for the change indicators, club filter. The filter
@@ -235,7 +242,7 @@ export function ArenaView() {
             )}
 
             <TabsContent value="players" className="space-y-4">
-              <ClubSelect value={clubId} onChange={setClubId} />
+              {showClubFilter && <ClubSelect value={clubId} onChange={setClubId} />}
               <div className="flex gap-2 items-center">
                 <button
                   type="button"
@@ -266,10 +273,11 @@ export function ArenaView() {
                 loading={feed.loading}
                 loadingMore={feed.loadingMore}
                 hasMore={feed.hasMore}
-                filters={filters}
+                filters={effectiveFilters}
                 onFiltersChange={handleFiltersChange}
                 onLoadMore={feed.loadMore}
                 isTenantFeed={tenantFeed}
+                showClubFilter={showClubFilter}
                 pendingGameId={pendingGameId}
               />
             </TabsContent>

@@ -24,9 +24,10 @@ import type { FeedEvent } from "@/app/api";
  * The arena feed tab (ADR-32): the server-merged event stream — matches, and
  * for the tenant community feed also its market resolutions (ADR-36). Each
  * event kind renders as its own card. The game filter is hidden when the
- * arena's filter pins it to exactly one game. The offline-sync queue rides on
- * top of the tenant feed, like /matches did. (Live tables moved to the main
- * page, above the tabs.)
+ * arena's filter pins it to exactly one game; the club filter is hidden on a
+ * members-only tenant's main page (arena-view computes that). The offline-sync
+ * queue rides on top of the tenant feed, like /matches did. (Live tables
+ * moved to the main page, above the tabs.)
  */
 export function ArenaFeedTab({
     arena,
@@ -38,6 +39,7 @@ export function ArenaFeedTab({
     onFiltersChange,
     onLoadMore,
     isTenantFeed,
+    showClubFilter,
     pendingGameId,
 }: {
     arena: Arena;
@@ -49,6 +51,7 @@ export function ArenaFeedTab({
     onFiltersChange: (filters: ArenaMatchFilters) => void;
     onLoadMore: () => void;
     isTenantFeed: boolean;
+    showClubFilter: boolean;
     pendingGameId?: Base58ID;
 }) {
     const { roundToInteger } = useMe();
@@ -87,15 +90,17 @@ export function ArenaFeedTab({
             <Card>
                 <CardContent>
                     <FieldGroup>
-                        <Field>
-                            <FieldLabel className="sr-only">Клуб</FieldLabel>
-                            <FieldContent>
-                                <ClubSelect
-                                    value={filters.clubId ?? null}
-                                    onChange={(id) => onFiltersChange({ ...filters, clubId: id ?? undefined })}
-                                />
-                            </FieldContent>
-                        </Field>
+                        {showClubFilter && (
+                            <Field>
+                                <FieldLabel className="sr-only">Клуб</FieldLabel>
+                                <FieldContent>
+                                    <ClubSelect
+                                        value={filters.clubId ?? null}
+                                        onChange={(id) => onFiltersChange({ ...filters, clubId: id ?? undefined })}
+                                    />
+                                </FieldContent>
+                            </Field>
+                        )}
 
                         <Field>
                             <FieldLabel className="sr-only">Игрок</FieldLabel>
