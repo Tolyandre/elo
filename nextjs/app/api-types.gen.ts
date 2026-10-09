@@ -2397,12 +2397,12 @@ export interface components {
         AuditArenaUpdateDetails: {
             schema_version: number;
             name?: {
-                from?: string | null;
-                to?: string | null;
+                from: string | null;
+                to: string | null;
             } | null;
             starting_rating?: {
-                from?: number;
-                to?: number;
+                from: number;
+                to: number;
             } | null;
             /** @description The league list (kinds or parameters) changed. */
             leagues_changed: boolean;

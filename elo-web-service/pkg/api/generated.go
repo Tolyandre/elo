@@ -2422,13 +2422,13 @@ type AuditAuditArenaUpdateDetails struct {
 	// LeaguesChanged The league list (kinds or parameters) changed.
 	LeaguesChanged bool `json:"leagues_changed"`
 	Name           *struct {
-		From *string `json:"from,omitempty"`
-		To   *string `json:"to,omitempty"`
+		From *string `json:"from"`
+		To   *string `json:"to"`
 	} `json:"name,omitempty"`
 	SchemaVersion  int `json:"schema_version"`
 	StartingRating *struct {
-		From *float32 `json:"from,omitempty"`
-		To   *float32 `json:"to,omitempty"`
+		From float32 `json:"from"`
+		To   float32 `json:"to"`
 	} `json:"starting_rating,omitempty"`
 }
 

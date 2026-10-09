@@ -539,6 +539,7 @@ AuditArenaUpdateDetails:
     name:
       type: object
       nullable: true
+      required: [from, to]
       properties:
         from:
           type: string
@@ -549,6 +550,7 @@ AuditArenaUpdateDetails:
     starting_rating:
       type: object
       nullable: true
+      required: [from, to]
       properties:
         from:
           type: number

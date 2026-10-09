@@ -648,3 +648,73 @@ func TestAuditClubMembershipAndIcon(t *testing.T) {
 		t.Fatalf("leave diff = %+v, want [%s] removed", leaveDoc.Players, wantPlayer)
 	}
 }
+
+// TestAuditArenaUpdate covers the user-managed arena surface (ADR-24): a
+// rename/settings/filter change leaves one arena-update row with the field
+// diff; a no-op update leaves no row.
+func TestAuditArenaUpdate(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	router := setupRouter(pool)
+	editor, _ := createTestUserWithID(t, pool, true)
+
+	w := doJSON(t, router, http.MethodPost, "/arenas", editor,
+		`{"name":"кланк (аудит)","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":1000,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /arenas: %d %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		Data struct {
+			Id string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+
+	// Rename + starting-rating change: one combined diff.
+	if w := doJSON(t, router, http.MethodPatch, "/arenas/"+created.Data.Id, editor,
+		`{"name":"кланк (аудит) v2","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":950,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`); w.Code != http.StatusOK {
+		t.Fatalf("PATCH arena: %d %s", w.Code, w.Body.String())
+	}
+	// A no-op update (same body again) must add no row.
+	if w := doJSON(t, router, http.MethodPatch, "/arenas/"+created.Data.Id, editor,
+		`{"name":"кланк (аудит) v2","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":950,"catch_up":{"earned_min":2,"earned_max":64,"tau":100},"leagues":[]}}`); w.Code != http.StatusOK {
+		t.Fatalf("no-op PATCH arena: %d %s", w.Code, w.Body.String())
+	}
+
+	page := listAudit(t, router, "?entity_type=arena&entity_id="+created.Data.Id)
+	if len(page.Data) != 1 {
+		t.Fatalf("arena audit has %d entries, want exactly 1 (the changed update; create emits no details row and the no-op none)", len(page.Data))
+	}
+	e := page.Data[0]
+	if e.Action != "updated" || e.EntityType != "arena" {
+		t.Fatalf("entry = %s/%s, want arena/updated", e.EntityType, e.Action)
+	}
+
+	var doc struct {
+		Name *struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"name"`
+		StartingRating *struct {
+			From float64 `json:"from"`
+			To   float64 `json:"to"`
+		} `json:"starting_rating"`
+		LeaguesChanged bool `json:"leagues_changed"`
+		FilterChanged  bool `json:"filter_changed"`
+	}
+	if err := json.Unmarshal(e.Details, &doc); err != nil {
+		t.Fatalf("details: %v (%s)", err, e.Details)
+	}
+	if doc.Name == nil || doc.Name.From != "кланк (аудит)" || doc.Name.To != "кланк (аудит) v2" {
+		t.Fatalf("name diff = %+v, want rename", doc.Name)
+	}
+	if doc.StartingRating == nil || doc.StartingRating.From != 1000 || doc.StartingRating.To != 950 {
+		t.Fatalf("starting_rating diff = %+v, want 1000 → 950", doc.StartingRating)
+	}
+	if doc.LeaguesChanged || doc.FilterChanged {
+		t.Errorf("leagues/filter changed = %v/%v, want false/false", doc.LeaguesChanged, doc.FilterChanged)
+	}
+}
