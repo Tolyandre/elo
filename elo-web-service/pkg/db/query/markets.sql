@@ -444,6 +444,17 @@ JOIN players p ON p.id = bsd.player_id
 WHERE bsd.market_id = $1 AND bsd.discriminator = 'market'
 ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC;
 
+-- name: GetSettlementDetailsByIDs :many
+-- Same shape as GetSettlementDetails for an explicit market id set (the
+-- markets list and the feeds); grouped client-side by market_id, each group
+-- keeping the per-market rank order.
+SELECT bsd.market_id, bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
+FROM arena_settlements bsd
+JOIN players p ON p.id = bsd.player_id
+WHERE bsd.market_id = ANY(sqlc.arg('market_ids')::uuid[]) AND bsd.discriminator = 'market'
+ORDER BY bsd.market_id, (bsd.elo_earned + bsd.elo_staked) DESC;
+
 -- name: GetMarketGuarantorPayouts :many
 -- Guarantor-role settlement rows (discriminator 'market_guarantor') — the
 -- per-guarantor payout rollup. A player who is both buyer and guarantor has a
@@ -461,6 +472,19 @@ JOIN arena_settlements bsd ON bsd.market_id = g.market_id
 JOIN players p ON p.id = g.player_id
 WHERE g.market_id = $1 AND bsd.discriminator = 'market_guarantor'
 ORDER BY sort_key DESC;
+
+-- name: GetMarketGuarantorPayoutsByIDs :many
+-- Same shape as GetMarketGuarantorPayouts for an explicit market id set
+-- (the markets list and the feeds); grouped client-side by market_id.
+SELECT DISTINCT bsd.market_id, bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned,
+       (bsd.elo_earned + bsd.elo_staked)::float8 AS sort_key
+FROM market_guarantees g
+JOIN arena_settlements bsd ON bsd.market_id = g.market_id
+    AND bsd.player_id = g.player_id
+JOIN players p ON p.id = g.player_id
+WHERE g.market_id = ANY(sqlc.arg('market_ids')::uuid[]) AND bsd.discriminator = 'market_guarantor'
+ORDER BY bsd.market_id, sort_key DESC;
 
 -- name: LockMarketBetting :exec
 -- Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).

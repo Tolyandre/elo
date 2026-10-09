@@ -163,18 +163,10 @@ func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequest
 }
 
 // arenaMatchesCount counts the matches meeting the arena's filter for the
-// response of the by-game/by-tournament lookups (ListArenas embeds the count).
+// response of the by-game/by-tournament lookups (ListArenas embeds the count;
+// this is its single-arena form — a direct count, not a full list re-run).
 func (s *StrictServer) arenaMatchesCount(ctx context.Context, a elo.Arena) (int, error) {
-	arenas, err := s.api.ArenaService.ListArenas(ctx)
-	if err != nil {
-		return 0, err
-	}
-	for _, aw := range arenas {
-		if aw.ID == a.ID {
-			return aw.MatchesCount, nil
-		}
-	}
-	return 0, nil
+	return s.api.ArenaService.CountArenaMatches(ctx, a.ID)
 }
 
 func (s *StrictServer) CreateArena(ctx context.Context, request CreateArenaRequestObject) (CreateArenaResponseObject, error) {

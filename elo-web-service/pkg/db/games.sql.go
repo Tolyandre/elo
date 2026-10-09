@@ -80,6 +80,34 @@ func (q *Queries) DeleteGame(ctx context.Context, argID id.ID) (Game, error) {
 	return i, err
 }
 
+const filterCoopGameIDs = `-- name: FilterCoopGameIDs :many
+SELECT id FROM games
+WHERE id = ANY($1::uuid[]) AND game_mode = 'coop'
+`
+
+// The subset of @game_ids whose game_mode is coop — the batch form behind
+// RejectCoopGames (ADR-33). Unknown ids pass through: the foreign keys
+// surface them at the write.
+func (q *Queries) FilterCoopGameIDs(ctx context.Context, gameIds []id.ID) ([]id.ID, error) {
+	rows, err := q.db.Query(ctx, filterCoopGameIDs, gameIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []id.ID{}
+	for rows.Next() {
+		var id id.ID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getGameByID = `-- name: GetGameByID :one
 SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode FROM games
 WHERE id = $1

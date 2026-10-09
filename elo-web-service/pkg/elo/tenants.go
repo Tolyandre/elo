@@ -131,12 +131,21 @@ func checkTenantParticipantRule(ctx context.Context, q *db.Queries, tenant db.Te
 		return nil
 	}
 	if tenant.ArenaMembershipMode == ArenaMembershipMembersOnly {
+		// One batched read for the whole roster — the per-player probe paid a
+		// query per participant inside every match write.
+		members, err := q.TenantCurrentMembersAmong(ctx, db.TenantCurrentMembersAmongParams{
+			TenantID:  tenant.ID,
+			PlayerIds: playerIDs,
+		})
+		if err != nil {
+			return fmt.Errorf("check tenant membership: %w", err)
+		}
+		isMember := make(map[id.ID]bool, len(members))
+		for _, m := range members {
+			isMember[m] = true
+		}
 		for _, pid := range playerIDs {
-			member, err := q.PlayerIsTenantMember(ctx, db.PlayerIsTenantMemberParams{TenantID: &tenant.ID, PlayerID: pid})
-			if err != nil {
-				return fmt.Errorf("check tenant membership: %w", err)
-			}
-			if !member {
+			if !isMember[pid] {
 				return errMembersOnly
 			}
 		}

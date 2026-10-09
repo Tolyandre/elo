@@ -133,6 +133,17 @@ SELECT EXISTS (
       AND pcm.left_at IS NULL
 ) AS is_member;
 
+-- name: TenantCurrentMembersAmong :many
+-- The subset of @player_ids with an active stint in any club of the tenant —
+-- the batch form of PlayerIsTenantMember (the members_only participant gates
+-- check whole rosters/seatings in one read, ADR-36).
+SELECT DISTINCT pcm.player_id
+FROM clubs c
+JOIN player_club_membership pcm ON pcm.club_id = c.id
+WHERE c.tenant_id = sqlc.arg('tenant_id')::uuid
+  AND pcm.player_id = ANY(sqlc.arg('player_ids')::uuid[])
+  AND pcm.left_at IS NULL;
+
 -- name: TenantHasActiveMemberAmong :one
 -- Whether ANY of the players currently has an active stint in any club of
 -- the tenant (ADR-36) — the create/edit guard predicate: under any_member a

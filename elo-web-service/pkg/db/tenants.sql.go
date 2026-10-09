@@ -483,6 +483,43 @@ func (q *Queries) TenantContainsPlayers(ctx context.Context, arg TenantContainsP
 	return contains, err
 }
 
+const tenantCurrentMembersAmong = `-- name: TenantCurrentMembersAmong :many
+SELECT DISTINCT pcm.player_id
+FROM clubs c
+JOIN player_club_membership pcm ON pcm.club_id = c.id
+WHERE c.tenant_id = $1::uuid
+  AND pcm.player_id = ANY($2::uuid[])
+  AND pcm.left_at IS NULL
+`
+
+type TenantCurrentMembersAmongParams struct {
+	TenantID  id.ID   `json:"tenant_id"`
+	PlayerIds []id.ID `json:"player_ids"`
+}
+
+// The subset of @player_ids with an active stint in any club of the tenant —
+// the batch form of PlayerIsTenantMember (the members_only participant gates
+// check whole rosters/seatings in one read, ADR-36).
+func (q *Queries) TenantCurrentMembersAmong(ctx context.Context, arg TenantCurrentMembersAmongParams) ([]id.ID, error) {
+	rows, err := q.db.Query(ctx, tenantCurrentMembersAmong, arg.TenantID, arg.PlayerIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []id.ID{}
+	for rows.Next() {
+		var player_id id.ID
+		if err := rows.Scan(&player_id); err != nil {
+			return nil, err
+		}
+		items = append(items, player_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const tenantHasActiveMemberAmong = `-- name: TenantHasActiveMemberAmong :one
 SELECT EXISTS (
     SELECT 1

@@ -83,32 +83,6 @@ func marketRowFromIDs(r db.ListMarketsByIDsRow) marketRow {
 	}
 }
 
-func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
-	return marketRow{
-		ID:                r.ID,
-		TenantID:          r.TenantID,
-		MarketType:        r.MarketType,
-		Status:            r.Status,
-		ResolutionOutcome: r.ResolutionOutcome,
-		ResolutionMatchID: r.ResolutionMatchID,
-		StartsAt:          r.StartsAt,
-		ClosesAt:          r.ClosesAt,
-		CreatedAt:         r.CreatedAt,
-		ResolvedAt:        r.ResolvedAt,
-		BettingClosedAt:   r.BettingClosedAt,
-		LiquidityB:        r.LiquidityB,
-		TargetPlayerIds:   r.TargetPlayerIds,
-		AllowOtherPlayers: r.AllowOtherPlayers,
-		MwGameIds:         r.MwGameIds,
-		WsTargetPlayerID:  r.WsTargetPlayerID,
-		WsGameIds:         r.WsGameIds,
-		WinsRequired:      r.WinsRequired,
-		MaxLosses:         r.MaxLosses,
-		TwTournamentID:    r.TwTournamentID,
-		TwTournamentName:  r.TwTournamentName,
-	}
-}
-
 // buildTypedParams converts raw DB columns to the typed params union. It is
 // generic over the two generated response shapes (Market_Params and
 // MarketDetail_Params). A fresh T is allocated and its address (P) is returned;
@@ -330,7 +304,7 @@ func decodeMarketCursor(token string) (pgtype.Timestamptz, *id.ID, error) {
 // marketsByIDs assembles full Market objects (outcomes with pools; for
 // resolved markets also the settlement details and guarantor payouts) for an
 // explicit id set. Shared by the markets list and the feeds (ADR-32); page
-// bounds keep the per-resolved-market detail queries bounded.
+// bounds keep the batched rollup reads bounded.
 func (s *StrictServer) marketsByIDs(ctx context.Context, ids []id.ID) (map[id.ID]Market, error) {
 	out := make(map[id.ID]Market, len(ids))
 	if len(ids) == 0 {
@@ -349,20 +323,59 @@ func (s *StrictServer) marketsByIDs(ctx context.Context, ids []id.ID) (map[id.ID
 		liquidity[string(r.ID)] = r.LiquidityB
 	}
 	outcomes := buildAllOutcomes(outcomeRows, liquidity)
+	settlements, guarantorPayouts := s.settlementRollupsByIDs(ctx, ids)
 
 	for _, r := range rows {
 		m := buildMarket(marketRowFromIDs(r), outcomes[string(r.ID)])
 		if r.Status == "resolved" {
-			if details, err := s.api.MarketQueries.GetSettlementDetails(ctx, &r.ID); err == nil {
-				m.Settlement = convertSettlement(details)
-			}
-			if gp, err := s.api.MarketQueries.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
-				m.GuarantorSettlement = convertGuarantorPayouts(gp)
-			}
+			m.Settlement = settlements[r.ID]
+			m.GuarantorSettlement = guarantorPayouts[r.ID]
 		}
 		out[r.ID] = m
 	}
 	return out, nil
+}
+
+// settlementRollupsByIDs batches the per-resolved-market reads (buyer
+// settlement details and guarantor payouts) for a page of markets — the
+// rollups used to cost two queries per resolved market inside the loop. A
+// read failure leaves the rollups empty, matching the single-market paths:
+// a missing detail never breaks the payload.
+func (s *StrictServer) settlementRollupsByIDs(ctx context.Context, ids []id.ID) (map[id.ID]*[]SettlementDetail, map[id.ID]*[]SettlementDetail) {
+	settlements := make(map[id.ID]*[]SettlementDetail)
+	guarantors := make(map[id.ID]*[]SettlementDetail)
+
+	if details, err := s.api.MarketQueries.GetSettlementDetailsByIDs(ctx, ids); err == nil {
+		grouped := make(map[id.ID][]SettlementDetail)
+		for _, d := range details {
+			if d.MarketID == nil {
+				continue
+			}
+			grouped[*d.MarketID] = append(grouped[*d.MarketID], SettlementDetail{
+				PlayerId: d.PlayerID, PlayerName: d.PlayerName, Staked: d.Staked, Earned: d.Earned,
+			})
+		}
+		for mid, rows := range grouped {
+			slice := rows
+			settlements[mid] = &slice
+		}
+	}
+	if payouts, err := s.api.MarketQueries.GetMarketGuarantorPayoutsByIDs(ctx, ids); err == nil {
+		grouped := make(map[id.ID][]SettlementDetail)
+		for _, p := range payouts {
+			if p.MarketID == nil {
+				continue
+			}
+			grouped[*p.MarketID] = append(grouped[*p.MarketID], SettlementDetail{
+				PlayerId: p.PlayerID, PlayerName: p.PlayerName, Staked: p.Staked, Earned: p.Earned,
+			})
+		}
+		for mid, rows := range grouped {
+			slice := rows
+			guarantors[mid] = &slice
+		}
+	}
+	return settlements, guarantors
 }
 
 func (s *StrictServer) ListMarkets(ctx context.Context, request ListMarketsRequestObject) (ListMarketsResponseObject, error) {
@@ -869,26 +882,21 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 		return GetMarketsByMatchId200JSONResponse{Status: StatusSuccess, Data: []Market{}}, nil
 	}
 
-	liquidity := make(map[string]float64, len(rows))
+	// The shared id-set assembly (batched outcomes and rollups) keyed by the
+	// query's order.
+	ids := make([]id.ID, 0, len(rows))
 	for _, r := range rows {
-		liquidity[string(r.ID)] = r.LiquidityB
+		ids = append(ids, r.ID)
+	}
+	markets, err := s.marketsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
 	}
 	result := make([]Market, 0, len(rows))
-	for _, r := range rows {
-		outcomeRows, err := s.api.MarketQueries.ListMarketOutcomesWithPools(ctx, r.ID)
-		if err != nil {
-			return nil, err
+	for _, mid := range ids {
+		if m, ok := markets[mid]; ok {
+			result = append(result, m)
 		}
-		m := buildMarket(marketRowFromByMatch(r), buildOutcomes(outcomeRows, r.LiquidityB))
-		if r.Status == "resolved" {
-			if details, err := s.api.MarketQueries.GetSettlementDetails(ctx, &r.ID); err == nil {
-				m.Settlement = convertSettlement(details)
-			}
-			if gp, err := s.api.MarketQueries.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
-				m.GuarantorSettlement = convertGuarantorPayouts(gp)
-			}
-		}
-		result = append(result, m)
 	}
 
 	return GetMarketsByMatchId200JSONResponse{Status: StatusSuccess, Data: result}, nil

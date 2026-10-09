@@ -94,6 +94,24 @@ WHERE (
 )
 ORDER BY a.name;
 
+-- name: CountArenaMatches :one
+-- The matches_count subquery of ListArenas for a single arena: the by-game
+-- and by-tournament lookups need the count without re-running the whole list.
+SELECT COUNT(*) AS matches_count
+FROM matches m
+JOIN arenas a ON a.id = sqlc.arg('arena_id')::uuid
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN tenants t ON t.id = a.tenant_id
+WHERE (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
+      ELSE arena_contains_match(
+    m.mode,
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+      END);
+
 -- name: ListArenasForGame :many
 -- Arenas whose filter includes game @game_id or one of its tags, plus
 -- unconditional (global) arenas — the /games page arena list. Camp and

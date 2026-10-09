@@ -58,15 +58,29 @@ func (s *TournamentService) AcceptMatch(ctx context.Context, q *db.Queries, matc
 	if len(candidates) == 0 {
 		return nil
 	}
+	// One batched seat read for all size-matching candidates — the per-slot
+	// read inside the loop paid a query per candidate on every match write.
+	sizeMatching := make([]id.ID, 0, len(candidates))
+	for _, c := range candidates {
+		if int(c.SeatCount) == len(playerIDs) {
+			sizeMatching = append(sizeMatching, c.ID)
+		}
+	}
+	seatsBySlot := make(map[id.ID][]db.TournamentSeat, len(sizeMatching))
+	if len(sizeMatching) > 0 {
+		seatRows, err := q.ListSeatsBySlots(ctx, sizeMatching)
+		if err != nil {
+			return fmt.Errorf("list candidate seats: %w", err)
+		}
+		for _, se := range seatRows {
+			seatsBySlot[se.SlotID] = append(seatsBySlot[se.SlotID], se)
+		}
+	}
 	for _, c := range candidates {
 		if int(c.SeatCount) != len(playerIDs) {
 			continue
 		}
-		seats, err := q.ListSeatsBySlots(ctx, []id.ID{c.ID})
-		if err != nil {
-			return fmt.Errorf("list candidate seats: %w", err)
-		}
-		if !seatSetEquals(seats, playerIDs) {
+		if !seatSetEquals(seatsBySlot[c.ID], playerIDs) {
 			continue
 		}
 		// Unique fit (deterministic (track, index, position) order as the

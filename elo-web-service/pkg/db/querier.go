@@ -58,6 +58,9 @@ type Querier interface {
 	// The champion is invalidated by a post-completion bracket change (an edit
 	// cascade); the tournament re-runs its final and completes again.
 	ClearTournamentWinner(ctx context.Context, argID id.ID) error
+	// The matches_count subquery of ListArenas for a single arena: the by-game
+	// and by-tournament lookups need the count without re-running the whole list.
+	CountArenaMatches(ctx context.Context, arenaID id.ID) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	// Matches of one player inside the arena (per the membership function) within
 	// [date_from, date_to] — the elite promotion counters. Camp arenas have no
@@ -155,6 +158,10 @@ type Querier interface {
 	// from the submitted set. An empty array removes everyone.
 	DeleteTournamentParticipantsNotIn(ctx context.Context, arg DeleteTournamentParticipantsNotInParams) error
 	DeleteUser(ctx context.Context, argID id.ID) error
+	// The subset of @game_ids whose game_mode is coop — the batch form behind
+	// RejectCoopGames (ADR-33). Unknown ids pass through: the foreign keys
+	// surface them at the write.
+	FilterCoopGameIDs(ctx context.Context, gameIds []id.ID) ([]id.ID, error)
 	// Arena queries (ADR-24, ADR-27, ADR-26). The "does this match belong to this
 	// arena" condition has ONE canonical structure, dispatched per flavor:
 	//
@@ -222,6 +229,9 @@ type Querier interface {
 	// so DISTINCT accepts the ORDER BY. A market's rows live in exactly one arena
 	// (its tenant's main arena, ADR-36), so market_id alone identifies them.
 	GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error)
+	// Same shape as GetMarketGuarantorPayouts for an explicit market id set
+	// (the markets list and the feeds); grouped client-side by market_id.
+	GetMarketGuarantorPayoutsByIDs(ctx context.Context, marketIds []id.ID) ([]GetMarketGuarantorPayoutsByIDsRow, error)
 	GetMarketResolvedAt(ctx context.Context, argID id.ID) (pgtype.Timestamptz, error)
 	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleRow, error)
 	// Returns resolved_at and betting_closed_at for the history conflict validation.
@@ -274,6 +284,10 @@ type Querier interface {
 	// A market settles exactly once into its owning tenant's main arena (ADR-36),
 	// so market_id alone identifies its rows (index arena_settlements_market_id_idx).
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
+	// Same shape as GetSettlementDetails for an explicit market id set (the
+	// markets list and the feeds); grouped client-side by market_id, each group
+	// keeping the per-market rank order.
+	GetSettlementDetailsByIDs(ctx context.Context, marketIds []id.ID) ([]GetSettlementDetailsByIDsRow, error)
 	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)
 	GetTagGameCount(ctx context.Context, tagID id.ID) (int64, error)
 	GetTenant(ctx context.Context, argID id.ID) ([]GetTenantRow, error)
@@ -629,6 +643,10 @@ type Querier interface {
 	// the tenant's arena (the SQL-side twin, tenant_arena_contains_match, probes
 	// match_scores itself and lives in migration 069).
 	TenantContainsPlayers(ctx context.Context, arg TenantContainsPlayersParams) (bool, error)
+	// The subset of @player_ids with an active stint in any club of the tenant —
+	// the batch form of PlayerIsTenantMember (the members_only participant gates
+	// check whole rosters/seatings in one read, ADR-36).
+	TenantCurrentMembersAmong(ctx context.Context, arg TenantCurrentMembersAmongParams) ([]id.ID, error)
 	// Whether ANY of the players currently has an active stint in any club of
 	// the tenant (ADR-36) — the create/edit guard predicate: under any_member a
 	// match or seating must keep at least one CURRENT member, else it would

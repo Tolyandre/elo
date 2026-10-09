@@ -402,15 +402,20 @@ func writeTournamentPool(ctx context.Context, q *db.Queries, tid id.ID, games []
 	if err := q.DeleteTournamentGames(ctx, tid); err != nil {
 		return fmt.Errorf("clear pool: %w", err)
 	}
+	gameIDs := make([]id.ID, 0, len(games))
 	for _, g := range games {
 		if g.Min < 2 || g.Max < g.Min {
 			return ErrTournamentPoolEntryInvalid
 		}
-		// Coop-only games never produce rating matches (ADR-33) — no bracket
-		// slot can be built on them. Unknown ids keep the FK behavior.
-		if err := RejectCoopGames(ctx, q, []id.ID{g.GameID}); err != nil {
-			return err
-		}
+		gameIDs = append(gameIDs, g.GameID)
+	}
+	// Coop-only games never produce rating matches (ADR-33) — no bracket
+	// slot can be built on them. One batched mode check for the whole pool;
+	// unknown ids keep the FK behavior.
+	if err := RejectCoopGames(ctx, q, gameIDs); err != nil {
+		return err
+	}
+	for _, g := range games {
 		if err := q.AddTournamentGame(ctx, db.AddTournamentGameParams{
 			TournamentID: tid, GameID: g.GameID, MinPlayers: int32(g.Min), MaxPlayers: int32(g.Max),
 		}); err != nil {
@@ -455,12 +460,19 @@ func ensureTournamentOpenToPlayers(ctx context.Context, q *db.Queries, tenantID 
 	if tenant.TournamentsOpenness != TournamentOpennessMembersOnly {
 		return nil
 	}
+	members, err := q.TenantCurrentMembersAmong(ctx, db.TenantCurrentMembersAmongParams{
+		TenantID:  tenantID,
+		PlayerIds: players,
+	})
+	if err != nil {
+		return fmt.Errorf("check tenant membership: %w", err)
+	}
+	isMember := make(map[id.ID]bool, len(members))
+	for _, m := range members {
+		isMember[m] = true
+	}
 	for _, pid := range players {
-		member, err := q.PlayerIsTenantMember(ctx, db.PlayerIsTenantMemberParams{TenantID: &tenantID, PlayerID: pid})
-		if err != nil {
-			return fmt.Errorf("check tenant membership: %w", err)
-		}
-		if !member {
+		if !isMember[pid] {
 			return ErrTournamentMembersOnly
 		}
 	}

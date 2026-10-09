@@ -55,6 +55,32 @@ func (q *Queries) ClearArenaStale(ctx context.Context, arg ClearArenaStaleParams
 	return err
 }
 
+const countArenaMatches = `-- name: CountArenaMatches :one
+SELECT COUNT(*) AS matches_count
+FROM matches m
+JOIN arenas a ON a.id = $1::uuid
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN tenants t ON t.id = a.tenant_id
+WHERE (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
+      ELSE arena_contains_match(
+    m.mode,
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+      END)
+`
+
+// The matches_count subquery of ListArenas for a single arena: the by-game
+// and by-tournament lookups need the count without re-running the whole list.
+func (q *Queries) CountArenaMatches(ctx context.Context, arenaID id.ID) (int64, error) {
+	row := q.db.QueryRow(ctx, countArenaMatches, arenaID)
+	var matches_count int64
+	err := row.Scan(&matches_count)
+	return matches_count, err
+}
+
 const countPlayerMatchesInArenaInPeriod = `-- name: CountPlayerMatchesInArenaInPeriod :one
 SELECT COUNT(*)::int AS count
 FROM matches m

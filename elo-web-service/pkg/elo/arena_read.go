@@ -48,6 +48,17 @@ func (s *ArenaService) GetArena(ctx context.Context, arenaID id.ID) (Arena, erro
 	return arenaFromGetArenaRow(r)
 }
 
+// CountArenaMatches counts the matches meeting the arena's filter — the
+// single-arena form of ListArenas's embedded matches_count (the by-game and
+// by-tournament lookups need the count without re-running the whole list).
+func (s *ArenaService) CountArenaMatches(ctx context.Context, arenaID id.ID) (int, error) {
+	n, err := s.Queries.CountArenaMatches(ctx, arenaID)
+	if err != nil {
+		return 0, fmt.Errorf("count arena matches: %w", err)
+	}
+	return int(n), nil
+}
+
 func (s *ArenaService) ListArenasForGame(ctx context.Context, gameID id.ID) ([]Arena, error) {
 	rows, err := s.Queries.ListArenasForGame(ctx, &gameID)
 	if err != nil {

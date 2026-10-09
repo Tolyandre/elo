@@ -67,12 +67,20 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 	if err != nil {
 		return fmt.Errorf("get markets for unsettle: %w", err)
 	}
+	// Markets in one unsettle sweep usually share one tenant; resolve each
+	// tenant's main arena once instead of once per market.
+	arenas := make(map[id.ID]Arena)
 	for _, row := range rows {
 		// Each market's rows live in its tenant's main arena (ADR-36) — the
 		// global-arena bulk wipe in RecalculateFrom does not cover them.
-		arena, err := marketArena(ctx, q, row.TenantID)
-		if err != nil {
-			return err
+		arena, ok := arenas[row.TenantID]
+		if !ok {
+			var err error
+			arena, err = marketArena(ctx, q, row.TenantID)
+			if err != nil {
+				return err
+			}
+			arenas[row.TenantID] = arena
 		}
 		if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
 			ArenaID:  arena.ID,

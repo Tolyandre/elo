@@ -95,6 +95,13 @@ RETURNING *;
 SELECT * FROM games
 WHERE name = $1;
 
+-- name: FilterCoopGameIDs :many
+-- The subset of @game_ids whose game_mode is coop — the batch form behind
+-- RejectCoopGames (ADR-33). Unknown ids pass through: the foreign keys
+-- surface them at the write.
+SELECT id FROM games
+WHERE id = ANY(sqlc.arg('game_ids')::uuid[]) AND game_mode = 'coop';
+
 -- name: GetGameByID :one
 SELECT * FROM games
 WHERE id = $1;

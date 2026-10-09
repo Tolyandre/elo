@@ -483,6 +483,56 @@ func (q *Queries) GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID)
 	return items, nil
 }
 
+const getMarketGuarantorPayoutsByIDs = `-- name: GetMarketGuarantorPayoutsByIDs :many
+SELECT DISTINCT bsd.market_id, bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned,
+       (bsd.elo_earned + bsd.elo_staked)::float8 AS sort_key
+FROM market_guarantees g
+JOIN arena_settlements bsd ON bsd.market_id = g.market_id
+    AND bsd.player_id = g.player_id
+JOIN players p ON p.id = g.player_id
+WHERE g.market_id = ANY($1::uuid[]) AND bsd.discriminator = 'market_guarantor'
+ORDER BY bsd.market_id, sort_key DESC
+`
+
+type GetMarketGuarantorPayoutsByIDsRow struct {
+	MarketID   *id.ID  `json:"market_id"`
+	PlayerID   id.ID   `json:"player_id"`
+	PlayerName string  `json:"player_name"`
+	Staked     float64 `json:"staked"`
+	Earned     float64 `json:"earned"`
+	SortKey    float64 `json:"sort_key"`
+}
+
+// Same shape as GetMarketGuarantorPayouts for an explicit market id set
+// (the markets list and the feeds); grouped client-side by market_id.
+func (q *Queries) GetMarketGuarantorPayoutsByIDs(ctx context.Context, marketIds []id.ID) ([]GetMarketGuarantorPayoutsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, getMarketGuarantorPayoutsByIDs, marketIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMarketGuarantorPayoutsByIDsRow{}
+	for rows.Next() {
+		var i GetMarketGuarantorPayoutsByIDsRow
+		if err := rows.Scan(
+			&i.MarketID,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Staked,
+			&i.Earned,
+			&i.SortKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMarketResolvedAt = `-- name: GetMarketResolvedAt :one
 SELECT resolved_at FROM markets WHERE id = $1
 `
@@ -779,6 +829,52 @@ func (q *Queries) GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]
 	for rows.Next() {
 		var i GetSettlementDetailsRow
 		if err := rows.Scan(
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Staked,
+			&i.Earned,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSettlementDetailsByIDs = `-- name: GetSettlementDetailsByIDs :many
+SELECT bsd.market_id, bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
+FROM arena_settlements bsd
+JOIN players p ON p.id = bsd.player_id
+WHERE bsd.market_id = ANY($1::uuid[]) AND bsd.discriminator = 'market'
+ORDER BY bsd.market_id, (bsd.elo_earned + bsd.elo_staked) DESC
+`
+
+type GetSettlementDetailsByIDsRow struct {
+	MarketID   *id.ID  `json:"market_id"`
+	PlayerID   id.ID   `json:"player_id"`
+	PlayerName string  `json:"player_name"`
+	Staked     float64 `json:"staked"`
+	Earned     float64 `json:"earned"`
+}
+
+// Same shape as GetSettlementDetails for an explicit market id set (the
+// markets list and the feeds); grouped client-side by market_id, each group
+// keeping the per-market rank order.
+func (q *Queries) GetSettlementDetailsByIDs(ctx context.Context, marketIds []id.ID) ([]GetSettlementDetailsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, getSettlementDetailsByIDs, marketIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetSettlementDetailsByIDsRow{}
+	for rows.Next() {
+		var i GetSettlementDetailsByIDsRow
+		if err := rows.Scan(
+			&i.MarketID,
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Staked,

@@ -415,15 +415,6 @@ func groupMatchRows[R any](rows []R, part func(*R) matchRowParts) (map[id.ID]*te
 // Player helper (extracted from the former players.go).
 // ---------------------------------------------------------------------------
 
-func findPlayer(players []elo.Player, playerID id.ID) *elo.Player {
-	for _, player := range players {
-		if player.ID == playerID {
-			return &player
-		}
-	}
-	return nil
-}
-
 // idPtr converts an optional canonical-id string (e.g. from an internal cursor
 // token) to *id.ID; strPtr is the inverse. Cursors embed ids in their canonical
 // form as plain strings — an id.ID field would marshal to its short wire form.

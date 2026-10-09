@@ -91,17 +91,15 @@ func MatchModeForGame(gameMode, requestMode string) (string, error) {
 // tournaments cannot be built on them. Unknown ids pass through — the
 // foreign keys surface them.
 func RejectCoopGames(ctx context.Context, q *db.Queries, gameIDs []id.ID) error {
-	for _, gid := range gameIDs {
-		game, err := q.GetGameByID(ctx, gid)
-		if err != nil {
-			if db.IsNoRows(err) {
-				continue
-			}
-			return err
-		}
-		if game.GameMode == GameModeCoop {
-			return ErrCoopGameNotAllowed
-		}
+	if len(gameIDs) == 0 {
+		return nil
+	}
+	coop, err := q.FilterCoopGameIDs(ctx, gameIDs)
+	if err != nil {
+		return fmt.Errorf("check game modes: %w", err)
+	}
+	if len(coop) > 0 {
+		return ErrCoopGameNotAllowed
 	}
 	return nil
 }

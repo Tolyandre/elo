@@ -29,8 +29,10 @@ func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersReque
 		}
 	}
 
-	// Ranking reads happen only for the tenant-scoped variant.
-	var actualPlayers, dayAgoPlayers, weekAgoPlayers []elo.Player
+	// Ranking reads happen only for the tenant-scoped variant. The rank-change
+	// points are indexed once instead of a linear scan per player.
+	var actualPlayers []elo.Player
+	var dayAgoByID, weekAgoByID map[id.ID]elo.Player
 	if !arenaID.IsZero() {
 		now := time.Now()
 		tDay := now.Add(-time.Hour * 12)
@@ -41,6 +43,7 @@ func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersReque
 		if err != nil {
 			return nil, err
 		}
+		var dayAgoPlayers, weekAgoPlayers []elo.Player
 		dayAgoPlayers, err = s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, &tDay)
 		if err != nil {
 			return nil, err
@@ -48,6 +51,14 @@ func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersReque
 		weekAgoPlayers, err = s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, &tWeek)
 		if err != nil {
 			return nil, err
+		}
+		dayAgoByID = make(map[id.ID]elo.Player, len(dayAgoPlayers))
+		for _, p := range dayAgoPlayers {
+			dayAgoByID[p.ID] = p
+		}
+		weekAgoByID = make(map[id.ID]elo.Player, len(weekAgoPlayers))
+		for _, p := range weekAgoPlayers {
+			weekAgoByID[p.ID] = p
 		}
 	}
 
@@ -98,8 +109,8 @@ func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersReque
 
 	result := make([]Player, 0, len(actualPlayers))
 	for _, p := range actualPlayers {
-		dayAgo := findPlayer(dayAgoPlayers, p.ID)
-		weekAgo := findPlayer(weekAgoPlayers, p.ID)
+		dayAgo := dayAgoByID[p.ID]
+		weekAgo := weekAgoByID[p.ID]
 
 		var userID *id.ID
 		var geologistName *string
