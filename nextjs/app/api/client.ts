@@ -80,6 +80,21 @@ export class ApiError extends Error {
 }
 
 /**
+ * Parse a raw-fetch JSON body defensively. Unlike Response.json(), an empty or
+ * non-JSON body (a crashed server's bare 500, an HTML error page) resolves to
+ * null instead of throwing "Unexpected end of JSON input".
+ */
+export async function parseJsonBody(res: Response): Promise<unknown | null> {
+    const text = await res.text();
+    if (text.length === 0) return null;
+    try {
+        return JSON.parse(text);
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Throws a proper Error carrying the server's message from an openapi-fetch error body.
  * openapi-fetch returns the parsed error object (`{ status, message }`) rather than an
  * Error instance; throwing it verbatim makes `instanceof Error` fail and produces

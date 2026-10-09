@@ -59,7 +59,12 @@ func main() {
 	// changes, new arenas) after a debounce; match writes drain synchronously.
 	go apiHandler.ArenaService.ScheduleNextUpdate(context.Background())
 
-	router := gin.Default()
+	// gin.New + explicit middleware instead of gin.Default(): the built-in
+	// Recovery answers panics with a bare 500 and an empty body; JSONRecovery
+	// answers in the common {"status":"fail","message":...} envelope.
+	router := gin.New()
+	router.Use(gin.Logger())
+	router.Use(api.JSONRecovery())
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{getDomainWithScheme(cfg.Config.FrontendUri)},

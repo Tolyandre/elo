@@ -1,7 +1,7 @@
 // Arenas (ADR-24) and their feeds (ADR-32): the rating surfaces (global,
 // per-game, camps), the debug full-recalculation trigger, and the cursor-
 // paginated event feeds.
-import { client, EloWebServiceBaseUrl, unwrap } from "./client";
+import { client, EloWebServiceBaseUrl, parseJsonBody, unwrap } from "./client";
 import type { components } from "../api-types.gen";
 import type {
     Arena,
@@ -40,8 +40,11 @@ export async function getArenaPromise(id: Base58ID): Promise<Arena> {
 export async function getArenaSafePromise(id: Base58ID): Promise<Arena | null> {
     const res = await fetch(`${EloWebServiceBaseUrl}/arenas/${id}`, { credentials: "include" });
     if (res.status === 404) return null;
-    const body = await res.json();
-    if (body.status === "fail") throw new Error(body.message);
+    // Defensive parse: a 5xx with an empty body must surface as a status
+    // message, not Response.json()'s "Unexpected end of JSON input".
+    const body = (await parseJsonBody(res)) as { status?: string; message?: string; data?: Arena } | null;
+    if (body?.status === "fail") throw new Error(body.message);
+    if (!res.ok || !body) throw new Error(`Ошибка ${res.status}`);
     return body.data as Arena;
 }
 

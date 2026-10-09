@@ -1,7 +1,7 @@
 // Auth/session endpoints and user administration. /auth/me and the OAuth2
 // callback use manual fetches: 401 must resolve to undefined (cached-identity
 // fallback), and the callback relays non-standard query params (ADR-29).
-import { client, EloWebServiceBaseUrl, NetworkError, unwrap } from "./client";
+import { client, EloWebServiceBaseUrl, NetworkError, parseJsonBody, unwrap } from "./client";
 import { toast } from "sonner";
 import type { Status, User } from "./types";
 import type { Base58ID } from "@/lib/id";
@@ -18,9 +18,9 @@ export async function getMePromise(): Promise<User | undefined> {
     }
     if (res.status === 401) return undefined;
     try {
-        const body = await res.json();
-        if (body.status === "fail") throw new Error(body.message);
-        if (!res.ok) throw new Error(`Ошибка ${res.status}`);
+        const body = (await parseJsonBody(res)) as { status?: string; message?: string; data?: User } | null;
+        if (body?.status === "fail") throw new Error(body.message);
+        if (!res.ok || !body) throw new Error(`Ошибка ${res.status}`);
         return body.data as User;
     } catch (error) {
         if (error instanceof Error) toast.error(error.message);
@@ -46,9 +46,9 @@ export async function oauth2Callback(params?: Record<string, string | string[]>)
             url += `?${searchParams.toString()}`;
         }
         const res = await fetch(url, { method: 'GET', credentials: 'include' });
-        const body = await res.json();
-        if (body.status === "fail") throw new Error(body.message);
-        if (!res.ok) throw new Error(`Ошибка ${res.status}`);
+        const body = (await parseJsonBody(res)) as (Status & { message?: string }) | null;
+        if (body?.status === "fail") throw new Error(body.message);
+        if (!res.ok || !body) throw new Error(`Ошибка ${res.status}`);
         return body;
     } catch (error) {
         if (error instanceof Error) toast.error(error.message);
