@@ -433,10 +433,12 @@ function GameCreateForm({
         </Select>
       </div>
       <GameSuggestionChips
-        suggestions={suggestions}
+        suggestions={suggestions.suggestions}
         accepted={accepted}
         onAccept={(s) => setAccepted(suggestionMeta(s))}
         onClear={() => setAccepted(null)}
+        teseraUnavailable={suggestions.teseraUnavailable}
+        bggUnavailable={suggestions.bggUnavailable}
       />
       {accepted && <AcceptedMetaLine accepted={accepted} />}
       {sortedTags.length > 0 && (

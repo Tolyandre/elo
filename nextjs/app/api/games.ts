@@ -33,15 +33,28 @@ export async function patchGamePromise(id: Base58ID, payload: GameMetadata) {
 }
 
 /**
- * Catalogue matches for a name being typed. Best-effort by design: any
- * failure (network error, 5xx, offline) resolves to an empty list —
+ * Catalogue matches for a name being typed. BGG-first with Tesera
+ * enrichment; a failing catalogue degrades the result instead of failing
+ * the request (the *_unavailable flags say which source is out), and a total
+ * failure (network error, 5xx, offline) still resolves to an empty list —
  * suggestions must never block game creation.
  */
-export async function suggestGamesPromise(query: string): Promise<GameSuggestion[]> {
+export type GameSuggestions = {
+    games: GameSuggestion[];
+    teseraUnavailable: boolean;
+    bggUnavailable: boolean;
+};
+
+export async function suggestGamesPromise(query: string): Promise<GameSuggestions> {
     try {
-        return (await unwrap(client.GET("/games/suggestions", { params: { query: { query } } }))).data.games;
+        const data = (await unwrap(client.GET("/games/suggestions", { params: { query: { query } } }))).data;
+        return {
+            games: data.games,
+            teseraUnavailable: data.tesera_unavailable === true,
+            bggUnavailable: data.bgg_unavailable === true,
+        };
     } catch {
-        return [];
+        return { games: [], teseraUnavailable: false, bggUnavailable: false };
     }
 }
 

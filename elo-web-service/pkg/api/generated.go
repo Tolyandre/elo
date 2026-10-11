@@ -1779,28 +1779,35 @@ type GameMatchStat struct {
 	SilverCount int `json:"silver_count"`
 }
 
-// GameSuggestion A match candidate from the Tesera catalogue. Base games sort before Tesera-flagged additions (the flag is unreliable, so nothing is filtered from the picker).
+// GameSuggestion A match candidate for a name being typed: from the BoardGameGeek search (possibly enriched with a Tesera id) or, when BGG has nothing, from the Tesera catalogue itself. Base games sort before additions (the addition flag comes from BGG's expansion links or Tesera's unreliable flag — shown as a hint, never a filter).
 type GameSuggestion struct {
-	// BggRef Absent when Tesera knows no BoardGameGeek link
+	// BggRef Absent when the candidate comes from Tesera without a BGG link
 	BggRef *int `json:"bgg_ref,omitempty"`
 
-	// IsAddition Tesera's addition/expansion flag (unreliable — shown as a hint, not a filter)
+	// IsAddition Expansion/expansion-flag hint — shown as a hint, not a filter
 	IsAddition bool    `json:"is_addition"`
 	NameEn     *string `json:"name_en,omitempty"`
 
-	// NameRu Localized Russian title, absent when the game was not published in Russian
-	NameRu    *string `json:"name_ru,omitempty"`
-	PhotoUrl  *string `json:"photo_url,omitempty"`
-	TeseraRef int     `json:"tesera_ref"`
+	// NameRu Localized Russian title, absent when neither source knows one
+	NameRu   *string `json:"name_ru,omitempty"`
+	PhotoUrl *string `json:"photo_url,omitempty"`
 
-	// Title Tesera's localized title, for display in pickers
+	// TeseraRef Absent when the candidate carries no Tesera match
+	TeseraRef *int `json:"tesera_ref,omitempty"`
+
+	// Title The candidate's display title, for pickers
 	Title string `json:"title"`
 	Year  *int   `json:"year,omitempty"`
 }
 
 // GameSuggestionList defines model for GameSuggestionList.
 type GameSuggestionList struct {
-	Games []GameSuggestion `json:"games"`
+	// BggUnavailable Set when the configured BGG integration failed and only Tesera results are included
+	BggUnavailable *bool            `json:"bgg_unavailable,omitempty"`
+	Games          []GameSuggestion `json:"games"`
+
+	// TeseraUnavailable Set when the configured Tesera integration failed and only BGG results are included
+	TeseraUnavailable *bool `json:"tesera_unavailable,omitempty"`
 }
 
 // GameTag defines model for GameTag.
@@ -4351,7 +4358,7 @@ type ServerInterface interface {
 	// ListFavoriteGames Favorite games for the current user's game picker
 	// (GET /games/favorites)
 	ListFavoriteGames(c *gin.Context)
-	// SuggestGames Suggest base-game matches from the Tesera catalogue for a name being typed
+	// SuggestGames Suggest catalogue matches for a name being typed
 	// (GET /games/suggestions)
 	SuggestGames(c *gin.Context, params SuggestGamesParams)
 	// DeleteGame Delete a game
@@ -8544,6 +8551,20 @@ func (response SuggestGames403JSONResponse) VisitSuggestGamesResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SuggestGames503JSONResponse ApiError
+
+func (response SuggestGames503JSONResponse) VisitSuggestGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -12968,7 +12989,7 @@ type StrictServerInterface interface {
 	// ListFavoriteGames Favorite games for the current user's game picker
 	// (GET /games/favorites)
 	ListFavoriteGames(ctx context.Context, request ListFavoriteGamesRequestObject) (ListFavoriteGamesResponseObject, error)
-	// SuggestGames Suggest base-game matches from the Tesera catalogue for a name being typed
+	// SuggestGames Suggest catalogue matches for a name being typed
 	// (GET /games/suggestions)
 	SuggestGames(ctx context.Context, request SuggestGamesRequestObject) (SuggestGamesResponseObject, error)
 	// DeleteGame Delete a game

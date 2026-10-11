@@ -51,6 +51,9 @@ type GameDetail struct {
 type Client struct {
 	baseURL string
 	http    *http.Client
+	// retryBackoff is the base pause between throttled-request retries; tests
+	// shrink it.
+	retryBackoff time.Duration
 }
 
 func NewClient(baseURL string) *Client {
@@ -58,8 +61,9 @@ func NewClient(baseURL string) *Client {
 		baseURL = DefaultBaseURL
 	}
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		http:    &http.Client{Timeout: 10 * time.Second},
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		http:         &http.Client{Timeout: 10 * time.Second},
+		retryBackoff: 1500 * time.Millisecond,
 	}
 }
 
@@ -91,7 +95,7 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			select {
-			case <-time.After(time.Duration(attempt) * 1500 * time.Millisecond):
+			case <-time.After(time.Duration(attempt) * c.retryBackoff):
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -134,11 +138,14 @@ func (c *Client) doGetJSON(ctx context.Context, path string, out any) error {
 type httpError struct {
 	status int
 	path   string
-	body   string
+	// body is kept for structured inspection only — never rendered: behind
+	// DDoS-Guard it is the guard's HTML challenge page, and leaking it into
+	// error strings put raw HTML into user-facing messages (and toasts).
+	body string
 }
 
 func (e *httpError) Error() string {
-	return fmt.Sprintf("tesera %s returned %d: %s", e.path, e.status, e.body)
+	return fmt.Sprintf("tesera %s returned %d", e.path, e.status)
 }
 
 // retryable covers DDos-Guard 403 flapping, rate limiting, server errors, and

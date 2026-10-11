@@ -50,6 +50,11 @@ func TestDomainStatusCode(t *testing.T) {
 		// 422 Unprocessable Entity
 		{"bet limit exceeded", elo.ErrBetLimitExceeded, http.StatusUnprocessableEntity},
 
+		// 503 Service Unavailable — external integrations
+		{"tesera not configured", elo.ErrTeseraUnavailable, http.StatusServiceUnavailable},
+		{"bgg not configured", elo.ErrBggUnavailable, http.StatusServiceUnavailable},
+		{"no catalogues configured", elo.ErrCataloguesUnavailable, http.StatusServiceUnavailable},
+
 		// 500 Internal — unknown
 		{"unknown error", errors.New("boom"), http.StatusInternalServerError},
 		{"nil error", nil, http.StatusInternalServerError},

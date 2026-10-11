@@ -84,7 +84,9 @@ func domainStatusCode(err error) int {
 		return http.StatusNotFound
 
 	// --- 503 Service Unavailable: external integration not reachable --------
-	case errors.Is(err, elo.ErrTeseraUnavailable):
+	case errors.Is(err, elo.ErrTeseraUnavailable),
+		errors.Is(err, elo.ErrBggUnavailable),
+		errors.Is(err, elo.ErrCataloguesUnavailable):
 		return http.StatusServiceUnavailable
 
 	// --- 409 Conflict: concurrent / uniqueness / business conflict ----------

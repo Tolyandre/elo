@@ -140,8 +140,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Suggest base-game matches from the Tesera catalogue for a name being typed
-         * @description Proxies the tesera.ru search; additions and expansions are excluded. Exact (normalized) name matches sort first. Failures of the external API surface as errors — callers treat any failure as "no suggestions" and must not block on it.
+         * Suggest catalogue matches for a name being typed
+         * @description BoardGameGeek is the primary source (search plus the localized Russian titles of the matches, picked from their alternate names); Tesera enriches the matches with its ids and adds its own rows. Exact (normalized) name matches sort first, base games before additions. A failing catalogue degrades the result instead of failing the request — the corresponding *_unavailable flag is set. Callers must treat an empty list as "no suggestions" and never block on it.
          */
         get: operations["SuggestGames"];
         put?: never;
@@ -1423,23 +1423,28 @@ export interface components {
             id: components["schemas"]["Base58ID"];
             name: string;
         };
-        /** @description A match candidate from the Tesera catalogue. Base games sort before Tesera-flagged additions (the flag is unreliable, so nothing is filtered from the picker). */
+        /** @description A match candidate for a name being typed: from the BoardGameGeek search (possibly enriched with a Tesera id) or, when BGG has nothing, from the Tesera catalogue itself. Base games sort before additions (the addition flag comes from BGG's expansion links or Tesera's unreliable flag — shown as a hint, never a filter). */
         GameSuggestion: {
-            tesera_ref: number;
-            /** @description Absent when Tesera knows no BoardGameGeek link */
+            /** @description Absent when the candidate carries no Tesera match */
+            tesera_ref?: number | null;
+            /** @description Absent when the candidate comes from Tesera without a BGG link */
             bgg_ref?: number | null;
-            /** @description Localized Russian title, absent when the game was not published in Russian */
+            /** @description Localized Russian title, absent when neither source knows one */
             name_ru?: string | null;
             name_en?: string | null;
-            /** @description Tesera's localized title, for display in pickers */
+            /** @description The candidate's display title, for pickers */
             title: string;
             year?: number | null;
             photo_url?: string | null;
-            /** @description Tesera's addition/expansion flag (unreliable — shown as a hint, not a filter) */
+            /** @description Expansion/expansion-flag hint — shown as a hint, not a filter */
             is_addition: boolean;
         };
         GameSuggestionList: {
             games: components["schemas"]["GameSuggestion"][];
+            /** @description Set when the configured Tesera integration failed and only BGG results are included */
+            tesera_unavailable?: boolean | null;
+            /** @description Set when the configured BGG integration failed and only Tesera results are included */
+            bgg_unavailable?: boolean | null;
         };
         GameAutoMatchResult: {
             id: components["schemas"]["Base58ID"];
@@ -3038,6 +3043,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No catalogue integration is configured on the server */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,10 +1,10 @@
-# 31. BGG integration: box-art enrichment via the XML API
+# 31. BGG integration: suggestions and box-art enrichment via the XML API
 
-Date: 2026-10-06
+Date: 2026-10-06 (suggestion rework: 2026-10-11)
 
 ## Context
 
-The games catalogue stores `bgg_id`/`tesera_id` (migration 062); Tesera provides discovery (name search) and the localized Russian titles, but its box-art thumbnails are small and the API is undocumented with no SLA. BoardGameGeek is the precise source: exact lookups by the stored `bgg_id`, canonical English names, and full box art. In 2025 BGG moved the XML API behind application registration — every request needs a Bearer token issued per registered application ([usage guide](https://boardgamegeek.com/using_the_xml_api), [Terms of Use](https://boardgamegeek.com/wiki/page/XML_API_Terms_of_Use)).
+The games catalogue stores `bgg_id`/`tesera_id` (migration 062); Tesera provides discovery (name search) and the localized Russian titles, but its box-art thumbnails are small and the API is undocumented with no SLA. BoardGameGeek is the precise source: exact lookups by the stored `bgg_id`, canonical English names, localized titles as alternate names, and full box art. In 2025 BGG moved the XML API behind application registration — every request needs a Bearer token issued per registered application ([usage guide](https://boardgamegeek.com/using_the_xml_api), [Terms of Use](https://boardgamegeek.com/wiki/page/XML_API_Terms_of_Use)). Tesera's DDoS-Guard, meanwhile, increasingly serves its JS challenge to non-browser clients, so anything gated solely on Tesera fails at the worst times.
 
 ## Decision
 
@@ -18,10 +18,11 @@ The games catalogue stores `bgg_id`/`tesera_id` (migration 062); Tesera provides
 
 **Tokens are per environment.** localhost, stage and prod each use their own token under the one registered application: per-token usage stats on the Applications page map to environments, and rotating a leaked dev token never touches prod. Stage and prod secrets ship via sops (`secrets.env` per deployment), localhost overrides via the gitignored `.env.local`.
 
-**Division of labor with Tesera.** Tesera stays the discovery and Russian-name source (its detail objects also carry the `bggId` that seeds BGG lookups); BGG is the enrichment source of record for images and precise references. A BGG `/search` proxy for fixing wrong `bgg_id`s is deliberately deferred — name-based BGG search is not needed while Tesera supplies the ids.
+**Division of labor with Tesera.** BGG is the primary suggestion source: `GET /games/suggestions` searches `/xmlapi2/search`, enriches the matches via batched `/thing` requests, and takes the localized Russian title from the thing's alternate names — the XML API2 tags them with no language, so `pkg/bgg.PickRussianName` attributes them by script (Russian-only letters push a candidate up, Ukrainian/Serbian-exclusive letters rule it out; ties stay unresolved). Tesera enriches the BGG matches with its ids and adds its own rows for games BGG lacks; its localized titles fill the Russian name where BGG's alternates stay ambiguous, and it remains the auto-match source. A catalogue failing alone degrades the suggestion list (reported via `tesera_unavailable`/`bgg_unavailable` flags) — the picker keeps working while Tesera is guarded. Search answers are cached server-side (in-memory TTL) because the endpoint fires per debounced keystroke.
 
 ## Consequences
 
 - `pkg/bgg` mirrors `pkg/tesera`: a minimal client whose failures degrade to "no data".
-- The enrichment rate is bounded (one batched request per backlog; ~5 s between batches), so a full-catalogue backfill is a handful of requests.
-- If BGG revokes the license or the token, the feature switches off by removing the token; stored URLs keep rendering.
+- The enrichment rate is bounded (one batched request per backlog; ~5 s between batches), and suggest searches are cached, so editor usage stays within BGG's traffic guidance.
+- The script heuristics are conservative: ambiguous Russian alternates (e.g. Carcassonne's «Каркасон»/«Каркассон» plus its old «Средневековье» re-theme) resolve to no name and fall back to Tesera or the admin.
+- If BGG revokes the license or the token, the feature switches off by removing the token; stored URLs keep rendering, and suggestions degrade to Tesera with the `bgg_unavailable` flag.

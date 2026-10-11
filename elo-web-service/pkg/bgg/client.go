@@ -1,5 +1,7 @@
-// Package bgg is a minimal client for the BoardGameGeek XML API2, used to
-// enrich the games catalogue with box art (ADR-30).
+// Package bgg is a minimal client for the BoardGameGeek XML API2. It powers
+// two features: the games-catalogue enrichment with box art (ADR-30) and the
+// BGG-first game suggestions — /xmlapi2/search finds candidates by name,
+// /xmlapi2/thing carries their localized titles as alternate names (ADR-31).
 //
 // Access requires a registered application token
 // (https://boardgamegeek.com/using_the_xml_api): requests carry an
@@ -17,7 +19,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,14 +33,33 @@ const (
 	thingBatchSize = 20
 	minSpacing     = 5 * time.Second
 	maxAttempts    = 3
+	// Suggestions fire per debounced keystroke, so /search answers are cached;
+	// searchCacheMax bounds the memory an open-ended query stream can reach.
+	searchCacheTTL = 15 * time.Minute
+	searchCacheMax = 512
 )
 
 // Thing is the slice of a /xmlapi2/thing item the catalogue stores.
 type Thing struct {
-	BggID       int64
-	PrimaryName string
-	ImageURL    string
-	ThumbURL    string
+	BggID          int64
+	PrimaryName    string
+	AlternateNames []string
+	ImageURL       string
+	ThumbURL       string
+	Year           int32
+	// IsExpansion marks a game BGG links to a base game as its expansion
+	// (inbound expansion links — a base game's list of expansions — do not
+	// count).
+	IsExpansion bool
+}
+
+// SearchResult is one row of /xmlapi2/search. Name is the game's name that
+// matched the query — the primary title or one of its alternates.
+type SearchResult struct {
+	BggID    int64
+	Name     string
+	NameType string
+	Year     int32
 }
 
 type Client struct {
@@ -46,6 +69,16 @@ type Client struct {
 	// pacing is the wait between successive API requests; minSpacing in
 	// production, shrunk by tests.
 	pacing time.Duration
+
+	mu          sync.Mutex
+	searchCache map[string]searchCacheEntry
+	// now is stubbed in tests to move cache expiry around.
+	now func() time.Time
+}
+
+type searchCacheEntry struct {
+	results []SearchResult
+	expires time.Time
 }
 
 // NewClient returns nil when the token is empty: callers treat a nil client
@@ -59,11 +92,93 @@ func NewClient(baseURL, token string) *Client {
 		baseURL = DefaultBaseURL
 	}
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		token:   token,
-		http:    &http.Client{Timeout: 30 * time.Second},
-		pacing:  minSpacing,
+		baseURL:     strings.TrimRight(baseURL, "/"),
+		token:       token,
+		http:        &http.Client{Timeout: 30 * time.Second},
+		pacing:      minSpacing,
+		searchCache: make(map[string]searchCacheEntry),
+		now:         time.Now,
 	}
+}
+
+// Search fetches boardgame matches for a query via /xmlapi2/search. Answers
+// are cached per query (BGG's guidance: cache server-side, request little);
+// the cache is per client, so tests get a fresh one with each NewClient.
+func (c *Client) Search(ctx context.Context, query string) ([]SearchResult, error) {
+	key := strings.ToLower(strings.TrimSpace(query))
+	if key == "" {
+		return nil, nil
+	}
+	if results, ok := c.cachedSearch(key); ok {
+		return results, nil
+	}
+	q := "search?query=" + url.QueryEscape(strings.TrimSpace(query)) + "&type=boardgame"
+	// The same throttling that hits /thing answers 500/503 here, and a 202
+	// means the response is queued — both are retried with a growing pause.
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			if err := sleepCtx(ctx, c.pacing*time.Duration(attempt)); err != nil {
+				return nil, err
+			}
+		}
+		results, retryable, err := c.fetchSearch(ctx, q)
+		if err == nil {
+			c.storeSearch(key, results)
+			return results, nil
+		}
+		lastErr = err
+		if !retryable {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+func (c *Client) fetchSearch(ctx context.Context, q string) ([]SearchResult, bool, error) {
+	body, retryable, err := c.getXML(ctx, "/xmlapi2/"+q)
+	if err != nil {
+		return nil, retryable, err
+	}
+	defer body.Close()
+	decoder := xml.NewDecoder(io.LimitReader(body, 4<<20))
+	var parsed searchResponse
+	if err := decoder.Decode(&parsed); err != nil {
+		return nil, false, fmt.Errorf("bgg search decode: %w", err)
+	}
+	results := make([]SearchResult, 0, len(parsed.Items))
+	for _, item := range parsed.Items {
+		result := SearchResult{BggID: item.ID}
+		if item.YearPublished != nil {
+			result.Year = item.YearPublished.Value
+		}
+		if len(item.Names) > 0 {
+			result.Name = item.Names[0].Value
+			result.NameType = item.Names[0].Type
+		}
+		results = append(results, result)
+	}
+	return results, false, nil
+}
+
+func (c *Client) cachedSearch(key string) ([]SearchResult, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.searchCache[key]
+	if !ok || c.now().After(entry.expires) {
+		return nil, false
+	}
+	return entry.results, true
+}
+
+func (c *Client) storeSearch(key string, results []SearchResult) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.searchCache) >= searchCacheMax {
+		// Simple bound: drop everything rather than track LRU.
+		c.searchCache = make(map[string]searchCacheEntry)
+	}
+	c.searchCache[key] = searchCacheEntry{results: results, expires: c.now().Add(searchCacheTTL)}
 }
 
 // GetThings fetches the given BGG ids via /xmlapi2/thing, batching them by
@@ -94,9 +209,6 @@ func (c *Client) GetThings(ctx context.Context, ids []int64) ([]Thing, error) {
 
 func (c *Client) getThingsBatch(ctx context.Context, ids []int64) ([]Thing, error) {
 	q := idsParam(ids)
-	// DDos-guard style throttling on BGG's side answers 500/503 when
-	// requests come too fast, and a 202 means the response is queued —
-	// both are retried with a growing pause.
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
@@ -117,7 +229,46 @@ func (c *Client) getThingsBatch(ctx context.Context, ids []int64) ([]Thing, erro
 }
 
 func (c *Client) fetchThings(ctx context.Context, q string) ([]Thing, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/xmlapi2/thing?"+q, nil)
+	body, retryable, err := c.getXML(ctx, "/xmlapi2/thing?"+q)
+	if err != nil {
+		return nil, retryable, err
+	}
+	defer body.Close()
+	decoder := xml.NewDecoder(io.LimitReader(body, 8<<20))
+	var parsed thingsResponse
+	if err := decoder.Decode(&parsed); err != nil {
+		return nil, false, fmt.Errorf("bgg thing decode: %w", err)
+	}
+	things := make([]Thing, 0, len(parsed.Items))
+	for _, item := range parsed.Items {
+		thing := Thing{BggID: item.ID, ImageURL: item.Image, ThumbURL: item.Thumbnail}
+		if item.YearPublished != nil {
+			thing.Year = item.YearPublished.Value
+		}
+		for _, n := range item.Names {
+			switch n.Type {
+			case "primary":
+				thing.PrimaryName = n.Value
+			case "alternate":
+				thing.AlternateNames = append(thing.AlternateNames, n.Value)
+			}
+		}
+		for _, l := range item.Links {
+			if l.Type == "boardgameexpansion" && l.Inbound != "true" {
+				thing.IsExpansion = true
+			}
+		}
+		things = append(things, thing)
+	}
+	return things, false, nil
+}
+
+// getXML performs one authenticated GET and returns the response body. The
+// bool reports whether the failure is worth retrying: DDoS-guard style
+// throttling answers 500/503 when requests come too fast, and a 202 means the
+// response is queued.
+func (c *Client) getXML(ctx context.Context, pathQuery string) (io.ReadCloser, bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+pathQuery, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -129,37 +280,20 @@ func (c *Client) fetchThings(ctx context.Context, q string) ([]Thing, bool, erro
 	if err != nil {
 		return nil, true, fmt.Errorf("bgg request failed: %w", err)
 	}
-	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusOK:
-		// fall through to parsing
+		return resp.Body, false, nil
 	case resp.StatusCode == http.StatusAccepted,
 		resp.StatusCode == http.StatusTooManyRequests,
 		resp.StatusCode >= http.StatusInternalServerError:
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
+		resp.Body.Close()
 		return nil, true, fmt.Errorf("bgg returned %d", resp.StatusCode)
 	default:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		resp.Body.Close()
 		return nil, false, fmt.Errorf("bgg returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-
-	decoder := xml.NewDecoder(io.LimitReader(resp.Body, 8<<20))
-	var parsed thingsResponse
-	if err := decoder.Decode(&parsed); err != nil {
-		return nil, false, fmt.Errorf("bgg thing decode: %w", err)
-	}
-	things := make([]Thing, 0, len(parsed.Items))
-	for _, item := range parsed.Items {
-		thing := Thing{BggID: item.ID, ImageURL: item.Image, ThumbURL: item.Thumbnail}
-		for _, n := range item.Names {
-			if n.Type == "primary" {
-				thing.PrimaryName = n.Value
-				break
-			}
-		}
-		things = append(things, thing)
-	}
-	return things, false, nil
 }
 
 type thingsResponse struct {
@@ -167,15 +301,36 @@ type thingsResponse struct {
 }
 
 type thingXML struct {
-	ID        int64     `xml:"id,attr"`
-	Names     []nameXML `xml:"name"`
-	Image     string    `xml:"image"`
-	Thumbnail string    `xml:"thumbnail"`
+	ID            int64     `xml:"id,attr"`
+	Names         []nameXML `xml:"name"`
+	Image         string    `xml:"image"`
+	Thumbnail     string    `xml:"thumbnail"`
+	YearPublished *yearXML  `xml:"yearpublished"`
+	Links         []linkXML `xml:"link"`
+}
+
+type searchResponse struct {
+	Items []searchItemXML `xml:"item"`
+}
+
+type searchItemXML struct {
+	ID            int64     `xml:"id,attr"`
+	Names         []nameXML `xml:"name"`
+	YearPublished *yearXML  `xml:"yearpublished"`
 }
 
 type nameXML struct {
 	Type  string `xml:"type,attr"`
 	Value string `xml:"value,attr"`
+}
+
+type yearXML struct {
+	Value int32 `xml:"value,attr"`
+}
+
+type linkXML struct {
+	Type    string `xml:"type,attr"`
+	Inbound string `xml:"inbound,attr"`
 }
 
 func idsParam(ids []int64) string {

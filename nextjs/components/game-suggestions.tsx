@@ -25,23 +25,29 @@ export function suggestionMeta(s: GameSuggestion): AcceptedGameSuggestion {
 
 /**
  * Debounced catalogue lookups for a name being typed. Failures resolve to an
- * empty list inside suggestGamesPromise, so suggestions never block creation.
+ * empty list inside suggestGamesPromise, so suggestions never block creation;
+ * the *_unavailable flags survive so the UI can say which catalogue is out.
  */
-export function useGameSuggestions(name: string, enabled: boolean): GameSuggestion[] {
+export type GameSuggestions = {
+    suggestions: GameSuggestion[]
+    teseraUnavailable: boolean
+    bggUnavailable: boolean
+}
+
+const NO_SUGGESTIONS: GameSuggestions = { suggestions: [], teseraUnavailable: false, bggUnavailable: false }
+
+export function useGameSuggestions(name: string, enabled: boolean): GameSuggestions {
     const trimmed = name.trim()
-    const [state, setState] = React.useState<{ query: string; suggestions: GameSuggestion[] }>({
-        query: "",
-        suggestions: [],
-    })
+    const [state, setState] = React.useState<(GameSuggestions & { query: string })>({ ...NO_SUGGESTIONS, query: "" })
     React.useEffect(() => {
         let cancelled = false
         const timer = setTimeout(() => {
             if (!enabled || trimmed.length < 2) {
-                if (!cancelled) setState({ query: "", suggestions: [] })
+                if (!cancelled) setState({ ...NO_SUGGESTIONS, query: "" })
                 return
             }
-            suggestGamesPromise(trimmed).then((suggestions) => {
-                if (!cancelled) setState({ query: trimmed, suggestions })
+            suggestGamesPromise(trimmed).then(({ games, teseraUnavailable, bggUnavailable }) => {
+                if (!cancelled) setState({ query: trimmed, suggestions: games, teseraUnavailable, bggUnavailable })
             })
         }, 350)
         return () => {
@@ -50,7 +56,12 @@ export function useGameSuggestions(name: string, enabled: boolean): GameSuggesti
         }
     }, [trimmed, enabled])
     // Suggestions for a previous query are never shown while typing.
-    return state.query === trimmed ? state.suggestions : []
+    return state.query === trimmed ? state : NO_SUGGESTIONS
+}
+
+/** Suggestions are keyed by whichever catalogue id identifies the row. */
+export function suggestionKey(s: GameSuggestion): string {
+    return s.bgg_ref != null ? `bgg-${s.bgg_ref}` : `tesera-${s.tesera_ref}`
 }
 
 export function suggestionLabel(s: GameSuggestion): string {
@@ -65,24 +76,39 @@ export function suggestionLabel(s: GameSuggestion): string {
 
 /**
  * Clickable catalogue matches: one is "accepted" (highlighted, removable);
- * accepting fills the canonical names and external links.
+ * accepting fills the canonical names and external links. The unavailable
+ * flags render as hints — a degraded catalogue is not an error.
  */
 export function GameSuggestionChips({
     suggestions,
     accepted,
     onAccept,
     onClear,
+    teseraUnavailable,
+    bggUnavailable,
 }: {
     suggestions: GameSuggestion[]
     accepted: AcceptedGameSuggestion | null
     onAccept: (s: GameSuggestion) => void
     onClear: () => void
+    teseraUnavailable?: boolean
+    bggUnavailable?: boolean
 }) {
-    if (suggestions.length === 0 && !accepted) return null
+    if (suggestions.length === 0 && !accepted && !teseraUnavailable && !bggUnavailable) return null
     return (
         <div className="flex flex-col gap-1">
             {!accepted && suggestions.length > 0 && (
                 <p className="text-xs text-muted-foreground">Нашли в каталогах:</p>
+            )}
+            {teseraUnavailable && (
+                <p className="text-xs text-warning">
+                    Каталог Tesera недоступен — показаны результаты BoardGameGeek.
+                </p>
+            )}
+            {bggUnavailable && (
+                <p className="text-xs text-warning">
+                    BoardGameGeek недоступен — показаны результаты Tesera.
+                </p>
             )}
             <div className="flex flex-wrap gap-1 items-center">
                 {accepted ? (
@@ -98,7 +124,7 @@ export function GameSuggestionChips({
                 ) : (
                     suggestions.slice(0, 5).map((s) => (
                         <button
-                            key={s.tesera_ref}
+                            key={suggestionKey(s)}
                             type="button"
                             onClick={() => onAccept(s)}
                             className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors hover:bg-accent text-left"

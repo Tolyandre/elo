@@ -198,15 +198,15 @@ func (s *StrictServer) SuggestGames(ctx context.Context, request SuggestGamesReq
 	if query == "" {
 		return SuggestGames400JSONResponse{Status: StatusFail, Message: "query is required"}, nil
 	}
-	suggestions, err := s.api.GameService.SuggestGames(ctx, query)
+	res, err := s.api.GameService.SuggestGames(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 
-	items := make([]GameSuggestion, 0, len(suggestions))
-	for _, sug := range suggestions {
+	items := make([]GameSuggestion, 0, len(res.Games))
+	for _, sug := range res.Games {
 		item := GameSuggestion{
-			TeseraRef:  int(sug.TeseraRef),
+			TeseraRef:  intPtrOrNil(sug.TeseraRef),
 			BggRef:     intPtrOrNil(sug.BggRef),
 			NameEn:     strPtrOrNil(sug.NameEn),
 			NameRu:     strPtrOrNil(sug.NameRu),
@@ -217,7 +217,14 @@ func (s *StrictServer) SuggestGames(ctx context.Context, request SuggestGamesReq
 		}
 		items = append(items, item)
 	}
-	return SuggestGames200JSONResponse{Status: StatusSuccess, Data: GameSuggestionList{Games: items}}, nil
+	list := GameSuggestionList{Games: items}
+	if res.TeseraUnavailable {
+		list.TeseraUnavailable = ptrBool(true)
+	}
+	if res.BggUnavailable {
+		list.BggUnavailable = ptrBool(true)
+	}
+	return SuggestGames200JSONResponse{Status: StatusSuccess, Data: list}, nil
 }
 
 func (s *StrictServer) AutoMatchGames(ctx context.Context, _ AutoMatchGamesRequestObject) (AutoMatchGamesResponseObject, error) {
@@ -268,6 +275,10 @@ func strPtrOrNil(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func ptrBool(v bool) *bool {
+	return &v
 }
 
 func intPtrOrNil(v int64) *int {

@@ -28,7 +28,7 @@ import {
 import { GAME_MODES, GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes";
 import { accentName } from "@/lib/game-names";
 import { cn } from "@/lib/utils";
-import { suggestionLabel, useGameSuggestions } from "@/components/game-suggestions";
+import { suggestionKey, suggestionLabel, useGameSuggestions } from "@/components/game-suggestions";
 
 type GameRow = GameListItem;
 
@@ -39,8 +39,9 @@ type GameRow = GameListItem;
  * server-side when it differs from the canonical names), so creation works
  * offline exactly like the old inline form did. With a game, the full
  * metadata state is PATCHed. Both modes share the canonical names, BGG/Tesera
- * ids, game mode, and a catalogue picker that fills the canonical fields from
- * Tesera. The server recomputes the display name (alias/name → ru → English)
+ * ids, game mode, and a catalogue picker (BGG first, Tesera second) that fills
+ * the canonical fields from a picked candidate. The server recomputes the
+ * display name (alias/name → ru → English)
  * and rejects a save that leaves no name at all.
  */
 export function GameEditDialog({
@@ -63,7 +64,7 @@ export function GameEditDialog({
     const [saving, setSaving] = useState(false);
     const [pickerQuery, setPickerQuery] = useState("");
 
-    const suggestions = useGameSuggestions(pickerQuery, pickerQuery.trim().length >= 2);
+    const { suggestions, teseraUnavailable, bggUnavailable } = useGameSuggestions(pickerQuery, pickerQuery.trim().length >= 2);
 
     const preview = [game ? alias.trim() : name.trim(), nameRu.trim(), nameEn.trim()].find((n) => n !== "") ?? "";
     const canSave = game ? preview !== "" : name.trim() !== "";
@@ -222,19 +223,29 @@ export function GameEditDialog({
                     )}
 
                     <div className="border-t pt-3 flex flex-col gap-2">
-                        <p className="text-sm font-medium">Подобрать в каталоге Tesera</p>
+                        <p className="text-sm font-medium">Подобрать в каталогах BGG и Tesera</p>
                         <Input
                             placeholder="Название для поиска"
                             value={pickerQuery}
                             onChange={(e) => setPickerQuery(e.target.value)}
                         />
+                        {teseraUnavailable && (
+                            <p className="text-xs text-warning">
+                                Каталог Tesera недоступен — показаны результаты BoardGameGeek.
+                            </p>
+                        )}
+                        {bggUnavailable && (
+                            <p className="text-xs text-warning">
+                                BoardGameGeek недоступен — показаны результаты Tesera.
+                            </p>
+                        )}
                         {pickerQuery.trim().length >= 2 && suggestions.length === 0 && (
-                            <p className="text-xs text-muted-foreground">Ничего не найдено (или каталог недоступен).</p>
+                            <p className="text-xs text-muted-foreground">Ничего не найдено (или каталоги недоступны).</p>
                         )}
                         <div className="flex flex-wrap gap-1">
                             {suggestions.map((s) => (
                                 <button
-                                    key={s.tesera_ref}
+                                    key={suggestionKey(s)}
                                     type="button"
                                     onClick={() => {
                                         accept(s);

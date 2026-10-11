@@ -132,7 +132,9 @@ type GameMetaPatch struct {
 	GameMode  *string
 }
 
-// GameSuggestion is one Tesera match candidate for a name being typed.
+// GameSuggestion is one catalogue match candidate for a name being typed.
+// BGG-sourced candidates carry no TeseraRef; Tesera-only candidates may lack
+// BggRef.
 type GameSuggestion struct {
 	TeseraRef  int64
 	BggRef     int64
@@ -142,6 +144,16 @@ type GameSuggestion struct {
 	Year       int32
 	PhotoURL   string
 	IsAddition bool
+}
+
+// SuggestResult carries the merged candidates plus per-source degradation
+// flags: a configured source that errors narrows the result set instead of
+// failing the request — the picker must keep working while one catalogue
+// (typically Tesera behind its bot guard) is down.
+type SuggestResult struct {
+	Games             []GameSuggestion
+	TeseraUnavailable bool
+	BggUnavailable    bool
 }
 
 // AutoMatchResult reports the auto-match outcome for one previously
@@ -169,6 +181,8 @@ var (
 	ErrTeseraUnavailable = errors.New("tesera integration is unavailable")
 	// ErrBggUnavailable: the BGG client is not configured (no API token).
 	ErrBggUnavailable = errors.New("bgg integration is unavailable: ELO_WEB_SERVICE_BGG_API_ACCESS_TOKEN is not set on the server")
+	// ErrCataloguesUnavailable: neither suggestion source is configured.
+	ErrCataloguesUnavailable = errors.New("no catalogue integration is configured on the server")
 )
 
 type IGameService interface {
@@ -186,7 +200,7 @@ type IGameService interface {
 	// optional trailing argument; without it the typed name is the only
 	// canonical name.
 	AddGame(ctx context.Context, gameID id.ID, name string, actor id.ID, meta ...GameMetaPatch) (*db.Game, error)
-	SuggestGames(ctx context.Context, query string) ([]GameSuggestion, error)
+	SuggestGames(ctx context.Context, query string) (SuggestResult, error)
 	AutoMatchGames(ctx context.Context, actor id.ID) ([]AutoMatchResult, error)
 	// EnrichGameImages fetches box art from the BGG XML API for every game
 	// that has a BGG reference but no image yet, and stores the URLs.
@@ -211,10 +225,12 @@ func NewGameService(pool *pgxpool.Pool, arenas *ArenaService, teseraClient *tese
 	}
 }
 
-// Suggestion search/enrichment bounds: how many search rows get their detail
-// fetched per query (bggId/isAddition live only on the detail object) and how
-// many candidates are returned.
+// Suggestion search/enrichment bounds: how many BGG search rows get their
+// thing fetched per query (one ≤20-id batch), how many Tesera search rows get
+// their detail fetched per query (bggId/isAddition live only on the detail
+// object), and how many candidates are returned.
 const (
+	suggestBggSearchLimit   = 10
 	suggestDetailFetchLimit = 8
 	suggestResultLimit      = 6
 	// autoMatchThrottle spaces out requests to the undocumented Tesera API
@@ -442,28 +458,105 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 	return added, nil
 }
 
-// SuggestGames searches Tesera for games matching the query. Exact
-// (normalized) name matches sort first, then base games, then Tesera-flagged
-// additions (the flag is unreliable — some base games carry it — so nothing
-// is filtered out of the picker).
-func (s *GameService) SuggestGames(ctx context.Context, query string) ([]GameSuggestion, error) {
+// SuggestGames merges the two catalogues for a name being typed. BoardGameGeek
+// is the primary source: /xmlapi2/search finds the candidates, their things
+// carry the canonical English title and the localized Russian title as
+// alternate names, picked by script heuristics (pkg/bgg). Tesera enriches the
+// BGG matches with its ids and adds its own rows for anything BGG lacks; its
+// localized titles fill the Russian name where BGG's alternates stay
+// ambiguous. A source failing alone degrades the result (reported in the
+// flags) — typically Tesera behind its bot guard — and only a request with
+// both catalogues unconfigured is an error.
+func (s *GameService) SuggestGames(ctx context.Context, query string) (SuggestResult, error) {
+	if s.Bgg == nil && s.Tesera == nil {
+		return SuggestResult{}, ErrCataloguesUnavailable
+	}
+	res := SuggestResult{}
+	res.Games, res.BggUnavailable = s.suggestFromBgg(ctx, query)
+	var candidates []*tesera.Candidate
+	candidates, res.TeseraUnavailable = s.teseraCandidates(ctx, query)
+	res.Games = mergeSuggestions(res.Games, candidates, query)
+	return res, nil
+}
+
+// suggestFromBgg builds the BGG-sourced suggestions: search rows (one row per
+// matched game — deduplicated), enriched with their things. A failed search
+// or a fully failed thing fetch reports an outage; partial thing results ride
+// along — a row without its thing still suggests from the search data.
+func (s *GameService) suggestFromBgg(ctx context.Context, query string) ([]GameSuggestion, bool) {
+	if s.Bgg == nil {
+		return nil, false
+	}
+	results, err := s.Bgg.Search(ctx, query)
+	if err != nil {
+		return nil, true
+	}
+	// Search rows repeat a game when several of its names match; keep the
+	// first (highest-ranked) row per game, then take the top slice.
+	unique := make([]bgg.SearchResult, 0, len(results))
+	seen := make(map[int64]bool, len(results))
+	for _, r := range results {
+		if !seen[r.BggID] {
+			seen[r.BggID] = true
+			unique = append(unique, r)
+		}
+	}
+	if len(unique) > suggestBggSearchLimit {
+		unique = unique[:suggestBggSearchLimit]
+	}
+	ids := make([]int64, 0, len(unique))
+	for _, r := range unique {
+		ids = append(ids, r.BggID)
+	}
+	if len(ids) == 0 {
+		return nil, false
+	}
+	things, err := s.Bgg.GetThings(ctx, ids)
+	if err != nil && len(things) == 0 {
+		return nil, true
+	}
+	byID := make(map[int64]bgg.Thing, len(things))
+	for _, t := range things {
+		byID[t.BggID] = t
+	}
+
+	out := make([]GameSuggestion, 0, len(unique))
+	for _, r := range unique {
+		sugg := GameSuggestion{BggRef: r.BggID, Title: r.Name, Year: r.Year}
+		if r.NameType == "primary" {
+			sugg.NameEn = r.Name
+		}
+		if t, ok := byID[r.BggID]; ok {
+			if t.PrimaryName != "" {
+				sugg.Title = t.PrimaryName
+				sugg.NameEn = t.PrimaryName
+			}
+			sugg.NameRu = bgg.PickRussianName(t.AlternateNames)
+			sugg.Year = t.Year
+			sugg.PhotoURL = t.ThumbURL
+			sugg.IsAddition = t.IsExpansion
+		}
+		out = append(out, sugg)
+	}
+	return out, false
+}
+
+// teseraCandidates fetches the Tesera rows for the query with their detail
+// objects. Tesera failing — its bot guard rejects bursts — never fails the
+// query; only the search request failing counts as an outage, broken rows and
+// failed details simply drop out.
+func (s *GameService) teseraCandidates(ctx context.Context, query string) ([]*tesera.Candidate, bool) {
 	if s.Tesera == nil {
-		return nil, ErrTeseraUnavailable
+		return nil, false
 	}
 	items, err := s.Tesera.SearchGames(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("tesera search: %w", err)
+		return nil, true
 	}
-
-	type scored struct {
-		suggestion GameSuggestion
-		exact      bool
-		addition   bool
-	}
-	var out []scored
+	var out []*tesera.Candidate
 	seen := make(map[int64]bool, len(items))
 	for i, item := range items {
-		if i >= suggestDetailFetchLimit || len(out) >= suggestResultLimit {
+		if i >= suggestDetailFetchLimit {
 			break
 		}
 		if seen[item.TeseraID] {
@@ -478,20 +571,62 @@ func (s *GameService) SuggestGames(ctx context.Context, query string) ([]GameSug
 			continue
 		}
 		seen[cand.TeseraRef] = true
-		out = append(out, scored{
-			suggestion: GameSuggestion{
-				TeseraRef:  cand.TeseraRef,
-				BggRef:     cand.BggRef,
-				NameRu:     cand.NameRu,
-				NameEn:     cand.NameEn,
-				Title:      cand.Title,
-				Year:       cand.Year,
-				PhotoURL:   cand.PhotoURL,
-				IsAddition: cand.IsAddition,
-			},
-			exact:    cand.MatchesName(query),
-			addition: cand.IsAddition,
+		out = append(out, cand)
+	}
+	return out, false
+}
+
+// mergeSuggestions attaches Tesera rows to their BGG matches (by the BGG id
+// when Tesera knows it, otherwise by the normalized titles), appends the rest
+// as Tesera-only rows, and sorts: exact normalized matches first, then base
+// games before additions, capped at suggestResultLimit.
+func mergeSuggestions(bggSuggestions []GameSuggestion, candidates []*tesera.Candidate, query string) []GameSuggestion {
+	games := make([]GameSuggestion, 0, len(bggSuggestions)+len(candidates))
+	used := make(map[int64]bool, len(candidates))
+	for _, sugg := range bggSuggestions {
+		for _, cand := range candidates {
+			if used[cand.TeseraRef] || !candidateMatches(cand, sugg) {
+				continue
+			}
+			used[cand.TeseraRef] = true
+			sugg.TeseraRef = cand.TeseraRef
+			// BGG's expansion flag is precise; Tesera's addition flag is not.
+			if sugg.NameRu == "" {
+				sugg.NameRu = cand.NameRu
+			}
+			break
+		}
+		games = append(games, sugg)
+	}
+	for _, cand := range candidates {
+		if used[cand.TeseraRef] {
+			continue
+		}
+		games = append(games, GameSuggestion{
+			TeseraRef:  cand.TeseraRef,
+			BggRef:     cand.BggRef,
+			NameRu:     cand.NameRu,
+			NameEn:     cand.NameEn,
+			Title:      cand.Title,
+			Year:       cand.Year,
+			PhotoURL:   cand.PhotoURL,
+			IsAddition: cand.IsAddition,
 		})
+	}
+
+	type scored struct {
+		suggestion GameSuggestion
+		exact      bool
+		addition   bool
+	}
+	norm := tesera.NormalizeName(query)
+	out := make([]scored, 0, len(games))
+	for _, g := range games {
+		exact := norm != "" &&
+			(norm == tesera.NormalizeName(g.Title) ||
+				(g.NameEn != "" && norm == tesera.NormalizeName(g.NameEn)) ||
+				(g.NameRu != "" && norm == tesera.NormalizeName(g.NameRu)))
+		out = append(out, scored{suggestion: g, exact: exact, addition: g.IsAddition})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].exact != out[j].exact {
@@ -502,12 +637,33 @@ func (s *GameService) SuggestGames(ctx context.Context, query string) ([]GameSug
 		}
 		return false
 	})
-
-	suggestions := make([]GameSuggestion, 0, len(out))
-	for _, o := range out {
-		suggestions = append(suggestions, o.suggestion)
+	if len(out) > suggestResultLimit {
+		out = out[:suggestResultLimit]
 	}
-	return suggestions, nil
+	games = games[:0]
+	for _, o := range out {
+		games = append(games, o.suggestion)
+	}
+	return games
+}
+
+// candidateMatches ties a Tesera row to a BGG suggestion. The BGG id wins
+// when Tesera knows it — that also pairs the rows whose titles differ
+// (Каркассон ↔ Carcassonne with no Russian alternate on BGG); name equality
+// over the normalized titles covers rows without a BGG link.
+func candidateMatches(cand *tesera.Candidate, sugg GameSuggestion) bool {
+	if cand.BggRef != 0 {
+		return cand.BggRef == sugg.BggRef
+	}
+	return sameName(cand.NameEn, sugg.NameEn) ||
+		sameName(cand.NameRu, sugg.NameRu) ||
+		sameName(cand.Title, sugg.NameRu) ||
+		sameName(cand.NameEn, sugg.Title)
+}
+
+func sameName(a, b string) bool {
+	na, nb := tesera.NormalizeName(a), tesera.NormalizeName(b)
+	return na != "" && na == nb
 }
 
 // AutoMatchGames matches every game lacking a Tesera reference against the

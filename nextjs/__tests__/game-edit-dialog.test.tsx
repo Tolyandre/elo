@@ -9,7 +9,7 @@ import { createRoot } from "react-dom/client";
 const mocks = vi.hoisted(() => ({
     addPendingGame: vi.fn(),
     patchGamePromise: vi.fn(),
-    suggestGamesPromise: vi.fn(async () => []),
+    suggestGamesPromise: vi.fn(),
 }));
 
 vi.mock("@/app/offline/OfflineContext", () => ({
@@ -83,6 +83,10 @@ describe("GameEditDialog", () => {
     beforeEach(() => {
         mocks.addPendingGame.mockClear();
         mocks.patchGamePromise.mockReset();
+        mocks.suggestGamesPromise.mockReset();
+        mocks.suggestGamesPromise.mockImplementation(
+            async () => ({ games: [], teseraUnavailable: false, bggUnavailable: false }),
+        );
     });
 
     it("create mode: добавление disabled until named, then queues the game with its metadata", () => {
@@ -164,5 +168,63 @@ describe("GameEditDialog", () => {
         expect(onSaved).not.toHaveBeenCalled();
         expect(mocks.addPendingGame).not.toHaveBeenCalled();
         unmount();
+    });
+
+    it("picker: accepts a BGG-only candidate and flags the degraded Tesera catalogue", async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.suggestGamesPromise.mockResolvedValue({
+                games: [
+                    {
+                        bgg_ref: 822,
+                        tesera_ref: null,
+                        name_en: "Carcassonne",
+                        name_ru: null,
+                        title: "Carcassonne",
+                        is_addition: false,
+                    },
+                ],
+                teseraUnavailable: true,
+                bggUnavailable: false,
+            });
+            const onClose = vi.fn();
+            const onSaved = vi.fn();
+            const { unmount } = renderDialog(
+                <GameEditDialog game={null} onClose={onClose} onSaved={onSaved} />,
+            );
+
+            expect(document.body.textContent).toContain("Подобрать в каталогах BGG и Tesera");
+
+            act(() => {
+                setInputValue(findInput("Название для поиска"), "Каркассон");
+            });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(350);
+            });
+
+            expect(document.body.textContent).toContain(
+                "Каталог Tesera недоступен — показаны результаты BoardGameGeek.",
+            );
+
+            // Accepting a BGG-only candidate fills the English name and the
+            // BGG id; the empty Tesera id stays empty.
+            act(() => {
+                findButton("Carcassonne").click();
+            });
+            act(() => {
+                findButton("Добавить").click();
+            });
+            expect(mocks.addPendingGame).toHaveBeenCalledWith("Carcassonne", [], {
+                nameEn: "Carcassonne",
+                nameRu: null,
+                bggRef: 822,
+                teseraRef: null,
+                gameMode: "competitive",
+            });
+            expect(onSaved).toHaveBeenCalledTimes(1);
+            unmount();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

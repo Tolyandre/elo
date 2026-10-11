@@ -70,11 +70,91 @@ func newTeseraStub(t *testing.T) *httptest.Server {
 	return server
 }
 
+// newBggSuggestStub serves /xmlapi2/search and /xmlapi2/thing the way BGG
+// does for the suggestion flow. «Каркассон» resolves to Carcassonne (822) via
+// its Russian alternate name and to the River expansion (4101); the thing for
+// 822 carries several Russian spellings plus nothing disambiguating, so the
+// script heuristics stay empty and the Tesera fallback fills the name.
+// «бутыл» finds nothing on BGG — that query exercises the Tesera-only path.
+func newBggSuggestStub(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/xmlapi2/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Unauthorized"))
+			return
+		}
+		query := strings.ToLower(r.URL.Query().Get("query"))
+		items := ""
+		if strings.Contains(query, "каркассон") {
+			items = `<item type="boardgame" id="822">` +
+				`<name type="alternate" value="Каркассон"/><yearpublished value="2000"/></item>` +
+				`<item type="boardgame" id="4101">` +
+				`<name type="primary" value="Carcassonne: The River"/><yearpublished value="2001"/></item>`
+		}
+		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
+		_, _ = w.Write([]byte(`<items total="0" termsofuse="https://boardgamegeek.com/xmlapi/termsofuse">` + items + `</items>`))
+	})
+
+	mux.HandleFunc("/xmlapi2/thing", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Unauthorized"))
+			return
+		}
+		var items strings.Builder
+		for _, id := range strings.Split(r.URL.Query().Get("id"), ",") {
+			switch id {
+			case "822":
+				items.WriteString(`<item type="boardgame" id="822">` +
+					`<name type="primary" sortindex="1" value="Carcassonne"/>` +
+					`<name type="alternate" sortindex="1" value="Каркасон"/>` +
+					`<name type="alternate" sortindex="1" value="Каркассон"/>` +
+					`<yearpublished value="2000"/>` +
+					`<thumbnail>https://cf.geekdo-images.com/c__small/img/c.png</thumbnail></item>`)
+			case "4101":
+				items.WriteString(`<item type="boardgame" id="4101">` +
+					`<name type="primary" sortindex="1" value="Carcassonne: The River"/>` +
+					`<link type="boardgameexpansion" id="822" value="Carcassonne"/>` +
+					`<yearpublished value="2001"/></item>`)
+			}
+		}
+		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
+		_, _ = w.Write([]byte(`<items termsofuse="https://boardgamegeek.com/xmlapi/termsofuse">` + items.String() + `</items>`))
+	})
+
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server
+}
+
+// suggestion is the decoded suggestion row of the /games/suggestions answer.
+type suggestion struct {
+	TeseraRef  *int    `json:"tesera_ref"`
+	BggRef     *int    `json:"bgg_ref"`
+	NameRu     *string `json:"name_ru"`
+	NameEn     *string `json:"name_en"`
+	Title      string  `json:"title"`
+	Year       *int    `json:"year"`
+	IsAddition bool    `json:"is_addition"`
+}
+
+type suggestionsResponse struct {
+	Data struct {
+		Games             []suggestion `json:"games"`
+		TeseraUnavailable *bool        `json:"tesera_unavailable"`
+		BggUnavailable    *bool        `json:"bgg_unavailable"`
+	} `json:"data"`
+}
+
 func TestGameSuggestionsEndpoint(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	stub := newTeseraStub(t)
-	router := setupRouterWithTesera(pool, stub.URL)
+	teseraStub := newTeseraStub(t)
+	bggStub := newBggSuggestStub(t)
+	router := setupRouterWithClients(pool, teseraStub.URL, bggStub.URL)
 
 	editorToken, _ := createTestUserWithID(t, pool, true)
 	viewerToken, _ := createTestUserWithID(t, pool, false)
@@ -95,36 +175,134 @@ func TestGameSuggestionsEndpoint(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("suggest: %d %s", w.Code, w.Body.String())
 	}
-	var resp struct {
-		Data struct {
-			Games []struct {
-				TeseraRef  int     `json:"tesera_ref"`
-				BggRef     *int    `json:"bgg_ref"`
-				NameRu     *string `json:"name_ru"`
-				NameEn     *string `json:"name_en"`
-				Title      string  `json:"title"`
-				IsAddition bool    `json:"is_addition"`
-			} `json:"games"`
-		} `json:"data"`
-	}
+	var resp suggestionsResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v (%s)", err, w.Body.String())
 	}
 	if len(resp.Data.Games) != 2 {
-		t.Fatalf("games = %+v, want the base game and the addition", resp.Data.Games)
+		t.Fatalf("games = %+v, want the BGG base game and the expansion", resp.Data.Games)
 	}
-	// Exact base-game match sorts first; the Tesera-flagged addition (the
-	// river) follows, marked rather than filtered — the flag is unreliable.
+	if resp.Data.TeseraUnavailable != nil || resp.Data.BggUnavailable != nil {
+		t.Errorf("flags must stay unset when both catalogues answer, got %+v", resp.Data)
+	}
+	// The BGG base game sorts first (the query equals its Tesera-provided
+	// Russian title), the expansion follows, flagged from BGG's expansion
+	// link. Both carry their Tesera ids — matched by the BGG id Tesera knows.
 	g := resp.Data.Games[0]
-	if g.TeseraRef != 707 || g.BggRef == nil || *g.BggRef != 822 || g.IsAddition {
+	if g.TeseraRef == nil || *g.TeseraRef != 707 || g.BggRef == nil || *g.BggRef != 822 || g.IsAddition {
 		t.Errorf("first candidate = %+v, want tesera 707 / bgg 822 / base game", g)
 	}
-	if g.NameRu == nil || *g.NameRu != "Каркассон" || g.NameEn == nil || *g.NameEn != "Carcassonne" {
-		t.Errorf("names = %+v, want Каркассон / Carcassonne", g)
+	if g.NameEn == nil || *g.NameEn != "Carcassonne" || g.Title != "Carcassonne" {
+		t.Errorf("names = %+v, want Carcassonne", g)
+	}
+	// BGG's alternates («Каркасон», «Каркассон») are a scoring tie, so the
+	// Russian name comes from the attached Tesera row.
+	if g.NameRu == nil || *g.NameRu != "Каркассон" {
+		t.Errorf("name_ru = %+v, want the Tesera fallback Каркассон", g.NameRu)
 	}
 	river := resp.Data.Games[1]
-	if river.TeseraRef != 26664 || !river.IsAddition {
-		t.Errorf("second candidate = %+v, want the river addition flagged", river)
+	if river.TeseraRef == nil || *river.TeseraRef != 26664 || river.BggRef == nil || *river.BggRef != 4101 || !river.IsAddition {
+		t.Errorf("second candidate = %+v, want the river expansion flagged", river)
+	}
+
+	// A query BGG does not know falls back to the Tesera-only row, which
+	// still carries its BGG id.
+	w = doJSON(t, router, http.MethodGet, "/games/suggestions?query="+url.QueryEscape("бутыл"), editorToken, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("tesera-only suggest: %d %s", w.Code, w.Body.String())
+	}
+	resp = suggestionsResponse{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, w.Body.String())
+	}
+	if len(resp.Data.Games) != 1 {
+		t.Fatalf("games = %+v, want the single Tesera row", resp.Data.Games)
+	}
+	imp := resp.Data.Games[0]
+	if imp.TeseraRef == nil || *imp.TeseraRef != 555 || imp.BggRef == nil || *imp.BggRef != 12345 ||
+		imp.NameRu == nil || *imp.NameRu != "Тень в бутылке" || imp.NameEn == nil || *imp.NameEn != "The Bottle Imp" {
+		t.Errorf("tesera-only candidate = %+v", imp)
+	}
+	if resp.Data.BggUnavailable != nil || resp.Data.TeseraUnavailable != nil {
+		t.Errorf("absent-on-BGG is not an outage, got flags %+v/%+v", resp.Data.BggUnavailable, resp.Data.TeseraUnavailable)
+	}
+}
+
+// When the Tesera guard rejects the search, the answer degrades to the BGG
+// rows with the flag set — and the guard's HTML body must not surface
+// anywhere in the response.
+func TestGameSuggestionsDegradeWhenTeseraGuarded(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	guard := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("<!doctype html><html><head><title>DDoS-Guard</title></head></html>"))
+	}))
+	defer guard.Close()
+	router := setupRouterWithClients(pool, guard.URL, newBggSuggestStub(t).URL)
+	editorToken, _ := createTestUserWithID(t, pool, true)
+
+	w := doJSON(t, router, http.MethodGet, "/games/suggestions?query="+url.QueryEscape("каркассон"), editorToken, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("guarded suggest: %d %s", w.Code, w.Body.String())
+	}
+	var resp suggestionsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, w.Body.String())
+	}
+	if len(resp.Data.Games) != 2 {
+		t.Fatalf("games = %+v, want the two BGG rows", resp.Data.Games)
+	}
+	g := resp.Data.Games[0]
+	if g.BggRef == nil || *g.BggRef != 822 || g.TeseraRef != nil {
+		t.Errorf("first candidate = %+v, want BGG-only", g)
+	}
+	// With Tesera gone, its Russian-name fallback is gone too.
+	if resp.Data.TeseraUnavailable == nil || !*resp.Data.TeseraUnavailable {
+		t.Errorf("tesera_unavailable = %+v, want true", resp.Data.TeseraUnavailable)
+	}
+	if resp.Data.BggUnavailable != nil {
+		t.Errorf("bgg_unavailable must stay unset, got %+v", resp.Data.BggUnavailable)
+	}
+	for _, leak := range []string{"DDoS", "<html", "<body"} {
+		if strings.Contains(w.Body.String(), leak) {
+			t.Errorf("response leaks guard HTML (%q): %s", leak, w.Body.String())
+		}
+	}
+}
+
+// When BGG fails, the Tesera rows carry the answer and the flag explains it.
+func TestGameSuggestionsDegradeWhenBggUnavailable(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte("Unauthorized"))
+	}))
+	defer broken.Close()
+	router := setupRouterWithClients(pool, newTeseraStub(t).URL, broken.URL)
+	editorToken, _ := createTestUserWithID(t, pool, true)
+
+	w := doJSON(t, router, http.MethodGet, "/games/suggestions?query="+url.QueryEscape("каркассон"), editorToken, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bgg-outage suggest: %d %s", w.Code, w.Body.String())
+	}
+	var resp suggestionsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, w.Body.String())
+	}
+	if len(resp.Data.Games) != 2 {
+		t.Fatalf("games = %+v, want the two Tesera rows", resp.Data.Games)
+	}
+	g := resp.Data.Games[0]
+	if g.TeseraRef == nil || *g.TeseraRef != 707 || g.NameRu == nil || *g.NameRu != "Каркассон" {
+		t.Errorf("first candidate = %+v, want the Tesera row with its Russian title", g)
+	}
+	if resp.Data.BggUnavailable == nil || !*resp.Data.BggUnavailable {
+		t.Errorf("bgg_unavailable = %+v, want true", resp.Data.BggUnavailable)
+	}
+	if resp.Data.TeseraUnavailable != nil {
+		t.Errorf("tesera_unavailable must stay unset, got %+v", resp.Data.TeseraUnavailable)
 	}
 }
 

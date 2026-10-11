@@ -384,12 +384,15 @@ GameSuggestionsPath:
   get:
     operationId: SuggestGames
     tags: [games]
-    summary: Suggest base-game matches from the Tesera catalogue for a name being typed
+    summary: Suggest catalogue matches for a name being typed
     description: >-
-      Proxies the tesera.ru search; additions and expansions are excluded.
-      Exact (normalized) name matches sort first. Failures of the external
-      API surface as errors — callers treat any failure as "no suggestions"
-      and must not block on it.
+      BoardGameGeek is the primary source (search plus the localized Russian
+      titles of the matches, picked from their alternate names); Tesera
+      enriches the matches with its ids and adds its own rows. Exact
+      (normalized) name matches sort first, base games before additions.
+      A failing catalogue degrades the result instead of failing the
+      request — the corresponding *_unavailable flag is set. Callers must
+      treat an empty list as "no suggestions" and never block on it.
     security:
       - cookieAuth: []
     parameters:
@@ -425,6 +428,12 @@ GameSuggestionsPath:
               $ref: './common.yaml#/ApiError'
       "403":
         description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "503":
+        description: No catalogue integration is configured on the server
         content:
           application/json:
             schema:
@@ -700,26 +709,30 @@ GameMode:
 GameSuggestion:
   type: object
   description: >-
-    A match candidate from the Tesera catalogue. Base games sort before
-    Tesera-flagged additions (the flag is unreliable, so nothing is filtered
-    from the picker).
+    A match candidate for a name being typed: from the BoardGameGeek search
+    (possibly enriched with a Tesera id) or, when BGG has nothing, from the
+    Tesera catalogue itself. Base games sort before additions (the
+    addition flag comes from BGG's expansion links or Tesera's unreliable
+    flag — shown as a hint, never a filter).
   properties:
     tesera_ref:
       type: integer
+      nullable: true
+      description: Absent when the candidate carries no Tesera match
     bgg_ref:
       type: integer
       nullable: true
-      description: Absent when Tesera knows no BoardGameGeek link
+      description: Absent when the candidate comes from Tesera without a BGG link
     name_ru:
       type: string
       nullable: true
-      description: Localized Russian title, absent when the game was not published in Russian
+      description: Localized Russian title, absent when neither source knows one
     name_en:
       type: string
       nullable: true
     title:
       type: string
-      description: Tesera's localized title, for display in pickers
+      description: The candidate's display title, for pickers
     year:
       type: integer
       nullable: true
@@ -728,8 +741,8 @@ GameSuggestion:
       nullable: true
     is_addition:
       type: boolean
-      description: Tesera's addition/expansion flag (unreliable — shown as a hint, not a filter)
-  required: [tesera_ref, title, is_addition]
+      description: Expansion/expansion-flag hint — shown as a hint, not a filter
+  required: [title, is_addition]
 
 GameSuggestionList:
   type: object
@@ -738,6 +751,14 @@ GameSuggestionList:
       type: array
       items:
         $ref: '#/GameSuggestion'
+    tesera_unavailable:
+      type: boolean
+      nullable: true
+      description: Set when the configured Tesera integration failed and only BGG results are included
+    bgg_unavailable:
+      type: boolean
+      nullable: true
+      description: Set when the configured BGG integration failed and only Tesera results are included
   required: [games]
 
 GameAutoMatchResult:
