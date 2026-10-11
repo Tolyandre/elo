@@ -1,12 +1,14 @@
 "use client"
 
-import { CLUB_ICONS, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
+import { CLUB_ICONS, clubIconKey, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
+import { HelpHint } from "@/components/help-hint";
 import { cn } from "@/lib/utils";
 
 /**
- * The built-in icon picker: a "no icon" button plus one button per icon of the
- * shared pool (lib/club-icons). Fully controlled — the caller owns the save
- * (club pages PATCH immediately; the tenant settings form saves on submit).
+ * The built-in icon picker: a "no icon" button plus one button per icon of
+ * the shared pool (public/club-icons). Fully controlled — the caller owns the
+ * save (club pages PATCH immediately; the tenant settings form saves on
+ * submit).
  */
 export function IconPicker({
     value,
@@ -33,22 +35,30 @@ export function IconPicker({
             >
                 нет
             </button>
-            {CLUB_ICONS.map(({ key, label: iconLabel }) => (
-                <button
-                    key={key}
-                    type="button"
-                    onClick={() => onChange(key)}
-                    disabled={disabled}
-                    className={cn(
-                        "inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30",
-                        value === key && "ring-2 ring-info border-info",
-                    )}
-                    title={iconLabel}
-                >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={clubIconSrc(key)} alt={iconLabel} className="h-8 w-8" />
-                </button>
-            ))}
+            {CLUB_ICONS.map((fileName) => {
+                const key = clubIconKey(fileName);
+                return (
+                    <button
+                        key={key}
+                        type="button"
+                        onClick={() => onChange(key)}
+                        disabled={disabled}
+                        className={cn(
+                            "inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30",
+                            value === key && "ring-2 ring-info border-info",
+                        )}
+                        title={key}
+                    >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={clubIconSrc(key)} alt="" className="h-8 w-8" />
+                    </button>
+                );
+            })}
+            <HelpHint label="Как добавить иконку">
+                Чтобы добавить новую иконку, положите SVG-файл в папку
+                public/club-icons и передеплойте приложение — она появится здесь
+                сама.
+            </HelpHint>
             {label && <span className="sr-only">{label}</span>}
         </div>
     );

@@ -583,8 +583,8 @@ AuditTournamentConfigDetails:
   type: object
   description: >-
     Registration-time configuration of the tournament the audit row points at
-    (ADR-26): name, grand-final deadline, game pool, participants — full
-    before → after on every change; create fills the 'to' sides only.
+    (ADR-26): name, grand-final deadline, trophy, game pool, participants —
+    full before → after on every change; create fills the 'to' sides only.
     Untouched fields stay null.
   required: [schema_version]
   properties:
@@ -602,6 +602,16 @@ AuditTournamentConfigDetails:
       properties:
         from: { type: string, format: date-time, nullable: true }
         to: { type: string, format: date-time, nullable: true }
+    trophy:
+      type: object
+      nullable: true
+      description: >-
+        The tournament trophy change: the trophy's pool token in its full
+        before → after (null side = no trophy). Create fills the 'to' side
+        only.
+      properties:
+        from: { type: string, nullable: true }
+        to: { type: string, nullable: true }
     games:
       type: object
       nullable: true

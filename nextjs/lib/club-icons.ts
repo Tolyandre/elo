@@ -1,31 +1,30 @@
 /**
- * Built-in club icon set.
+ * Built-in club icon set — one of the app's image pools (see
+ * scripts/generate-image-pools.mjs).
  *
- * Club icons live in `public/club-icons/<key>.svg` and are version-controlled:
- * adding an icon means committing the SVG file and an entry here. A club stores
- * only an icon *key* in the database; this registry is the single source of truth
- * for which keys exist and how they render.
+ * Icons live in `public/club-icons/*.svg`; adding one means committing the
+ * file and redeploying — the pool manifest regenerates on dev/build. A club
+ * stores only an icon *key* (the file name without extension) in the
+ * database; an unknown key simply renders nothing, so retiring an icon in a
+ * later release can't break rendering.
  *
  * There is intentionally no backend registry — the API only validates the key
- * format, not whether the icon exists. An unknown key simply renders nothing, so
- * retiring an icon in a later release can't break rendering.
+ * format, not whether the icon exists.
  */
-export const CLUB_ICONS = [
-    { key: "blue-figure", label: "Синие люди" },
-    { key: "clover", label: "Клевер" },
-    { key: "hm", label: "Хорошее Место" },
-    { key: "hm-cup", label: "Хорошее Место (чашка)" },
-    { key: "tbonk", label: "Тбонк" },
-    { key: "ural-game-club", label: "Уральский игровой клуб" },
-    { key: "chelcamp", label: "Челкэмп" },
-] as const;
+import { IMAGE_POOLS } from "@/lib/image-pools.gen";
 
-export type ClubIconKey = (typeof CLUB_ICONS)[number]["key"];
+/** File names (with extension) of the built-in club icons, sorted. */
+export const CLUB_ICONS: readonly string[] = IMAGE_POOLS["club-icons"];
 
-const ICON_KEYS: ReadonlySet<string> = new Set(CLUB_ICONS.map((i) => i.key));
+/** The icon key of a pool file name: "clover.svg" → "clover". */
+export function clubIconKey(fileName: string): string {
+    return fileName.replace(/\.[a-z0-9]+$/i, "");
+}
+
+const ICON_KEYS: ReadonlySet<string> = new Set(CLUB_ICONS.map(clubIconKey));
 
 /** True when `k` is a registered built-in icon key. */
-export function isValidClubIcon(k: string | null | undefined): k is ClubIconKey {
+export function isValidClubIcon(k: string | null | undefined): k is string {
     return typeof k === "string" && ICON_KEYS.has(k);
 }
 

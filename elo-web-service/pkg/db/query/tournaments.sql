@@ -8,8 +8,8 @@
 -- elimination stays NULL until start stamps the chosen plan's family.
 -- Every tournament belongs to a tenant (ADR-36): the create path is
 -- POST /tenants/{id}/tournaments.
-INSERT INTO tournaments (id, tenant_id, name, status, grand_final_deadline)
-VALUES ($1, $2, $3, 'registration', $4)
+INSERT INTO tournaments (id, tenant_id, name, status, grand_final_deadline, trophy)
+VALUES ($1, $2, $3, 'registration', $4, $5)
 ON CONFLICT (id) DO NOTHING
 RETURNING *;
 
@@ -28,9 +28,15 @@ ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'registration' THEN 1 WHEN 'comp
          name;
 
 -- name: UpdateTournamentConfig :exec
--- Registration-time config (ADR-26): name and the optional grand-final
--- deadline. The pool and participants are managed by their own queries.
-UPDATE tournaments SET name = $2, grand_final_deadline = $3 WHERE id = $1;
+-- Registration-time config (ADR-26): name, the optional grand-final deadline
+-- and the optional trophy (a pool token). The pool and participants are
+-- managed by their own queries.
+UPDATE tournaments SET name = $2, grand_final_deadline = $3, trophy = $4 WHERE id = $1;
+
+-- name: GetTournamentByTrophy :one
+-- The trophy assignment check: the tournament currently holding the trophy
+-- token, if any (the UNIQUE constraint is the race backstop).
+SELECT id, name FROM tournaments WHERE trophy = $1;
 
 -- name: SetTournamentRunning :exec
 -- The single start action (ADR-26): snapshot the chosen plan + seed, stamp

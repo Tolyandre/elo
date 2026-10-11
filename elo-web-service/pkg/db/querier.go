@@ -294,6 +294,9 @@ type Querier interface {
 	// Bare row for existence checks and settings recalculation.
 	GetTenantByID(ctx context.Context, argID id.ID) (Tenant, error)
 	GetTournament(ctx context.Context, argID id.ID) (Tournament, error)
+	// The trophy assignment check: the tournament currently holding the trophy
+	// token, if any (the UNIQUE constraint is the race backstop).
+	GetTournamentByTrophy(ctx context.Context, trophy pgtype.Text) (GetTournamentByTrophyRow, error)
 	// The champion slot: the final-track slot advancing exactly one player
 	// (a bracket has exactly one; a tournament-winner market resolves against it).
 	GetTournamentFinalSlot(ctx context.Context, tournamentID id.ID) (GetTournamentFinalSlotRow, error)
@@ -691,8 +694,9 @@ type Querier interface {
 	// Openness settings of an existing tenant (ADR-36); no rows when the tenant
 	// is missing.
 	UpdateTenantSettings(ctx context.Context, arg UpdateTenantSettingsParams) (Tenant, error)
-	// Registration-time config (ADR-26): name and the optional grand-final
-	// deadline. The pool and participants are managed by their own queries.
+	// Registration-time config (ADR-26): name, the optional grand-final deadline
+	// and the optional trophy (a pool token). The pool and participants are
+	// managed by their own queries.
 	UpdateTournamentConfig(ctx context.Context, arg UpdateTournamentConfigParams) error
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error

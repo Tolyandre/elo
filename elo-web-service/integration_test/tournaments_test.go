@@ -132,6 +132,7 @@ type tournamentJSON struct {
 		Elimination        *string `json:"elimination"`
 		GrandFinalDeadline *string `json:"grand_final_deadline"`
 		WinnerPlayerId     *string `json:"winner_player_id"`
+		Trophy             *string `json:"trophy"`
 		Games              []struct {
 			GameId     string `json:"game_id"`
 			MinPlayers int    `json:"min_players"`

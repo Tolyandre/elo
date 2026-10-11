@@ -4,12 +4,13 @@
   "private": true,
   "packageManager": "pnpm@11.18.0",
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --webpack && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-precache.mjs",
+    "dev": "node scripts/generate-image-pools.mjs && next dev --turbopack",
+    "build": "node scripts/generate-image-pools.mjs && next build --webpack && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-precache.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest",
-    "generate:api": "node scripts/generate-api.mts"
+    "generate:api": "node scripts/generate-api.mts",
+    "generate:image-pools": "node scripts/generate-image-pools.mjs"
   },
   "dependencies": {
     "@icons-pack/react-simple-icons": "^13.13.0",

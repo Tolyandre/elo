@@ -589,6 +589,15 @@ Tournament:
       nullable: true
     winner_player_id:
       $ref: './common.yaml#/Base58ID'
+    trophy:
+      type: string
+      description: >-
+        The tournament's trophy — a token from the static art pool (the PNGs
+        under public/trophies/, see pkg/elo/trophies.go); NULL = the generic
+        cup mark. The pool is source-defined and the assignment exclusive:
+        a trophy some tournament holds is hidden from every other
+        tournament's picker. Settable only while the tournament is in
+        registration.
     games:
       type: array
       items:
@@ -618,6 +627,13 @@ TournamentInput:
       format: date-time
       nullable: true
       description: Optional; when it passes without a completed grand final the tournament auto-cancels.
+    trophy:
+      type: string
+      description: >-
+        Optional; the desired trophy token from the static art pool. Like the
+        deadline, absent or null clears it — the PUT body carries the whole
+        desired configuration. Must be free (409 when another tournament
+        holds it) and known to the pool (400 otherwise).
     games:
       type: array
       items:

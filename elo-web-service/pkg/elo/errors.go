@@ -55,6 +55,8 @@ var (
 	ErrTournamentLinkChangeUnsafe       = errors.New("изменение учёта партии затронет уже сыгранные матчи следующих кругов — используйте инструменты организатора")
 	ErrTournamentScoreEditUnsafe        = errors.New("правка пересчитает результат стола, уже пошедший в следующие круги, — сначала разберите их от последнего круга к этому (открепите партии или отмените решения)")
 	ErrGrandFinalDeadlinePassed         = errors.New("дедлайн гранд-финала истёк")
+	ErrTournamentTrophyInvalid          = errors.New("имя кубка — это имя файла в public/trophies: латиница, цифры, точка, дефис, до 64 знаков")
+	ErrTournamentTrophyTaken            = errors.New("этот кубок уже занят другим турниром")
 
 	ErrArenaIsAutoManaged = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")
 	ErrArenaNameTaken     = errors.New("арена с таким названием уже существует")

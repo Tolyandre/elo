@@ -251,6 +251,12 @@ func auditDetailsFromStored(kind string, raw json.RawMessage) (*AuditEntry_Detai
 				To   *time.Time `json:"to,omitempty"`
 			}{From: auditTime(v.GrandFinalDeadline.From), To: auditTime(v.GrandFinalDeadline.To)}
 		}
+		if v.Trophy != nil {
+			g.Trophy = &struct {
+				From *string `json:"from,omitempty"`
+				To   *string `json:"to,omitempty"`
+			}{From: v.Trophy.From, To: v.Trophy.To}
+		}
 		if v.Games != nil {
 			from := tournamentGameDocs(v.Games.From)
 			to := tournamentGameDocs(v.Games.To)

@@ -86,10 +86,10 @@ func (q *Queries) CountTournamentParticipants(ctx context.Context, tournamentID 
 
 const createTournament = `-- name: CreateTournament :one
 
-INSERT INTO tournaments (id, tenant_id, name, status, grand_final_deadline)
-VALUES ($1, $2, $3, 'registration', $4)
+INSERT INTO tournaments (id, tenant_id, name, status, grand_final_deadline, trophy)
+VALUES ($1, $2, $3, 'registration', $4, $5)
 ON CONFLICT (id) DO NOTHING
-RETURNING id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id
+RETURNING id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id, trophy
 `
 
 type CreateTournamentParams struct {
@@ -97,6 +97,7 @@ type CreateTournamentParams struct {
 	TenantID           id.ID              `json:"tenant_id"`
 	Name               string             `json:"name"`
 	GrandFinalDeadline pgtype.Timestamptz `json:"grand_final_deadline"`
+	Trophy             pgtype.Text        `json:"trophy"`
 }
 
 // Tournament queries (ADR-26). The bracket materialization has its own file
@@ -113,6 +114,7 @@ func (q *Queries) CreateTournament(ctx context.Context, arg CreateTournamentPara
 		arg.TenantID,
 		arg.Name,
 		arg.GrandFinalDeadline,
+		arg.Trophy,
 	)
 	var i Tournament
 	err := row.Scan(
@@ -127,6 +129,7 @@ func (q *Queries) CreateTournament(ctx context.Context, arg CreateTournamentPara
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
 		&i.TenantID,
+		&i.Trophy,
 	)
 	return i, err
 }
@@ -159,7 +162,7 @@ func (q *Queries) DeleteTournamentParticipantsNotIn(ctx context.Context, arg Del
 }
 
 const getTournament = `-- name: GetTournament :one
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id FROM tournaments WHERE id = $1
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id, trophy FROM tournaments WHERE id = $1
 `
 
 func (q *Queries) GetTournament(ctx context.Context, argID id.ID) (Tournament, error) {
@@ -177,12 +180,31 @@ func (q *Queries) GetTournament(ctx context.Context, argID id.ID) (Tournament, e
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
 		&i.TenantID,
+		&i.Trophy,
 	)
 	return i, err
 }
 
+const getTournamentByTrophy = `-- name: GetTournamentByTrophy :one
+SELECT id, name FROM tournaments WHERE trophy = $1
+`
+
+type GetTournamentByTrophyRow struct {
+	ID   id.ID  `json:"id"`
+	Name string `json:"name"`
+}
+
+// The trophy assignment check: the tournament currently holding the trophy
+// token, if any (the UNIQUE constraint is the race backstop).
+func (q *Queries) GetTournamentByTrophy(ctx context.Context, trophy pgtype.Text) (GetTournamentByTrophyRow, error) {
+	row := q.db.QueryRow(ctx, getTournamentByTrophy, trophy)
+	var i GetTournamentByTrophyRow
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
 const getTournamentForUpdate = `-- name: GetTournamentForUpdate :one
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id FROM tournaments WHERE id = $1 FOR UPDATE
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id, trophy FROM tournaments WHERE id = $1 FOR UPDATE
 `
 
 // Row-locked variant for the lifecycle mutations (start/cancel/config): a
@@ -202,6 +224,7 @@ func (q *Queries) GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tour
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
 		&i.TenantID,
+		&i.Trophy,
 	)
 	return i, err
 }
@@ -327,7 +350,7 @@ func (q *Queries) ListTournamentParticipants(ctx context.Context, tournamentID i
 }
 
 const listTournaments = `-- name: ListTournaments :many
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id FROM tournaments
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id, trophy FROM tournaments
 ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'registration' THEN 1 WHEN 'completed' THEN 2 ELSE 3 END,
          name
 `
@@ -354,6 +377,7 @@ func (q *Queries) ListTournaments(ctx context.Context) ([]Tournament, error) {
 			&i.PlanSchemaVersion,
 			&i.CreatedAt,
 			&i.TenantID,
+			&i.Trophy,
 		); err != nil {
 			return nil, err
 		}
@@ -438,18 +462,25 @@ func (q *Queries) SetTournamentStatus(ctx context.Context, arg SetTournamentStat
 }
 
 const updateTournamentConfig = `-- name: UpdateTournamentConfig :exec
-UPDATE tournaments SET name = $2, grand_final_deadline = $3 WHERE id = $1
+UPDATE tournaments SET name = $2, grand_final_deadline = $3, trophy = $4 WHERE id = $1
 `
 
 type UpdateTournamentConfigParams struct {
 	ID                 id.ID              `json:"id"`
 	Name               string             `json:"name"`
 	GrandFinalDeadline pgtype.Timestamptz `json:"grand_final_deadline"`
+	Trophy             pgtype.Text        `json:"trophy"`
 }
 
-// Registration-time config (ADR-26): name and the optional grand-final
-// deadline. The pool and participants are managed by their own queries.
+// Registration-time config (ADR-26): name, the optional grand-final deadline
+// and the optional trophy (a pool token). The pool and participants are
+// managed by their own queries.
 func (q *Queries) UpdateTournamentConfig(ctx context.Context, arg UpdateTournamentConfigParams) error {
-	_, err := q.db.Exec(ctx, updateTournamentConfig, arg.ID, arg.Name, arg.GrandFinalDeadline)
+	_, err := q.db.Exec(ctx, updateTournamentConfig,
+		arg.ID,
+		arg.Name,
+		arg.GrandFinalDeadline,
+		arg.Trophy,
+	)
 	return err
 }

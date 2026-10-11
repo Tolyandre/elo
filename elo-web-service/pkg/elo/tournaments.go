@@ -3,6 +3,7 @@ package elo
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -66,7 +67,8 @@ type TournamentGameInput struct {
 
 // TournamentWriteOpts carries the registration-time configuration.
 // On update, nil Games / nil ParticipantIDs keep the stored set (the PUT body
-// marks them "when present"); a nil GrandFinalDeadline clears it.
+// marks them "when present"); a nil GrandFinalDeadline clears it, and so does
+// a nil Trophy (the PUT body carries the whole desired config).
 // TenantID is create-only (the create path is POST /tenants/{id}/tournaments,
 // ADR-36): the owning tenant is immutable afterwards, updates ignore it.
 type TournamentWriteOpts struct {
@@ -75,7 +77,11 @@ type TournamentWriteOpts struct {
 	GrandFinalDeadline *time.Time
 	Games              []TournamentGameInput
 	ParticipantIDs     []id.ID
-	ActorUserID        id.ID
+	// Trophy is a token from the static art pool (TrophyPool); nil = no
+	// trophy. The assignment is exclusive — a trophy some tournament holds
+	// is hidden from every other tournament's picker.
+	Trophy      *string
+	ActorUserID id.ID
 }
 
 // CreateTournament inserts the entity in the registration state. The client
@@ -105,11 +111,15 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opt
 	}
 
 	if _, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (db.Tournament, error) {
+		if err := checkTrophy(ctx, q, opts.Trophy, tid); err != nil {
+			return db.Tournament{}, err
+		}
 		row, err := q.CreateTournament(ctx, db.CreateTournamentParams{
 			ID:                 tid,
 			TenantID:           opts.TenantID,
 			Name:               opts.Name,
 			GrandFinalDeadline: timePtrTz(opts.GrandFinalDeadline),
+			Trophy:             strPtrText(opts.Trophy),
 		})
 		if db.IsNoRows(err) {
 			// Same id raced in first — the replay semantics return it.
@@ -130,7 +140,8 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opt
 		}
 		if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityTournament, audit.ActionCreated, tid,
 			audit.KindTournamentConfig, audit.NewTournamentConfigCreated(
-				opts.Name, deadline, tournamentGameDocsOf(opts.Games), idStrings(opts.ParticipantIDs))); err != nil {
+				opts.Name, deadline, tournamentGameDocsOf(opts.Games), idStrings(opts.ParticipantIDs),
+				opts.Trophy)); err != nil {
 			return db.Tournament{}, err
 		}
 		return row, nil
@@ -165,10 +176,14 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, tid id.ID, opt
 			return struct{}{}, err
 		}
 
+		if err := checkTrophy(ctx, q, opts.Trophy, tid); err != nil {
+			return struct{}{}, err
+		}
 		if err := q.UpdateTournamentConfig(ctx, db.UpdateTournamentConfigParams{
 			ID:                 tid,
 			Name:               opts.Name,
 			GrandFinalDeadline: timePtrTz(opts.GrandFinalDeadline),
+			Trophy:             strPtrText(opts.Trophy),
 		}); err != nil {
 			return struct{}{}, fmt.Errorf("update tournament: %w", err)
 		}
@@ -204,6 +219,10 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, tid id.ID, opt
 		if !timePtrEqual(oldDeadline, newDeadline) {
 			details.GrandFinalDeadline = valueChangeStr(timeStrPtr(oldDeadline), timeStrPtr(newDeadline))
 		}
+		oldTrophy, newTrophy := textStrPtr(t.Trophy), opts.Trophy
+		if !strPtrEqual(oldTrophy, newTrophy) {
+			details.Trophy = valueChangeStr(oldTrophy, newTrophy)
+		}
 		if opts.Games != nil && !poolEqual(beforeGames, afterGames) {
 			details.Games = &audit.GamesChange{
 				From: tournamentGameDocsOfRows(beforeGames),
@@ -214,7 +233,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, tid id.ID, opt
 			details.FromPlayerIDs = idStrings(beforeParticipants)
 			details.ToPlayerIDs = idStrings(afterParticipants)
 		}
-		if details.Name != nil || details.GrandFinalDeadline != nil || details.Games != nil || details.FromPlayerIDs != nil || details.ToPlayerIDs != nil {
+		if details.Name != nil || details.GrandFinalDeadline != nil || details.Trophy != nil || details.Games != nil || details.FromPlayerIDs != nil || details.ToPlayerIDs != nil {
 			if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
 				audit.KindTournamentConfig, details); err != nil {
 				return struct{}{}, err
@@ -379,6 +398,63 @@ func (s *TournamentService) GetTournamentDetail(ctx context.Context, tid id.ID) 
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+// trophyKeyRe constrains a trophy pick to the shape of a pool file name: a
+// trophy's identity is the file public/trophies/<trophy>.<ext> (see
+// scripts/generate-image-pools.mjs), so the token is that file name without
+// the extension. Like club icons, the API validates the format, not the
+// file's existence — an unknown key simply renders the generic cup.
+var trophyKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// checkTrophy validates the picked trophy (ADR-26 §UI): the token must look
+// like a pool file name and the assignment must be free — a trophy some
+// tournament already holds is hidden from the picker. Re-picking the
+// tournament's own trophy stays allowed (a no-op write). The
+// tournaments_trophy_unique constraint is the concurrent-race backstop.
+func checkTrophy(ctx context.Context, q *db.Queries, trophy *string, tid id.ID) error {
+	if trophy == nil {
+		return nil
+	}
+	if !trophyKeyRe.MatchString(*trophy) {
+		return ErrTournamentTrophyInvalid
+	}
+	holder, err := q.GetTournamentByTrophy(ctx, pgText(*trophy))
+	if db.IsNoRows(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get trophy holder: %w", err)
+	}
+	if holder.ID != tid {
+		return fmt.Errorf("%w: «%s»", ErrTournamentTrophyTaken, holder.Name)
+	}
+	return nil
+}
+
+// strPtrText maps an optional trophy token onto the nullable text column.
+func strPtrText(s *string) pgtype.Text {
+	if s == nil {
+		return pgtype.Text{}
+	}
+	return pgText(*s)
+}
+
+// textStrPtr renders a nullable text column as a nullable string for the
+// audit value-change pairs.
+func textStrPtr(t pgtype.Text) *string {
+	if !t.Valid {
+		return nil
+	}
+	s := t.String
+	return &s
+}
+
+func strPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
 
 func validateTournamentInput(opts TournamentWriteOpts) error {
 	if opts.Name == "" {

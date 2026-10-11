@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://elo/audit/tournament-config.v1.json",
   "title": "Audit tournament config details (v1)",
-  "description": "Registration-time configuration of the tournament identified by the audit row's entity_id: name, grand-final deadline, game pool, participants — full before → after on every change; create fills the 'to' sides only.",
+  "description": "Registration-time configuration of the tournament identified by the audit row's entity_id: name, grand-final deadline, trophy, game pool, participants — full before → after on every change; create fills the 'to' sides only.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version"],
@@ -18,6 +18,15 @@
       }
     },
     "grand_final_deadline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"], "minLength": 1 },
+        "to": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "trophy": {
       "type": "object",
       "additionalProperties": false,
       "required": ["from", "to"],

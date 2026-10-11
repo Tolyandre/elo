@@ -385,6 +385,9 @@ func tournamentWriteOpts(body *TournamentInput, actor id.ID) elo.TournamentWrite
 		GrandFinalDeadline: body.GrandFinalDeadline,
 		ActorUserID:        actor,
 	}
+	// The trophy rides the whole-desired-config semantics of the deadline:
+	// an absent body field reads as "no trophy" and clears it.
+	opts.Trophy = body.Trophy
 	if body.Games != nil {
 		for _, g := range *body.Games {
 			opts.Games = append(opts.Games, elo.TournamentGameInput{
@@ -415,6 +418,9 @@ func tournamentToAPI(d elo.TournamentDetail) Tournament {
 	if t.WinnerPlayerID != nil {
 		w := Base58ID(*t.WinnerPlayerID)
 		out.WinnerPlayerId = &w
+	}
+	if t.Trophy.Valid {
+		out.Trophy = &t.Trophy.String
 	}
 	for _, g := range d.Games {
 		out.Games = append(out.Games, TournamentGame{

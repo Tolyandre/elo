@@ -436,22 +436,24 @@ type GamesChange struct {
 }
 
 // TournamentConfigDetails captures the registration-time configuration:
-// name, the optional grand-final deadline, the game pool, the participants.
-// Create fills the 'to' sides; updates carry every changed field's full
-// before → after. The last config row reconstructs the whole registration
-// state (ADR-26 §Audit). The participant lists are flat because the id
-// conventions require *_ids properties to be plain id arrays.
+// name, the optional grand-final deadline, the trophy game, the game pool,
+// the participants. Create fills the 'to' sides; updates carry every changed
+// field's full before → after. The last config row reconstructs the whole
+// registration state (ADR-26 §Audit). The participant lists are flat because
+// the id conventions require *_ids properties to be plain id arrays.
 type TournamentConfigDetails struct {
 	SchemaVersion      int          `json:"schema_version"`
 	Name               *ValueChange `json:"name,omitempty"`
 	GrandFinalDeadline *ValueChange `json:"grand_final_deadline,omitempty"`
+	Trophy             *ValueChange `json:"trophy,omitempty"`
 	Games              *GamesChange `json:"games,omitempty"`
 	FromPlayerIDs      []string     `json:"from_player_ids,omitempty"`
 	ToPlayerIDs        []string     `json:"to_player_ids,omitempty"`
 }
 
 // NewTournamentConfigCreated builds the details of a tournament creation.
-func NewTournamentConfigCreated(name string, deadline *time.Time, games []TournamentGameDoc, participants []string) TournamentConfigDetails {
+// trophy is the picked trophy's pool token (nil = none).
+func NewTournamentConfigCreated(name string, deadline *time.Time, games []TournamentGameDoc, participants []string, trophy *string) TournamentConfigDetails {
 	d := TournamentConfigDetails{SchemaVersion: 1, Name: valueChange(nil, strPtr(name))}
 	if deadline != nil {
 		d.GrandFinalDeadline = valueChange(nil, strPtr(deadline.Format(time.RFC3339Nano)))
@@ -460,18 +462,22 @@ func NewTournamentConfigCreated(name string, deadline *time.Time, games []Tourna
 	}
 	d.Games = &GamesChange{To: games}
 	d.ToPlayerIDs = participants
+	d.Trophy = valueChange(nil, trophy)
 	return d
 }
 
 // NewTournamentConfigChanged builds the details of a config update; pass nil
 // for fields that did not change.
-func NewTournamentConfigChanged(name, deadline *[2]*string, games *[2][]TournamentGameDoc, participants *[2][]string) TournamentConfigDetails {
+func NewTournamentConfigChanged(name, deadline, trophy *[2]*string, games *[2][]TournamentGameDoc, participants *[2][]string) TournamentConfigDetails {
 	d := TournamentConfigDetails{SchemaVersion: 1}
 	if name != nil {
 		d.Name = valueChange(name[0], name[1])
 	}
 	if deadline != nil {
 		d.GrandFinalDeadline = valueChange(deadline[0], deadline[1])
+	}
+	if trophy != nil {
+		d.Trophy = valueChange(trophy[0], trophy[1])
 	}
 	if games != nil {
 		d.Games = &GamesChange{From: games[0], To: games[1]}

@@ -7,6 +7,8 @@ import { updateTournamentPromise } from "@/app/api";
 import { useGames } from "@/app/gamesContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
+import { HelpHint } from "@/components/help-hint";
+import { TrophyPicker } from "@/components/trophy-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toDatetimeLocal } from "@/lib/datetime";
@@ -15,6 +17,7 @@ import { isRatingGame } from "@/lib/game-modes";
 type FormState = {
     name: string;
     deadline: string;
+    trophy: string | null;
     pool: TournamentGame[];
     participantIds: Base58ID[];
 };
@@ -23,6 +26,7 @@ function formFrom(t: Tournament): FormState {
     return {
         name: t.name,
         deadline: t.grand_final_deadline ? toDatetimeLocal(t.grand_final_deadline) : "",
+        trophy: t.trophy ?? null,
         pool: t.games,
         participantIds: t.participant_ids ?? [],
     };
@@ -90,6 +94,10 @@ export function RegistrationEditor({
                 id: t.id,
                 name: form.name.trim() || t.name,
                 grand_final_deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
+                // Absent = clear: the PUT body carries the whole desired config
+                // (the same semantics as the deadline), so a picked-then-removed
+                // trophy goes back into the pool on save.
+                ...(form.trophy != null ? { trophy: form.trophy } : {}),
                 games: form.pool.map((g) => ({
                     game_id: g.game_id,
                     min_players: Math.max(2, g.min_players),
@@ -125,6 +133,22 @@ export function RegistrationEditor({
                     type="datetime-local"
                     value={form.deadline}
                     onChange={(e) => update({ deadline: e.target.value })}
+                />
+            </div>
+
+            <div>
+                <h2 className="flex items-center gap-1.5 font-semibold mb-2">
+                    Кубок турнира:
+                    <HelpHint label="Как добавить кубок">
+                        Добавить новый кубок просто: положите картинку в папку public/trophies и
+                        передеплойте приложение — она появится в выборе. Кубок показывается у
+                        победителя турнира; каждый кубок закреплён только за одним турниром.
+                    </HelpHint>
+                </h2>
+                <TrophyPicker
+                    tournamentId={t.id}
+                    value={form.trophy}
+                    onChange={(trophy) => update({ trophy })}
                 />
             </div>
 

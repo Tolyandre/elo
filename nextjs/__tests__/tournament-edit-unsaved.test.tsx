@@ -44,6 +44,12 @@ vi.mock("@/app/gamesContext", () => ({
     useGames: () => ({ games: [], invalidate: () => {} }),
 }));
 
+// The trophy picker reads the tournaments list for the taken-emblem set; the
+// unsaved-changes harness doesn't exercise it, so an empty list is enough.
+vi.mock("@/app/tournaments/tournamentsContext", () => ({
+    useTournaments: () => ({ tournaments: [], activeTournaments: [], invalidate: () => {} }),
+}));
+
 vi.mock("@/components/player-multi-select", () => ({
     PlayerMultiSelect: ({ value, onChange }: { value: Base58ID[]; onChange: (ids: Base58ID[]) => void }) => (
         <button type="button" onClick={() => onChange([...value, "p-new" as Base58ID])}>

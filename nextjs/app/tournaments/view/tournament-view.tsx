@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Edit2, Trophy } from "lucide-react";
+import { Edit2 } from "lucide-react";
 import { toBase58ID, type Base58ID } from "@/lib/id";
 import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import {
@@ -25,6 +25,7 @@ import { ErrorAlert } from "@/components/error-alert";
 import { PlayerLinkNotice } from "@/components/player-link-notice";
 import { PageContainer } from "@/components/page-container";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { TournamentTrophyMark } from "@/components/tournament-trophy-mark";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -142,7 +143,7 @@ function TournamentViewLoaded({
         <>
             <PageHeader
                 title={tournament.name}
-                icon={<Trophy className="h-6 w-6 shrink-0" />}
+                icon={<TournamentTrophyMark tournament={tournament} className="h-8 w-8" />}
                 action={canEdit ? (
                     <Button asChild size="sm" variant="outline" aria-label="Управление турниром">
                         <Link href={`/tournaments/edit?id=${tournament.id}`}>
@@ -166,11 +167,11 @@ function TournamentViewLoaded({
 
             {winnerId && (
                 <Card className="border-warning/60">
-                    <CardContent className="flex items-center gap-2 py-3">
-                        <Trophy className="h-5 w-5 text-warning shrink-0" />
+                    <CardContent className="flex items-center gap-4 py-4">
+                        <TournamentTrophyMark tournament={tournament} className="h-20 w-20" />
                         <span>
                             Победитель:{" "}
-                            <Link href={playerHref(winnerId)} className="font-semibold underline">
+                            <Link href={playerHref(winnerId)} className="text-lg font-semibold underline">
                                 {playerName(winnerId)}
                             </Link>
                         </span>

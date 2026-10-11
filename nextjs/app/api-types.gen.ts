@@ -1664,6 +1664,8 @@ export interface components {
             /** Format: date-time */
             grand_final_deadline?: string | null;
             winner_player_id?: components["schemas"]["Base58ID"];
+            /** @description The tournament's trophy — a token from the static art pool (the PNGs under public/trophies/, see pkg/elo/trophies.go); NULL = the generic cup mark. The pool is source-defined and the assignment exclusive: a trophy some tournament holds is hidden from every other tournament's picker. Settable only while the tournament is in registration. */
+            trophy?: string;
             games: components["schemas"]["TournamentGame"][];
             /** @description Player ids in registration order (list/detail reads) */
             participant_ids?: components["schemas"]["Base58ID"][];
@@ -1679,6 +1681,8 @@ export interface components {
              * @description Optional; when it passes without a completed grand final the tournament auto-cancels.
              */
             grand_final_deadline?: string | null;
+            /** @description Optional; the desired trophy token from the static art pool. Like the deadline, absent or null clears it — the PUT body carries the whole desired configuration. Must be free (409 when another tournament holds it) and known to the pool (400 otherwise). */
+            trophy?: string;
             /** @description The game pool (desired set on update — rewritten wholesale when present). */
             games?: components["schemas"]["TournamentGame"][];
             /** @description The desired participant set on update (diffed when present); the initial set on create. */
@@ -2428,7 +2432,7 @@ export interface components {
             min_players: number;
             max_players: number;
         };
-        /** @description Registration-time configuration of the tournament the audit row points at (ADR-26): name, grand-final deadline, game pool, participants — full before → after on every change; create fills the 'to' sides only. Untouched fields stay null. */
+        /** @description Registration-time configuration of the tournament the audit row points at (ADR-26): name, grand-final deadline, trophy, game pool, participants — full before → after on every change; create fills the 'to' sides only. Untouched fields stay null. */
         AuditTournamentConfigDetails: {
             schema_version: number;
             name?: {
@@ -2439,6 +2443,11 @@ export interface components {
                 /** Format: date-time */
                 from?: string | null;
                 /** Format: date-time */
+                to?: string | null;
+            } | null;
+            /** @description The tournament trophy change: the trophy's pool token in its full before → after (null side = no trophy). Create fills the 'to' side only. */
+            trophy?: {
+                from?: string | null;
                 to?: string | null;
             } | null;
             games?: {

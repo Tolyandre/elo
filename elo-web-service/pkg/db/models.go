@@ -255,6 +255,7 @@ type Tournament struct {
 	PlanSchemaVersion  int32              `json:"plan_schema_version"`
 	CreatedAt          time.Time          `json:"created_at"`
 	TenantID           id.ID              `json:"tenant_id"`
+	Trophy             pgtype.Text        `json:"trophy"`
 }
 
 type TournamentGame struct {

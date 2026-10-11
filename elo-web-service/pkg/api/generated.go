@@ -2315,6 +2315,9 @@ type Tournament struct {
 	// TenantId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	TenantId Base58ID `json:"tenant_id"`
 
+	// Trophy The tournament's trophy — a token from the static art pool (the PNGs under public/trophies/, see pkg/elo/trophies.go); NULL = the generic cup mark. The pool is source-defined and the assignment exclusive: a trophy some tournament holds is hidden from every other tournament's picker. Settable only while the tournament is in registration.
+	Trophy *string `json:"trophy,omitempty"`
+
 	// WinnerPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	WinnerPlayerId *Base58ID `json:"winner_player_id,omitempty"`
 }
@@ -2347,6 +2350,9 @@ type TournamentInput struct {
 
 	// ParticipantIds The desired participant set on update (diffed when present); the initial set on create.
 	ParticipantIds *[]Base58ID `json:"participant_ids,omitempty"`
+
+	// Trophy Optional; the desired trophy token from the static art pool. Like the deadline, absent or null clears it — the PUT body carries the whole desired configuration. Must be free (409 when another tournament holds it) and known to the pool (400 otherwise).
+	Trophy *string `json:"trophy,omitempty"`
 }
 
 // TournamentList defines model for TournamentList.
@@ -2518,7 +2524,7 @@ type AuditAuditSlotRulingDetails struct {
 // AuditAuditSlotRulingDetailsOp defines model for AuditAuditSlotRulingDetails.Op.
 type AuditAuditSlotRulingDetailsOp string
 
-// AuditAuditTournamentConfigDetails Registration-time configuration of the tournament the audit row points at (ADR-26): name, grand-final deadline, game pool, participants — full before → after on every change; create fills the 'to' sides only. Untouched fields stay null.
+// AuditAuditTournamentConfigDetails Registration-time configuration of the tournament the audit row points at (ADR-26): name, grand-final deadline, trophy, game pool, participants — full before → after on every change; create fills the 'to' sides only. Untouched fields stay null.
 type AuditAuditTournamentConfigDetails struct {
 	FromPlayerIds *[]Base58ID `json:"from_player_ids,omitempty"`
 	Games         *struct {
@@ -2535,6 +2541,12 @@ type AuditAuditTournamentConfigDetails struct {
 	} `json:"name,omitempty"`
 	SchemaVersion int         `json:"schema_version"`
 	ToPlayerIds   *[]Base58ID `json:"to_player_ids,omitempty"`
+
+	// Trophy The tournament trophy change: the trophy's pool token in its full before → after (null side = no trophy). Create fills the 'to' side only.
+	Trophy *struct {
+		From *string `json:"from,omitempty"`
+		To   *string `json:"to,omitempty"`
+	} `json:"trophy,omitempty"`
 }
 
 // AuditAuditTournamentGameDoc defines model for audit_AuditTournamentGameDoc.

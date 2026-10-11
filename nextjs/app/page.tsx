@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Tent, Trophy } from "lucide-react";
+import { Tent } from "lucide-react";
 import { ArenaView } from "@/app/arenas/view/arena-view";
 import { useCamps } from "@/app/arenas/campsContext";
 import { useTournaments } from "@/app/tournaments/tournamentsContext";
@@ -12,6 +12,7 @@ import { MarketsHighlight } from "@/components/markets-highlight";
 import { RunningTables } from "@/components/tables/running-tables";
 import { TenantChooser } from "@/components/tenant-chooser";
 import { TenantsLoadError } from "@/components/tenants-load-error";
+import { TournamentTrophyMark } from "@/components/tournament-trophy-mark";
 import { LoadingRows } from "@/components/loading-rows";
 import { PageContainer } from "@/components/page-container";
 
@@ -47,7 +48,7 @@ function NowBlock() {
             key: t.id,
             href: `/tournaments/view?id=${t.id}`,
             name: t.name,
-            icon: <Trophy className="mr-0.5 inline-block h-4 w-4 align-middle" />,
+            icon: <TournamentTrophyMark tournament={t} className="mr-0.5 inline-block h-4 w-4 align-middle" />,
         })),
     ];
     return (
