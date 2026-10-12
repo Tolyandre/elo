@@ -12,15 +12,19 @@ import type { Tournament } from "@/app/api";
  * the assignment is exclusive — a trophy some tournament holds is hidden from
  * every other tournament's picker.
  */
-export type TrophyInfo = { key: string; src: string };
-
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+export type TrophyInfo = { key: string; fileName: string };
 
 /** Every trophy in the pool, key = file name without extension. */
 export const TROPHY_POOL: readonly TrophyInfo[] = IMAGE_POOLS.trophies.map((fileName) => ({
     key: fileName.replace(/\.[a-z0-9]+$/i, ""),
-    src: `${basePath}/trophies/${fileName}`,
+    fileName,
 }));
+
+/** Root-absolute URL for a trophy image, respecting the static-export basePath. */
+export function trophySrc(trophy: Pick<TrophyInfo, "fileName">): string {
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    return `${basePath}/trophies/${trophy.fileName}`;
+}
 
 export function trophyById(key: string): TrophyInfo | undefined {
     return TROPHY_POOL.find((t) => t.key === key);

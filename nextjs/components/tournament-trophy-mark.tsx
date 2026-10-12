@@ -3,7 +3,7 @@
 import { Trophy } from "lucide-react";
 import type { Tournament } from "@/app/api";
 import { GameImage } from "@/components/game-image";
-import { trophyById } from "@/lib/trophies";
+import { trophyById, trophySrc } from "@/lib/trophies";
 import { cn } from "@/lib/utils";
 
 /**
@@ -23,5 +23,5 @@ export function TournamentTrophyMark({
     if (trophy == null) {
         return <Trophy className={cn("shrink-0", className)} />;
     }
-    return <GameImage src={trophy.src} alt="" className={cn("rounded-full", className)} />;
+    return <GameImage src={trophySrc(trophy)} alt="" className={cn("rounded-full", className)} />;
 }

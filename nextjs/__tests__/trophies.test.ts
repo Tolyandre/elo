@@ -1,18 +1,31 @@
-import { describe, expect, it } from "vitest";
-import { availableTrophies, takenTrophyKeys, trophyById } from "../lib/trophies";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { availableTrophies, takenTrophyKeys, trophyById, trophySrc } from "../lib/trophies";
 import { IMAGE_POOLS } from "../lib/image-pools.gen";
 import type { Tournament } from "../app/api";
 
 const tournament = (id: string, trophy?: string) =>
     ({ id, trophy }) as unknown as Tournament;
 
+afterEach(() => {
+    vi.unstubAllEnvs();
+});
+
 describe("trophy pool manifest", () => {
     it("mirrors the public/trophies folder, keys are file names without extension", () => {
         for (const fileName of IMAGE_POOLS.trophies) {
             const key = fileName.replace(/\.[a-z0-9]+$/i, "");
-            expect(trophyById(key)?.src).toBe(`/trophies/${fileName}`);
+            expect(trophyById(key)?.fileName).toBe(fileName);
         }
         expect(trophyById("no-such-trophy")).toBeUndefined();
+    });
+
+    it("trophySrc serves images under the static-export basePath", () => {
+        const trophy = trophyById("seti");
+        expect(trophy).toBeDefined();
+        vi.stubEnv("NEXT_PUBLIC_BASE_PATH", "");
+        expect(trophySrc(trophy!)).toBe(`/trophies/${trophy!.fileName}`);
+        vi.stubEnv("NEXT_PUBLIC_BASE_PATH", "/elo");
+        expect(trophySrc(trophy!)).toBe(`/elo/trophies/${trophy!.fileName}`);
     });
 });
 

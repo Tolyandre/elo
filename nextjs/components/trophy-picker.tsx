@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { availableTrophies, trophyById } from "@/lib/trophies";
+import { availableTrophies, trophyById, trophySrc } from "@/lib/trophies";
 import { useTournaments } from "@/app/tournaments/tournamentsContext";
 import { GameImage } from "@/components/game-image";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export function TrophyPicker({
                     aria-label={current ? `Кубок: ${current.key}` : "Выбрать кубок"}
                 >
                     {current ? (
-                        <GameImage src={current.src} alt="" className="size-12 shrink-0 rounded-full" />
+                        <GameImage src={trophySrc(current)} alt="" className="size-12 shrink-0 rounded-full" />
                     ) : (
                         <span className="inline-flex size-12 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground">
                             нет
@@ -76,7 +76,7 @@ export function TrophyPicker({
                             aria-label={`Кубок: ${trophy.key}`}
                             title={trophy.key}
                         >
-                            <GameImage src={trophy.src} alt="" className="size-24 shrink-0 rounded-full" />
+                            <GameImage src={trophySrc(trophy)} alt="" className="size-24 shrink-0 rounded-full" />
                         </button>
                     ))}
                 </div>
