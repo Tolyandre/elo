@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProbabilityChart, SettlementList } from "@/components/market-card"
-import { InfoIcon, TriangleAlertIcon } from "lucide-react"
+import { HelpHint } from "@/components/help-hint"
+import { TriangleAlertIcon } from "lucide-react"
 import { buyFee, sharesForTotal } from "@/app/markets/lmsr"
 import { formatAmount } from "@/app/markets/format"
 import { outcomeColors } from "@/app/markets/outcomeColors"
@@ -328,25 +328,16 @@ export function MarketPlayground() {
                                 Обеспечили {formatAmount(totalRisk(state))}
                             </Badge>
                         )}
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    aria-label="Как работают поручители"
-                                    className="shrink-0 text-muted-foreground hover:text-foreground"
-                                >
-                                    <InfoIcon className="size-4" />
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent align="end" className="w-72 space-y-2 text-xs text-muted-foreground">
+                        <HelpHint label="Как работают поручители" align="end">
+                            <div className="space-y-2">
                                 <p className="font-medium text-foreground">Как работают поручители</p>
                                 <p>
                                     Риск поручителей задаёт ликвидность b = Σрисков/ln(n), а их комиссия
                                     становится надбавкой к цене голоса. Вхождение нового поручителя пересчитывает b
                                     при неизменных позициях — цены сдвигаются к равномерным.
                                 </p>
-                            </PopoverContent>
-                        </Popover>
+                            </div>
+                        </HelpHint>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-3">

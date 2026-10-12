@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { Info } from "lucide-react";
 import type { PlanRound, Tournament, TournamentPlan } from "@/app/api";
 import {
     getTournamentBracketPlansPromise,
@@ -21,7 +20,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HelpHint } from "@/components/help-hint";
 import { cn } from "@/lib/utils";
 
 /**
@@ -339,26 +338,7 @@ function FilterRow({ label, hint, children }: { label: string; hint?: string; ch
                 anything narrower lets the icon overflow onto the chips. */}
             <span className="inline-flex w-28 shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
                 {label}
-                {hint && (
-                    // A click-toggled popover, not a hover tooltip: Radix
-                    // tooltips flash open/closed on touch taps (the pointerdown
-                    // suppresses the focus-open and click closes), so the hint
-                    // must survive a tap — same pattern as the guarantors info.
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <button
-                                type="button"
-                                aria-label={`Что значит «${label}»?`}
-                                className="text-muted-foreground/60 hover:text-muted-foreground"
-                            >
-                                <Info className="size-3.5" />
-                            </button>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-64 text-xs text-muted-foreground">
-                            {hint}
-                        </PopoverContent>
-                    </Popover>
-                )}
+                {hint && <HelpHint label={`Что значит «${label}»?`}>{hint}</HelpHint>}
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">{children}</div>
         </div>

@@ -45,6 +45,7 @@ import {
     settingsValuesError,
 } from "@/components/arena-settings-editor";
 import { MEMBERSHIP_MODE_LABELS, TOURNAMENTS_OPENNESS_LABELS } from "../labels";
+import { HelpHint } from "@/components/help-hint";
 
 export default function TenantSettingsPage() {
     return (
@@ -232,7 +233,11 @@ function TenantSettingsContent() {
                     <CardHeader>
                         <CardTitle>Иконка</CardTitle>
                         <CardDescription>
-                            Отображается перед названием сообщества — в меню и в списке сообществ.
+                            Отображается перед названием сообщества.
+                            <HelpHint label="Как добавить иконку">
+                                Чтобы добавить новую иконку, положите SVG-файл в папку
+                                public/club-icons и передеплойте приложение.
+                            </HelpHint>
                         </CardDescription>
                     </CardHeader>
                     <CardContent>

@@ -1,7 +1,6 @@
 "use client"
 
 import { CLUB_ICONS, clubIconKey, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
-import { HelpHint } from "@/components/help-hint";
 import { cn } from "@/lib/utils";
 
 /**
@@ -54,11 +53,6 @@ export function IconPicker({
                     </button>
                 );
             })}
-            <HelpHint label="Как добавить иконку">
-                Чтобы добавить новую иконку, положите SVG-файл в папку
-                public/club-icons и передеплойте приложение — она появится здесь
-                сама.
-            </HelpHint>
             {label && <span className="sr-only">{label}</span>}
         </div>
     );

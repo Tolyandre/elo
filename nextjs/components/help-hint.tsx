@@ -10,7 +10,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
  * on touch taps (the pointerdown suppresses the focus-open and click closes),
  * so the hint must survive a tap — same pattern as the guarantors info.
  */
-export function HelpHint({ children, label = "Подсказка" }: { children: React.ReactNode; label?: string }) {
+export function HelpHint({
+    children,
+    label = "Подсказка",
+    align = "start",
+}: {
+    children: React.ReactNode;
+    label?: string;
+    align?: "start" | "center" | "end";
+}) {
     return (
         <Popover>
             <PopoverTrigger asChild>
@@ -22,7 +30,7 @@ export function HelpHint({ children, label = "Подсказка" }: { children:
                     <CircleHelp className="size-4" />
                 </button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="w-72 text-xs text-muted-foreground">
+            <PopoverContent align={align} className="w-72 text-xs text-muted-foreground">
                 {children}
             </PopoverContent>
         </Popover>

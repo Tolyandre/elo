@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { InfoIcon } from "lucide-react";
 import { MarketDetail, MarketGuarantee, createGuaranteePromise } from "@/app/api";
 import { formatAmount } from "@/app/markets/format";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { HelpHint } from "@/components/help-hint";
 import { ClubIcons } from "@/components/player-name";
 
 function formatPercent(rate: number): string {
@@ -112,17 +111,8 @@ export function MarketGuarantees({
                 <AccordionContent className="space-y-3 pb-4">
                     <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
                         <p>Поручители обеспечивают рынок рейтингом и получают комиссию со ставок.</p>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    aria-label="Как работают поручители"
-                                    className="shrink-0 mt-0.5 text-muted-foreground hover:text-foreground"
-                                >
-                                    <InfoIcon className="size-3.5" />
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent align="start" className="w-72 space-y-2 text-xs text-muted-foreground">
+                        <HelpHint label="Как работают поручители">
+                            <div className="space-y-2">
                                 <p className="font-medium text-foreground">Как работают поручители</p>
                                 <p>
                                     Поручители обеспечивают рынок рейтингом: их риск задаёт ликвидность, а взамен они
@@ -135,8 +125,8 @@ export function MarketGuarantees({
                                     к краям: при комиссии 5% голос за 0.5 обойдётся в 0.55 (+5% от выплаты голоса), а при
                                     цене 0.8 — в 0.832 (+3.2% от выплаты голоса).
                                 </p>
-                            </PopoverContent>
-                        </Popover>
+                            </div>
+                        </HelpHint>
                     </div>
 
                     {!awaitsGuarantors && (

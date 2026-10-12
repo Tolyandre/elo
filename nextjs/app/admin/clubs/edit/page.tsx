@@ -26,6 +26,7 @@ import { EmptyState } from "@/components/empty-state";
 import { BackButton } from "@/components/back-button";
 import { ClubIcons } from "@/components/player-name";
 import { IconPicker } from "@/components/icon-picker";
+import { HelpHint } from "@/components/help-hint";
 
 export default function ClubAdminPage() {
     return (
@@ -148,69 +149,74 @@ function ClubAdminContent() {
 
             <AdminPageTabs entityType="club" entityId={clubId} mainLabel="Клуб">
 
-            <div className="flex gap-2 mb-8">
-                <Button
-                    variant="secondary"
-                    onClick={() => { setRenameValue(club.name); setRenameOpen(true); }}
-                    disabled={!canEdit}
-                >
-                    Переименовать
-                </Button>
-                <Button
-                    variant="destructive"
-                    onClick={() => del.trigger(true)}
-                    disabled={!canEdit}
-                >
-                    Удалить клуб
-                </Button>
-            </div>
+                <div className="flex gap-2 mb-8">
+                    <Button
+                        variant="secondary"
+                        onClick={() => { setRenameValue(club.name); setRenameOpen(true); }}
+                        disabled={!canEdit}
+                    >
+                        Переименовать
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        onClick={() => del.trigger(true)}
+                        disabled={!canEdit}
+                    >
+                        Удалить клуб
+                    </Button>
+                </div>
 
-            <section className="mb-8">
-                <h2 className="text-lg font-medium mb-3">Иконка клуба</h2>
-                <IconPicker
-                    value={club.icon ?? null}
-                    onChange={setIcon}
-                    disabled={!canEdit || iconLoading}
-                />
-                <p className="text-sm text-muted-foreground mt-2">
-                    Выберите одну из встроенных иконок. Иконка отображается перед названием клуба и перед именами его игроков.
-                </p>
-                {iconError && <p className="text-sm text-destructive mt-1">{iconError}</p>}
-            </section>
+                <section className="mb-8">
+                    <h2 className="text-lg font-medium mb-3">Иконка клуба</h2>
+                    <IconPicker
+                        value={club.icon ?? null}
+                        onChange={setIcon}
+                        disabled={!canEdit || iconLoading}
+                    />
+                    <p className="text-sm text-muted-foreground mt-2">
+                        Иконка отображается перед названием клуба и перед именами его игроков.
 
-            <section>
-                <h2 className="text-lg font-medium mb-3">
-                    Игроки клуба ({club.player_ids.length})
-                </h2>
-                {sortedPlayers.length === 0 ? (
-                    <EmptyState title="Нет игроков" />
-                ) : (
-                    <div className="space-y-1">
-                        {sortedPlayers.map((player) => {
-                            const isMember = memberSet.has(player.id);
-                            const isLoading = !!memberLoading[player.id];
-                            return (
-                                <div key={player.id} className="flex items-center justify-between border rounded p-2">
-                                    <span className={`flex items-center gap-1 ${isMember ? "font-medium" : "text-muted-foreground"}`}>
-                                        <ClubIcons playerId={player.id} />
-                                        {playerDisplayName(player)}
-                                    </span>
-                                    <Button
-                                        variant={isMember ? "destructive" : "outline"}
-                                        size="sm"
-                                        onClick={() => toggleMember(player.id, isMember)}
-                                        disabled={!canEdit || isLoading}
-                                    >
-                                        {isLoading ? "..." : isMember ? "Исключить" : "Добавить"}
-                                    </Button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </section>
+                        <HelpHint label="Как добавить иконку">
+                            Чтобы добавить новую иконку, положите SVG-файл в папку
+                            public/club-icons и передеплойте приложение.
+                        </HelpHint>
+                    </p>
+                    {iconError && <p className="text-sm text-destructive mt-1">{iconError}</p>}
+                </section>
 
-            <ClubMemberHistory clubId={clubId} revision={club.player_ids.join(",")} />
+                <section>
+                    <h2 className="text-lg font-medium mb-3">
+                        Игроки клуба ({club.player_ids.length})
+                    </h2>
+                    {sortedPlayers.length === 0 ? (
+                        <EmptyState title="Нет игроков" />
+                    ) : (
+                        <div className="space-y-1">
+                            {sortedPlayers.map((player) => {
+                                const isMember = memberSet.has(player.id);
+                                const isLoading = !!memberLoading[player.id];
+                                return (
+                                    <div key={player.id} className="flex items-center justify-between border rounded p-2">
+                                        <span className={`flex items-center gap-1 ${isMember ? "font-medium" : "text-muted-foreground"}`}>
+                                            <ClubIcons playerId={player.id} />
+                                            {playerDisplayName(player)}
+                                        </span>
+                                        <Button
+                                            variant={isMember ? "destructive" : "outline"}
+                                            size="sm"
+                                            onClick={() => toggleMember(player.id, isMember)}
+                                            disabled={!canEdit || isLoading}
+                                        >
+                                            {isLoading ? "..." : isMember ? "Исключить" : "Добавить"}
+                                        </Button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
+
+                <ClubMemberHistory clubId={clubId} revision={club.player_ids.join(",")} />
             </AdminPageTabs>
 
             {/* Rename dialog */}
