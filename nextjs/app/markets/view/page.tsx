@@ -1,16 +1,19 @@
 "use client"
 import React, { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
 import {
     MarketDetail,
     MarketOutcome,
+    TournamentWinnerParams,
     getMarketByIdPromise,
     getMarketProbabilityHistoryPromise,
     placeBetPromise,
 } from "@/app/api";
 import { useMe } from "@/app/meContext";
+import { useTournaments } from "@/app/tournaments/tournamentsContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 import { MarketRelatedMatches } from "@/components/market-related-matches";
@@ -19,6 +22,7 @@ import { BackButton } from "@/components/back-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { TriangleAlertIcon } from "lucide-react";
 import { MarketGuarantees } from "@/components/market-guarantees";
+import { TournamentTrophyMark } from "@/components/tournament-trophy-mark";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useMarketProbabilitiesSSE } from "@/hooks/useMarketsSSE";
 import { PageContainer } from "@/components/page-container";
@@ -159,6 +163,33 @@ function OutcomeColumn({
     );
 }
 
+/**
+ * The tournament a tournament_winner market resolves on: trophy mark + name
+ * linking to the tournament page — the same entry the main page's «Сейчас»
+ * block and the tournaments list render. The name and target come from the
+ * market's denormalized params, so the reference exists even before the
+ * tournaments list loads; the list only contributes the trophy art (the
+ * generic cup until it lands or when the tournament is missing from it).
+ */
+function TournamentReference({ market }: { market: MarketDetail }) {
+    const { tournaments } = useTournaments();
+    if (market.market_type !== "tournament_winner") return null;
+    const params = market.params as TournamentWinnerParams | null;
+    if (!params) return null;
+    const tournament = tournaments.find((t) => t.id === params.tournament_id);
+    return (
+        <p className="text-sm text-center">
+            <Link href={`/tournaments/view?id=${params.tournament_id}`} className="font-medium underline">
+                <TournamentTrophyMark
+                    tournament={{ trophy: tournament?.trophy }}
+                    className="mr-0.5 inline-block h-4 w-4 align-middle"
+                />
+                {params.tournament_name}
+            </Link>
+        </p>
+    );
+}
+
 function MarketPageContent() {
     const searchParams = useSearchParams();
     const id = toBase58ID(searchParams.get("id") ?? "");
@@ -292,6 +323,8 @@ function MarketPageContent() {
             <BackButton href="/" />
             <PageHeader title="Ставки" />
             <MarketCard market={displayMarket} probabilityHistory={probabilityHistory} />
+
+            <TournamentReference market={displayMarket} />
 
             <p className="text-sm text-muted-foreground text-center">
                 Каждый голос принесёт 1 рейтинг, если исход сбудется.

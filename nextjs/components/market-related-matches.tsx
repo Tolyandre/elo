@@ -126,9 +126,11 @@ function WinStreakSection({ market, roundToInteger }: { market: Market; roundToI
 }
 
 /**
- * Tournament-winner section: the match that decided the champion (absent when
- * an organizer ruling crowned it), followed by every match counted for the
- * tournament's bracket, as /matches cards.
+ * Tournament-winner section: every match counted for the tournament's bracket,
+ * as /matches cards. The deciding match is not broken out separately
+ * («Партия, разрешившая рынок») — it is one of the tournament matches listed
+ * below anyway. The tournament reference itself sits at the top of the market
+ * view page, under the chart.
  */
 function TournamentWinnerSection({ market, roundToInteger }: { market: Market; roundToInteger: boolean }) {
     const params = market.params as TournamentWinnerParams | null;
@@ -146,9 +148,6 @@ function TournamentWinnerSection({ market, roundToInteger }: { market: Market; r
 
     return (
         <div className="space-y-3">
-            {market.resolution_match_id && (
-                <ResolvedMatch matchId={market.resolution_match_id} roundToInteger={roundToInteger} />
-            )}
             <SectionTitle>Матчи турнира:</SectionTitle>
             {loading && <CardsSkeleton />}
             {!loading && matches && matches.length === 0 && (
@@ -169,9 +168,10 @@ function TournamentWinnerSection({ market, roundToInteger }: { market: Market; r
  * The bottom section of the market view page: the relevant global-arena
  * matches as plain /matches cards (without their related markets). For a
  * match_winner market that is the single resolving match; for a win_streak
- * market it is every match counting toward the streak, headed by the progress;
- * for a tournament_winner market it is the deciding match (when any) plus all
- * of the tournament's matches.
+ * market it is every match counting toward the streak, headed by the progress
+ * (the resolving match among them — no separate «разрешившая рынок» card);
+ * for a tournament_winner market it is all of the tournament's matches (the
+ * deciding one included).
  */
 export function MarketRelatedMatches({ market, roundToInteger = false }: { market: Market; roundToInteger?: boolean }) {
     if (market.market_type === "win_streak") {
