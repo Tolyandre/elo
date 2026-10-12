@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
-import { SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
+import { hasNewArrivals, SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
 import { OfflineStore, PendingGame, PendingMatch, PendingPlayer } from '../lib/offline/types';
 import { Base58ID } from '../lib/id';
 
@@ -49,6 +49,15 @@ const pendingGame = (clientId: Base58ID, name: string, createdAt = '2026-06-01T1
 const pendingPlayer = (clientId: Base58ID, name: string, createdAt = '2026-06-01T10:00:00Z', clubIds: Base58ID[] = []): PendingPlayer =>
     ({ clientId, name, createdAt, status: 'pending', clubIds });
 
+const matchFixture = (clientId: Base58ID, createdAt: string): PendingMatch => ({
+    clientId,
+    createdAt,
+    status: 'pending',
+    gameId: SERVER_GAME_ID,
+    score: { '1': 1, '2': 2 },
+    campArenaIds: [],
+});
+
 // A stable server-side game/player that a pending match can reference.
 const SERVER_GAME_ID = '018f6b00-0000-7000-8000-000000000005' as Base58ID;
 const SERVER_PLAYER_ID = '018f6b00-0000-7000-8000-000000000001' as Base58ID;
@@ -72,7 +81,7 @@ describe('syncOffline', () => {
             }],
         });
 
-        const outcome = await syncOffline(store, api, noopPersist, () => new Date('2026-06-12T00:00:00Z'));
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date('2026-06-12T00:00:00Z'));
 
         expect(outcome.aborted).toBe(false);
         expect(outcome.authRequired).toBe(false);
@@ -330,7 +339,7 @@ describe('syncOffline', () => {
             }],
         });
 
-        await syncOffline(store, api, noopPersist, () => now);
+        await syncOffline(store, api, noopPersist, () => store, () => now);
 
         expect(api.addMatch).toHaveBeenCalledWith(expect.objectContaining({ date: now.toISOString() }));
     });
@@ -476,5 +485,98 @@ describe('syncOffline', () => {
                 calculator_data: null,
             }));
         });
+    });
+});
+
+describe('mid-run queue changes', () => {
+    // A stand-in for the persisted store: the provider keeps it current on
+    // every mutation, the engine re-reads it via `load`.
+    function liveQueue(initial: OfflineStore) {
+        const live: OfflineStore = {
+            games: [...initial.games],
+            players: [...initial.players],
+            matches: [...initial.matches],
+        };
+        return {
+            load: () => live,
+            queueMatch: (m: PendingMatch) => {
+                live.matches = [...live.matches, m];
+            },
+            removeMatch: (clientId: Base58ID) => {
+                live.matches = live.matches.filter((m) => m.clientId !== clientId);
+            },
+        };
+    }
+
+    it('keeps a match queued while the run is in flight (the lost-newest-match bug)', async () => {
+        const api = okApi();
+        const m1 = matchFixture('018f6b00-0000-7000-8000-0000000000a1' as Base58ID, '2026-06-01T11:00:00Z');
+        const m2 = matchFixture('018f6b00-0000-7000-8000-0000000000a2' as Base58ID, '2026-06-01T11:05:00Z');
+        const initial = makeStore({ matches: [m1] });
+        const live = liveQueue(initial);
+        // The user records m2 while m1's POST is in flight: the provider writes
+        // it to the live store, but this run's snapshot predates it.
+        let queuedAtPersist = -1;
+        const persisted: OfflineStore[] = [];
+        api.addMatch = vi.fn(async (body) => {
+            queuedAtPersist = persisted.length;
+            live.queueMatch(m2);
+            return { ok: true as const, data: { id: body.id } };
+        });
+
+        const outcome = await syncOffline(initial, api, (s) => persisted.push(s), live.load);
+
+        // The run pushes only its own snapshot; m2 waits for the drain sync.
+        expect(api.addMatch).toHaveBeenCalledTimes(1);
+        // Every persist from the moment m2 was queued keeps it — including the
+        // removal of m1 and the final finish() write that used to wipe it.
+        expect(queuedAtPersist).toBeGreaterThanOrEqual(0);
+        expect(persisted.slice(queuedAtPersist).every((s) => s.matches.some((m) => m.clientId === m2.clientId))).toBe(true);
+        expect(outcome.store.matches.map((m) => m.clientId)).toEqual([m2.clientId]);
+    });
+
+    it('drops a match the user deleted while the run was in flight', async () => {
+        const api = okApi();
+        const m1 = matchFixture('018f6b00-0000-7000-8000-0000000000b1' as Base58ID, '2026-06-01T11:00:00Z');
+        const m2 = matchFixture('018f6b00-0000-7000-8000-0000000000b2' as Base58ID, '2026-06-01T11:05:00Z');
+        const initial = makeStore({ matches: [m1, m2] });
+        const live = liveQueue(initial);
+        api.addMatch = vi.fn(async (body) => {
+            if (body.id === m1.clientId) live.removeMatch(m2.clientId);
+            return { ok: true as const, data: { id: body.id } };
+        });
+
+        const outcome = await syncOffline(initial, api, noopPersist, live.load);
+
+        // m1 synced; m2 was deleted from under the run — it is neither sent
+        // nor resurrected by the run's writes.
+        expect(api.addMatch).toHaveBeenCalledTimes(1);
+        expect(outcome.store.matches).toHaveLength(0);
+    });
+
+    it('cannot resurrect a synced item from a stale live read', async () => {
+        const api = okApi();
+        const m1 = matchFixture('018f6b00-0000-7000-8000-0000000000c1' as Base58ID, '2026-06-01T11:00:00Z');
+        const m2 = matchFixture('018f6b00-0000-7000-8000-0000000000c2' as Base58ID, '2026-06-01T11:05:00Z');
+        const store = makeStore({ matches: [m1, m2] });
+
+        // `load` keeps returning the pristine snapshot, as if none of the
+        // engine's writes ever landed — the synced items must stay removed.
+        const outcome = await syncOffline(store, api, noopPersist, () => store);
+
+        expect(api.addMatch).toHaveBeenCalledTimes(2);
+        expect(outcome.store.matches).toHaveLength(0);
+    });
+});
+
+describe('hasNewArrivals', () => {
+    it('detects items the run never saw', () => {
+        const game = pendingGame(uuidv7() as Base58ID, 'Г');
+        const seen = matchFixture(uuidv7() as Base58ID, '2026-06-01T11:00:00Z');
+        const fresh = matchFixture(uuidv7() as Base58ID, '2026-06-01T12:00:00Z');
+        const seenIds = new Set([game.clientId, seen.clientId]);
+
+        expect(hasNewArrivals(makeStore({ games: [game], matches: [seen] }), seenIds)).toBe(false);
+        expect(hasNewArrivals(makeStore({ games: [game], matches: [seen, fresh] }), seenIds)).toBe(true);
     });
 });

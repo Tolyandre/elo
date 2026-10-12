@@ -59,13 +59,38 @@ rename/delete in the admin lists. Renaming keeps the `clientId`, so matches
 referencing the item heal automatically on the next sync run — error items are
 retried every run.
 
+### Queue durability during a sync
+
+The whole store is persisted to `localStorage` per write, and the sync engine
+persists after every step so progress survives interruption. The engine's
+snapshot is only its send list, not the truth about the store: before every
+send and every persist it re-reads the live store and writes its copy merged
+over it. Per item: an item the engine is syncing keeps the engine's copy (its
+status and content are what get sent); an item deleted from the queue while
+the run was in flight is never sent and never resurrected; an item queued
+mid-run — in this or another tab — passes through every engine write; ids
+already synced stay removed even if a stale read still shows them. Without
+the merge, a persist from the run's stale snapshot used to erase a match
+queued while the run was in flight — the newest match was silently lost
+exactly when the server was slow and the sync window was long. Items queued
+mid-run are drained by a follow-up `syncNow` when the run ends (the health
+probe's trigger was a guarded no-op while the run was in flight).
+
 ### Multi-tab caveat
 
-The whole store is persisted to `localStorage` per write, so two tabs writing
-near-simultaneously resolve last-write-wins. A `storage` event listener makes
-tabs adopt each other's writes while idle (not mid-sync), which closes the
-common case; the residual simultaneous-write race is accepted for a
-single-user PWA.
+A `storage` event listener makes tabs adopt each other's writes, mid-sync
+included (safe since the engine merges over the live store). Two tabs writing
+near-simultaneously still resolve last-write-wins; accepted for a single-user
+PWA.
+
+### Store schema changes
+
+The queue's persisted shape changes only additively: a new optional field
+ships together with a loader backfill, and a breaking reshape is split across
+several releases instead of done in one — the loader is deliberately not a
+versioned migration layer. A store that fails to parse is dropped and the
+queue starts empty: browsers do not corrupt stored JSON, and there is no
+manual repair step on mobile.
 
 ## Consequences
 

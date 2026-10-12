@@ -58,6 +58,8 @@ export type SyncOutcome = {
     syncedCount: number;
 };
 
+type PendingItem = PendingGame | PendingPlayer | PendingMatch;
+
 function byCreatedAt<T extends { createdAt: string }>(a: T, b: T): number {
     return a.createdAt.localeCompare(b.createdAt);
 }
@@ -69,16 +71,77 @@ function clampToNow(iso: string, now: Date): string {
 }
 
 /**
+ * Reads the queue as persisted right now (localStorage in the app). The engine
+ * re-reads it before every send and every persist, so changes that land while a
+ * run is in flight — items queued in this or another tab, items the user
+ * deleted — are respected instead of being overwritten by the run's snapshot.
+ */
+export type SyncLoad = () => OfflineStore;
+
+/**
+ * True when the live store holds queued items this run never saw (queued while
+ * the run was in flight). The provider drains them with a follow-up sync: the
+ * health probe's syncNow was a guarded no-op during the run, and nothing
+ * re-triggers the probe after a healthy run.
+ */
+export function hasNewArrivals(live: OfflineStore, seenIds: ReadonlySet<Base58ID>): boolean {
+    return (
+        live.games.some((i) => !seenIds.has(i.clientId)) ||
+        live.players.some((i) => !seenIds.has(i.clientId)) ||
+        live.matches.some((i) => !seenIds.has(i.clientId))
+    );
+}
+
+/** Client ids the engine has written to the server and removed from its copy. */
+type RemovedIds = Record<keyof OfflineStore, Set<Base58ID>>;
+
+/**
+ * The queue guarantees an item survives until the server accepts it or the user
+ * deletes it — including while a sync is running. The engine therefore never
+ * persists its snapshot bare: every write is the engine's copy merged over the
+ * live store, item by item:
+ *
+ * - managed by the engine and still in the live store → the engine's copy wins
+ *   (its status transition is authoritative and its content is what gets sent);
+ * - managed by the engine but gone from the live store → the user deleted it
+ *   mid-run; the delete wins, the item is not resurrected;
+ * - present only in the live store → queued while the run was in flight (this
+ *   or another tab) — kept through every engine write, the lost-newest-match
+ *   fix;
+ * - already synced (in `removed`) but still seen in a live read → stays
+ *   removed, a stale live read cannot resurrect it.
+ */
+function mergeKind<T extends PendingItem>(engine: T[], live: T[], removed: Set<Base58ID>): T[] {
+    const liveIds = new Set(live.map((i) => i.clientId));
+    const managed = engine.filter((i) => liveIds.has(i.clientId));
+    const managedIds = new Set(managed.map((i) => i.clientId));
+    const added = live.filter((i) => !managedIds.has(i.clientId) && !removed.has(i.clientId));
+    return [...managed, ...added];
+}
+
+function mergeWithLive(engine: OfflineStore, live: OfflineStore, removed: RemovedIds): OfflineStore {
+    return {
+        games: mergeKind(engine.games, live.games, removed.games),
+        players: mergeKind(engine.players, live.players, removed.players),
+        matches: mergeKind(engine.matches, live.matches, removed.matches),
+    };
+}
+
+/**
  * Pushes pending games, then players, then matches (each in creation order) to the server.
  * Pending games/players already carry their final UUIDv7 id, which is sent as the `id`
  * field of each create request — no clientId rewriting is needed.
  *
- * `persist` is called after every state change so progress survives interruption.
+ * The engine's snapshot is its send list, not the truth about the store: `load`
+ * re-reads the live queue before every send and every persist, and each persist
+ * writes the engine's copy merged over it (see mergeWithLive). `persist` still
+ * fires after every state change so progress survives interruption.
  */
 export async function syncOffline(
     initial: OfflineStore,
     api: SyncApi,
     persist: (store: OfflineStore) => void,
+    load: SyncLoad = () => initial,
     now: () => Date = () => new Date(),
 ): Promise<SyncOutcome> {
     let store: OfflineStore = {
@@ -86,22 +149,25 @@ export async function syncOffline(
         players: [...initial.players].sort(byCreatedAt),
         matches: [...initial.matches].sort(byCreatedAt),
     };
+    const removed: RemovedIds = { games: new Set(), players: new Set(), matches: new Set() };
     let syncedCount = 0;
 
-    const update = (next: OfflineStore) => {
+    const update = (next: OfflineStore): OfflineStore => {
         store = next;
-        persist(store);
+        const merged = mergeWithLive(store, load(), removed);
+        persist(merged);
+        return merged;
     };
 
     const finish = (authRequired: boolean, aborted: boolean): SyncOutcome => {
         // Nothing is in flight anymore — items interrupted by a network failure
         // or a 401 go back to pending.
-        update({
+        const merged = update({
             games: store.games.map(resetSyncing),
             players: store.players.map(resetSyncing),
             matches: store.matches.map(resetSyncing),
         });
-        return { store, authRequired, aborted, syncedCount };
+        return { store: merged, authRequired, aborted, syncedCount };
     };
 
     // 1. Games — create, then apply tags. The game create is idempotent on id
@@ -109,6 +175,14 @@ export async function syncOffline(
     // either step is safe to retry: re-running resends the same game id (a
     // no-op upsert) and re-adds the same tags (no-ops).
     for (const item of [...store.games]) {
+        // Deleted from the queue while the run was in flight (this or another
+        // tab) — the delete wins: drop it without sending. A delete landing
+        // while the item's own request is already in flight can still land
+        // server-side; that narrow window is inherent.
+        if (!load().games.some((g) => g.clientId === item.clientId)) {
+            update({ ...store, games: store.games.filter((g) => g.clientId !== item.clientId) });
+            continue;
+        }
         markSyncing(update, store, "games", item.clientId);
         let result: SyncCallResult<{ id: Base58ID }>;
         try {
@@ -157,6 +231,7 @@ export async function syncOffline(
             // but keep the game pending so the error is visible.
             markError(update, store, "games", item.clientId, tagError);
         } else {
+            removed.games.add(item.clientId);
             update({ ...store, games: store.games.filter((g) => g.clientId !== item.clientId) });
         }
     }
@@ -166,6 +241,10 @@ export async function syncOffline(
     // failure after either step is safe to retry: re-running resends the same
     // player id (a no-op upsert) and re-adds the same memberships (no-ops).
     for (const item of [...store.players]) {
+        if (!load().players.some((p) => p.clientId === item.clientId)) {
+            update({ ...store, players: store.players.filter((p) => p.clientId !== item.clientId) });
+            continue;
+        }
         markSyncing(update, store, "players", item.clientId);
         let result: SyncCallResult<{ id: Base58ID }>;
         try {
@@ -203,12 +282,17 @@ export async function syncOffline(
             // memberships to retry. Keep the player so the error is visible.
             markError(update, store, "players", item.clientId, membershipError);
         } else {
+            removed.players.add(item.clientId);
             update({ ...store, players: store.players.filter((p) => p.clientId !== item.clientId) });
         }
     }
 
     // 3. Matches.
     for (const match of [...store.matches]) {
+        if (!load().matches.some((m) => m.clientId === match.clientId)) {
+            update({ ...store, matches: store.matches.filter((m) => m.clientId !== match.clientId) });
+            continue;
+        }
         markSyncing(update, store, "matches", match.clientId);
         let result: SyncCallResult<{ id: Base58ID }>;
         try {
@@ -239,6 +323,7 @@ export async function syncOffline(
         }
         if (result.ok) {
             syncedCount++;
+            removed.matches.add(match.clientId);
             update({ ...store, matches: store.matches.filter((m) => m.clientId !== match.clientId) });
         } else if (result.status === 401) {
             return finish(true, false);
@@ -249,8 +334,6 @@ export async function syncOffline(
 
     return finish(false, false);
 }
-
-type PendingItem = PendingGame | PendingPlayer | PendingMatch;
 
 function resetSyncing<T extends PendingItem>(item: T): T {
     return item.status === "syncing" ? { ...item, status: "pending" } : item;

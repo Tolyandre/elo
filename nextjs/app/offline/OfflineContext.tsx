@@ -17,7 +17,7 @@ import { useMatches } from "../matches/MatchesContext";
 import { useMe } from "../meContext";
 import { usePlayers } from "../players/PlayersContext";
 import { useClubs } from "../clubsContext";
-import { SyncApi, SyncCallResult, syncOffline } from "@/lib/offline/sync";
+import { hasNewArrivals, SyncApi, SyncCallResult, syncOffline } from "@/lib/offline/sync";
 import type { MatchMode } from "@/lib/game-modes";
 import {
     OfflineStore,
@@ -107,8 +107,13 @@ type  OfflineState = {
 const OfflineContext = createContext<OfflineState | undefined>(undefined);
 
 /**
- * Read the persisted offline store. Exported so non-React code can observe
- * queue state (e.g. waiting for a just-queued match to sync).
+ * Read the persisted offline store. A store that fails to parse is dropped and
+ * the queue starts empty: browsers do not corrupt stored JSON, and there is no
+ * manual repair step on mobile. The persisted shape changes only additively —
+ * a new optional field ships with a loader backfill (below), breaking reshapes
+ * are split across releases (ADR-16) — so no versioned migration layer here.
+ * Exported so non-React code can observe queue state (e.g. waiting for a
+ * just-queued match to sync).
  */
 export function loadOfflineStore(): OfflineStore {
     try {
@@ -123,6 +128,7 @@ export function loadOfflineStore(): OfflineStore {
             clientId: p.clientId!,
             createdAt: p.createdAt!,
             status: p.status ?? "pending",
+            ...(p.status === "error" && typeof p.error === "string" ? { error: p.error } : {}),
             name: p.name!,
             clubIds: p.clubIds ?? [],
         }));
@@ -131,6 +137,7 @@ export function loadOfflineStore(): OfflineStore {
             clientId: m.clientId!,
             createdAt: m.createdAt!,
             status: m.status ?? "pending",
+            ...(m.status === "error" && typeof m.error === "string" ? { error: m.error } : {}),
             gameId: m.gameId!,
             score: m.score!,
             // Deliberately not mapped from the old `tournamentIds` field: camp
@@ -145,13 +152,14 @@ export function loadOfflineStore(): OfflineStore {
             clientId: g.clientId!,
             createdAt: g.createdAt!,
             status: g.status ?? "pending",
+            ...(g.status === "error" && typeof g.error === "string" ? { error: g.error } : {}),
             name: g.name!,
             tagIds: g.tagIds ?? [],
             meta: g.meta,
         }));
         return { games, players, matches };
     } catch {
-        // corrupted store — start fresh
+        // corrupted store — drop it and start with an empty queue
     }
     return emptyOfflineStore();
 }
@@ -254,15 +262,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     }, []);
 
     // Another tab wrote the offline store (creates from any tab queue here now,
-    // even while online) — adopt its state so a later write from this tab can't
-    // drop those items (the whole store is persisted per write). Skipped while a
-    // sync runs: the engine's snapshot would immediately overwrite the fresher
-    // state. Two tabs writing near-simultaneously still resolve last-write-wins;
-    // accepted for a single-user PWA.
+    // even while online) — adopt its state so this tab's UI follows. Adoption
+    // is safe mid-sync too: engine writes are merged over the live store (see
+    // syncOffline), so a run can no longer clobber items queued or deleted in
+    // another tab while it was in flight.
     useEffect(() => {
         if (!loaded) return;
         const onStorage = (e: StorageEvent) => {
-            if (e.key !== STORAGE_KEY || syncInProgressRef.current) return;
+            if (e.key !== STORAGE_KEY) return;
             const next = loadOfflineStore();
             storeRef.current = next;
             setStore(next);
@@ -302,35 +309,65 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
 
     const syncNow = useCallback(() => {
         if (syncInProgressRef.current) return;
-        const current = storeRef.current;
-        if (current.games.length + current.players.length + current.matches.length === 0) return;
+        if (storeRef.current.games.length + storeRef.current.players.length + storeRef.current.matches.length === 0) return;
         syncInProgressRef.current = true;
         setIsSyncing(true);
         setAuthRequired(false);
 
-        syncOffline(current, syncApi, (s) => {
-            storeRef.current = s;
-            setStore(s);
-            persistStore(s);
-        })
-            .then((outcome) => {
-                setAuthRequired(outcome.authRequired);
-                if (outcome.syncedCount > 0) {
-                    invalidateMatches();
-                    invalidatePlayers();
-                    invalidateGames();
-                    invalidateClubs();
-                    // Arena timelines render useArenaMatches, not the contexts
-                    // above — tell them the sync landed directly (same signal
-                    // the server's SSE echo carries, without depending on the
-                    // stream being connected).
-                    emitDataChange({ matches: true, players: true, arenas: false });
+        const run = async () => {
+            try {
+                for (;;) {
+                    const current = storeRef.current;
+                    const runIds = new Set(
+                        [...current.games, ...current.players, ...current.matches].map((i) => i.clientId),
+                    );
+                    // The engine re-reads the live store before each write, so
+                    // items queued or deleted mid-run (here or in another tab)
+                    // survive it.
+                    const outcome = await syncOffline(
+                        current,
+                        syncApi,
+                        (s) => {
+                            storeRef.current = s;
+                            setStore(s);
+                            persistStore(s);
+                        },
+                        loadOfflineStore,
+                    ).catch((err) => {
+                        // Per-item failures are handled inside the engine; an
+                        // escape here means a persist itself threw (e.g.
+                        // storage quota). The store keeps its last persisted
+                        // state — log and stop rather than die on an
+                        // unhandled rejection.
+                        console.error("offline sync failed", err);
+                        return undefined;
+                    });
+                    if (!outcome) break;
+                    setAuthRequired(outcome.authRequired);
+                    if (outcome.syncedCount > 0) {
+                        invalidateMatches();
+                        invalidatePlayers();
+                        invalidateGames();
+                        invalidateClubs();
+                        // Arena timelines render useArenaMatches, not the contexts
+                        // above — tell them the sync landed directly (same signal
+                        // the server's SSE echo carries, without depending on the
+                        // stream being connected).
+                        emitDataChange({ matches: true, players: true, arenas: false });
+                    }
+                    // Items queued while this run was in flight hit the probe's
+                    // syncNow, which was a guarded no-op, and nothing re-triggers
+                    // the probe after a healthy run — loop once more to drain
+                    // them. On abort/401 the probe's backoff (or re-login) drives
+                    // the next attempt instead of a tight retry loop.
+                    if (outcome.aborted || outcome.authRequired || !hasNewArrivals(storeRef.current, runIds)) break;
                 }
-            })
-            .finally(() => {
+            } finally {
                 syncInProgressRef.current = false;
                 setIsSyncing(false);
-            });
+            }
+        };
+        run();
     }, [invalidateGames, invalidateMatches, invalidatePlayers, invalidateClubs]);
 
     // Sync is driven solely by the API health probe below: a fresh `pingApiPromise`
