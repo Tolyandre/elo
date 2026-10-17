@@ -131,11 +131,11 @@ func skullKingApplyBid(gs *skullKingGameState, playerID id.ID, bid int) error {
 		gs.Rounds = append(gs.Rounds, make([]json.RawMessage, 0))
 	}
 
+	// A non-nil slot means the bid is set — 0 is a legal bid, so the slot's
+	// presence, never the bid value, decides (the frontend treats a
+	// {bid:0} slot as filled the same way).
 	if playerIdx < len(gs.Rounds[roundIdx]) && gs.Rounds[roundIdx][playerIdx] != nil {
-		var existing skullKingEntry
-		if json.Unmarshal(gs.Rounds[roundIdx][playerIdx], &existing) == nil && existing.Bid != 0 {
-			return ErrSlotAlreadySet
-		}
+		return ErrSlotAlreadySet
 	}
 
 	// Set the bid for this player slot
