@@ -332,16 +332,18 @@ func TestGameTables_SkullKingSubmitViaGenericEndpoint(t *testing.T) {
 		"players":            []map[string]any{{"id": string(playerA), "name": "SkSubHost"}, {"id": string(playerB), "name": "SkSubGuest"}},
 		"currentRound":       1,
 		"currentPlayerIndex": 0,
-		"rounds":             []any{nil},
+		// The real createInitialState shape: round slots pre-initialized
+		// with JSON nulls, not a Go-nil round.
+		"rounds": []any{[]any{nil, nil}},
 	}
 	wire := createTableHTTP(t, router, hostToken, newID(t), elo.GameIDSkullKing, state)
 
-	// Guest bids.
-	if w := submitTableHTTP(t, router, guestToken, wire, map[string]any{"bid": 1}); w.Code != http.StatusOK {
+	// Guest bids 0 — a legal bid that fills the slot like any other.
+	if w := submitTableHTTP(t, router, guestToken, wire, map[string]any{"bid": 0}); w.Code != http.StatusOK {
 		t.Fatalf("bid: %d: %s", w.Code, w.Body.String())
 	}
-	// Same bid again: slot taken.
-	if w := submitTableHTTP(t, router, guestToken, wire, map[string]any{"bid": 0}); w.Code != http.StatusConflict {
+	// Bidding again after a 0 bid: slot taken (0 must not count as "unset").
+	if w := submitTableHTTP(t, router, guestToken, wire, map[string]any{"bid": 3}); w.Code != http.StatusConflict {
 		t.Errorf("re-bid: %d, want 409", w.Code)
 	}
 	// Result before the phase moves on: wrong phase.
@@ -355,7 +357,7 @@ func TestGameTables_SkullKingSubmitViaGenericEndpoint(t *testing.T) {
 		"players":            state["players"],
 		"currentRound":       1,
 		"currentPlayerIndex": 0,
-		"rounds":             []any{[]any{map[string]any{"bid": 2, "actual": nil, "bonus": 0}, map[string]any{"bid": 1, "actual": nil, "bonus": 0}}},
+		"rounds":             []any{[]any{map[string]any{"bid": 2, "actual": nil, "bonus": 0}, map[string]any{"bid": 0, "actual": nil, "bonus": 0}}},
 	}
 	if w := patchTableStateHTTP(t, router, hostToken, wire, 2, resultState); w.Code != http.StatusOK {
 		t.Fatalf("phase transition: %d: %s", w.Code, w.Body.String())

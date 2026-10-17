@@ -1,6 +1,7 @@
 package elo
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -112,6 +113,16 @@ func findSkullKingPlayerIndex(players []TablePlayer, playerID id.ID) int {
 	return -1
 }
 
+// slotHoldsEntry reports whether a round slot already carries a real entry.
+// The frontend pre-initializes round slots with JSON nulls (round 1 in the
+// initial state, later rounds on the next-round transition), and JSON null
+// unmarshals into a non-nil json.RawMessage — so "unset" is a Go-nil element
+// or the literal null, never told apart by the entry's values (a 0 bid is
+// a real bid and locks the slot like any other).
+func slotHoldsEntry(raw json.RawMessage) bool {
+	return len(raw) > 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+}
+
 func skullKingApplyBid(gs *skullKingGameState, playerID id.ID, bid int) error {
 	if gs.Phase != "waiting-for-bids" {
 		return ErrWrongPhase
@@ -131,11 +142,8 @@ func skullKingApplyBid(gs *skullKingGameState, playerID id.ID, bid int) error {
 		gs.Rounds = append(gs.Rounds, make([]json.RawMessage, 0))
 	}
 
-	if playerIdx < len(gs.Rounds[roundIdx]) && gs.Rounds[roundIdx][playerIdx] != nil {
-		var existing skullKingEntry
-		if json.Unmarshal(gs.Rounds[roundIdx][playerIdx], &existing) == nil && existing.Bid != 0 {
-			return ErrSlotAlreadySet
-		}
+	if playerIdx < len(gs.Rounds[roundIdx]) && slotHoldsEntry(gs.Rounds[roundIdx][playerIdx]) {
+		return ErrSlotAlreadySet
 	}
 
 	// Set the bid for this player slot
