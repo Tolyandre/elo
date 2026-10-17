@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { act } from "react";
+import { act, useEffect } from "react";
+import { createRoot } from "react-dom/client";
 import type { Base58ID } from "@/lib/id";
-import type { UseTableSSEOptions } from "@/hooks/useTableSSE";
+import type { TableSSE, UseTableSSEOptions } from "@/hooks/useTableSSE";
 import { useTableSession, TABLE_SESSION_KEY, writeTableSession } from "@/hooks/useTableSession";
 import { renderHook } from "./render-hook";
-import { joinTablePromise, type SkullKingGameState } from "@/app/api";
+import { joinTablePromise, type SkullKingGameState, type TableGameState, type TableSummary } from "@/app/api";
 import { toast } from "sonner";
 import { pid, makeSkullKingState, makeTable } from "./test-utils";
 
@@ -50,7 +51,7 @@ function useSKTableSession(me: { id?: string; playerId?: Base58ID } = ME) {
 
 /** Configures the mocked SSE hook and captures its options (onTableGone). */
 function mockSSE(overrides: { closed?: boolean } = {}) {
-    let state = { table: null, savedMatchId: null, closed: false, connected: true, ...overrides };
+    let state: TableSSE = { table: null, savedMatchId: null, closed: false, connected: true, ...overrides };
     let options: UseTableSSEOptions | undefined;
     vi.mocked(useTableSSE).mockImplementation(
         ((_id: unknown, opts?: UseTableSSEOptions) => {
@@ -64,6 +65,64 @@ function mockSSE(overrides: { closed?: boolean } = {}) {
         },
         setClosed(closed: boolean) {
             state = { ...state, closed };
+        },
+        /** Delivers a server snapshot the way a real "state" SSE event would. */
+        setTable(table: TableSummary) {
+            state = { ...state, table };
+        },
+    };
+}
+
+type SessionHook = ReturnType<typeof useTableSession>;
+
+/**
+ * Renders useTableSession with a child component whose effect fires the host
+ * mutation, mirroring the real page's structure (the Skull King auto-advance
+ * effect in the game view vs this hook's effects in the table page): the
+ * child's effect runs before the hook owner's own effects, which a bare
+ * renderHook (no children) cannot reproduce.
+ */
+function renderAutoAdvanceProbe(): {
+    rerender: () => void;
+    unmount: () => void;
+} {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+
+    function AutoAdvance({ gameState, syncHostState }: {
+        gameState: TableGameState | null;
+        syncHostState: SessionHook["syncHostState"];
+    }) {
+        useEffect(() => {
+            const s = gameState as SkullKingGameState | null;
+            if (!s || s.phase !== "result-entry") return;
+            const allDone = (s.rounds[s.currentRound - 1] ?? [])
+                .every((e) => e !== null && e.actual !== null);
+            if (allDone) {
+                void syncHostState((prev) => ({ ...(prev as SkullKingGameState), phase: "round-complete" as const }));
+            }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- mirror the auto-advance: once per arriving state
+        }, [gameState]);
+        return null;
+    }
+
+    function Probe() {
+        const s = useTableSession({ me: ME });
+        return <AutoAdvance gameState={s.gameState} syncHostState={s.syncHostState} />;
+    }
+
+    const render = () => {
+        act(() => {
+            root.render(<Probe />);
+        });
+    };
+    render();
+    return {
+        rerender: render,
+        unmount: () => {
+            act(() => {
+                root.unmount();
+            });
         },
     };
 }
@@ -313,6 +372,65 @@ describe("useTableSession", () => {
         const retried = vi.mocked(updateTableState).mock.calls[1][2] as SkullKingGameState;
         expect(retried.phase).toBe("bid-review");
         expect(h.current.value.gameState?.phase).toBe("bid-review");
+    });
+
+    it("an SSE-triggered auto-advance patches the adopted snapshot's state, not a stale one", async () => {
+        // The last player's result arrives via SSE; the page's auto-advance
+        // (a child effect) fires before the hook owner's effects would have
+        // caught up. The PATCH must carry the just-adopted snapshot's state —
+        // pairing it with the fresh version is what let the auto-advance
+        // pass the version check and wipe the submission server-side.
+        const sse = mockSSE();
+        localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
+
+        // v1 — the host's last known state, arriving via SSE: result entry,
+        // Bob has not submitted yet.
+        const settled = makeTable({
+            version: 1,
+            game_state: makeSkullKingState({
+                phase: "result-entry",
+                rounds: [[null], [{ bid: 1, actual: 1, bonus: 0 }, null]],
+            }),
+        });
+        // v2 — Bob's result (a legal 0 bid) lands via SSE: every slot filled,
+        // so the auto-advance fires.
+        const snapshot = makeTable({
+            version: 2,
+            game_state: makeSkullKingState({
+                phase: "result-entry",
+                rounds: [[null], [{ bid: 1, actual: 1, bonus: 0 }, { bid: 0, actual: 2, bonus: 10 }]],
+            }),
+        });
+        vi.mocked(updateTableState).mockResolvedValue({
+            status: "ok",
+            table: makeTable({
+                version: 3,
+                game_state: { ...snapshot.game_state, phase: "round-complete" } as SkullKingGameState,
+            }),
+        });
+
+        const probe = renderAutoAdvanceProbe();
+
+        // The host settles on v1 (all effects flushed — the ref is in sync).
+        sse.setTable(settled);
+        probe.rerender();
+        expect(updateTableState).not.toHaveBeenCalled();
+
+        // v2 arrives: adoptTable runs in the hook's own effect; the child
+        // auto-advance effect fires on the next commit.
+        sse.setTable(snapshot);
+        probe.rerender();
+        await act(async () => {
+            await Promise.resolve();
+        });
+        probe.unmount();
+
+        expect(updateTableState).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(updateTableState).mock.calls[0][1]).toBe(2);
+        const patched = vi.mocked(updateTableState).mock.calls[0][2] as SkullKingGameState;
+        expect(patched.phase).toBe("round-complete");
+        // Bob's just-submitted result survives the auto-advance.
+        expect(patched.rounds[1][1]).toEqual({ bid: 0, actual: 2, bonus: 10 });
     });
 
     it("adopting a snapshot with a different host downgrades the host session", async () => {

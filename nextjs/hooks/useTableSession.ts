@@ -115,9 +115,16 @@ export function useTableSession(options: Options) {
     const [connectedPlayerIds, setConnectedPlayerIds] = useState<Base58ID[]>([]);
     const [table, setTable] = useState<TableSummary | null>(null);
 
-    // Authoritative values for same-tick decisions and PATCH versions.
+    // Authoritative values for same-tick decisions and PATCH versions. The
+    // game-state ref is updated synchronously at every write (see
+    // applyGameState), so syncHostState's base state and base version always
+    // come from the same snapshot generation — an effect-driven mutation
+    // (the Skull King auto-advance) must not pair a fresh version with a
+    // stale state, or the PATCH passes the version check and erases a
+    // concurrent player submission.
     const sessionRef = useRef<TableSession | null>(null);
     const tableRef = useRef<TableSummary | null>(null);
+    const gameStateRef = useRef<TableGameState | null>(null);
 
     // One-time hydration of the persisted session (the state itself always
     // arrives from the server).
@@ -152,15 +159,24 @@ export function useTableSession(options: Options) {
         }
     }, []);
 
+    // The single write path for the game state: keeps the ref current in the
+    // same tick as the state so same-tick readers (syncHostState, including
+    // calls from child effects that run before this hook's own effects) never
+    // see a stale base.
+    const applyGameState = useCallback((next: TableGameState | null) => {
+        gameStateRef.current = next;
+        setGameStateValue(next);
+    }, []);
+
     // Adopt a server snapshot: game state, connected players, and the version
-    // that later host patches must be based on. The ref is updated
+    // that later host patches must be based on. The refs are updated
     // synchronously so an in-flight syncHostState retry sees the fresh
     // version without waiting for a re-render.
     const adoptTable = useCallback((snapshot: TableSummary) => {
         tableRef.current = snapshot;
         setTable(snapshot);
         setConnectedPlayerIds(snapshot.connected_player_ids);
-        setGameStateValue(snapshot.game_state);
+        applyGameState(snapshot.game_state);
         // Hosting drift: another user took the table over, or — the more
         // common case — the same user claimed hosting from another device
         // (host_user_id unchanged, but the claim token moved). Step down to a
@@ -187,18 +203,18 @@ export function useTableSession(options: Options) {
                 ? "Ведение передано другому игроку"
                 : "Ведущий режим открыт на другом устройстве");
         }
-    }, [clientToken]);
+    }, [applyGameState, clientToken]);
 
     // Exit to the empty state in any mode. The caller is responsible for
     // the server-side table teardown (host delete / save).
     const resetTableSession = useCallback(() => {
         sessionRef.current = null;
         setSessionState(null);
-        setGameStateValue(null);
+        applyGameState(null);
         setConnectedPlayerIds([]);
         setTable(null);
         localStorage.removeItem(TABLE_SESSION_KEY);
-    }, []);
+    }, [applyGameState]);
 
     // Join a table as a connected player: server-side join, then remember the
     // session and adopt the server's state. Rejects (throws) on API errors so
@@ -267,18 +283,14 @@ export function useTableSession(options: Options) {
         }
     }, [sse.closed, resetTableSession]);
 
-    // gameStateRef lets syncHostState read the latest state without re-creating
-    // the callback on every state change; synced after commit, before any
-    // user-triggered mutation can run.
-    const gameStateRef = useRef(gameState);
-    useEffect(() => {
-        gameStateRef.current = gameState;
-    }, [gameState]);
-
     // Host mutation: apply the updater locally, patch with the current
     // version, and on a version conflict combine the edit with the fresh
     // server state via the game's mergeStates (fields only one side touched
-    // combine; a same-field race keeps the editor's value).
+    // combine; a same-field race keeps the editor's value). `before` comes
+    // from the synchronously maintained gameStateRef, so it always matches
+    // tableRef's version — including when the mutation is triggered from a
+    // child effect (the Skull King auto-advance) that runs before this
+    // hook's own effects.
     const syncHostState = useCallback(
         async (updater: (prev: TableGameState) => TableGameState): Promise<TableStateUpdate["status"] | "error"> => {
             const s = sessionRef.current;
@@ -287,7 +299,7 @@ export function useTableSession(options: Options) {
             const before = gameStateRef.current;
             if (before === null) return "error";
             let next = updater(before);
-            setGameStateValue(next);
+            applyGameState(next);
             let baseVersion = tableRef.current?.version ?? 1;
             for (let attempt = 0; attempt < 2; attempt++) {
                 let result: TableStateUpdate;
@@ -309,14 +321,14 @@ export function useTableSession(options: Options) {
                 // the informed choice happened in the edit dialog; this is
                 // last-write-wins, same as a player's upsert.
                 next = mergeTableStates(gameId, before, next, fresh);
-                setGameStateValue(next);
+                applyGameState(next);
                 // No adoptTable here: the conflict snapshot would wipe the
                 // merged edit from the grid while the retry is in flight.
             }
             toast.error("Не удалось сохранить: состояние изменилось, попробуйте ещё раз");
             return "conflict";
         },
-        [adoptTable],
+        [adoptTable, applyGameState],
     );
 
     // Manual refetch (recovery from 409s on submits, catch-up after reconnect).
