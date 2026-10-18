@@ -592,12 +592,12 @@ Tournament:
     trophy:
       type: string
       description: >-
-        The tournament's trophy — a token from the static art pool (the PNGs
-        under public/trophies/, see pkg/elo/trophies.go); NULL = the generic
-        cup mark. The pool is source-defined and the assignment exclusive:
-        a trophy some tournament holds is hidden from every other
-        tournament's picker. Settable only while the tournament is in
-        registration.
+        The tournament's trophy — a token from the static art pool (the image
+        files under public/trophies/, validated by checkTrophy in
+        pkg/elo/tournaments.go); NULL = the generic cup mark. The pool is
+        source-defined and the assignment exclusive: a trophy some tournament
+        holds is hidden from every other tournament's picker. Settable only
+        while the tournament is in registration.
     games:
       type: array
       items:

@@ -1664,7 +1664,7 @@ export interface components {
             /** Format: date-time */
             grand_final_deadline?: string | null;
             winner_player_id?: components["schemas"]["Base58ID"];
-            /** @description The tournament's trophy — a token from the static art pool (the PNGs under public/trophies/, see pkg/elo/trophies.go); NULL = the generic cup mark. The pool is source-defined and the assignment exclusive: a trophy some tournament holds is hidden from every other tournament's picker. Settable only while the tournament is in registration. */
+            /** @description The tournament's trophy — a token from the static art pool (the image files under public/trophies/, validated by checkTrophy in pkg/elo/tournaments.go); NULL = the generic cup mark. The pool is source-defined and the assignment exclusive: a trophy some tournament holds is hidden from every other tournament's picker. Settable only while the tournament is in registration. */
             trophy?: string;
             games: components["schemas"]["TournamentGame"][];
             /** @description Player ids in registration order (list/detail reads) */

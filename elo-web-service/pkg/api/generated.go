@@ -2315,7 +2315,7 @@ type Tournament struct {
 	// TenantId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	TenantId Base58ID `json:"tenant_id"`
 
-	// Trophy The tournament's trophy — a token from the static art pool (the PNGs under public/trophies/, see pkg/elo/trophies.go); NULL = the generic cup mark. The pool is source-defined and the assignment exclusive: a trophy some tournament holds is hidden from every other tournament's picker. Settable only while the tournament is in registration.
+	// Trophy The tournament's trophy — a token from the static art pool (the image files under public/trophies/, validated by checkTrophy in pkg/elo/tournaments.go); NULL = the generic cup mark. The pool is source-defined and the assignment exclusive: a trophy some tournament holds is hidden from every other tournament's picker. Settable only while the tournament is in registration.
 	Trophy *string `json:"trophy,omitempty"`
 
 	// WinnerPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.

@@ -14,7 +14,7 @@ export const IMAGE_POOLS = {
     ],
     "trophies": [
         "clank-legacy.png",
-        "innovation.png",
+        "innovation.svg",
         "serpent-hunt.png",
         "seti.png"
     ]

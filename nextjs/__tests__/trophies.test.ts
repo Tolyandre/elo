@@ -19,6 +19,12 @@ describe("trophy pool manifest", () => {
         expect(trophyById("no-such-trophy")).toBeUndefined();
     });
 
+    it("the innovation trophy keeps its token across the png → svg swap", () => {
+        // Tournaments in the DB hold the token "innovation"; the swap only
+        // changed the file extension, so the key must keep resolving.
+        expect(trophyById("innovation")?.fileName).toBe("innovation.svg");
+    });
+
     it("trophySrc serves images under the static-export basePath", () => {
         const trophy = trophyById("seti");
         expect(trophy).toBeDefined();
