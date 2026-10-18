@@ -25,7 +25,7 @@ import { ErrorAlert } from "@/components/error-alert";
 import { PlayerLinkNotice } from "@/components/player-link-notice";
 import { PageContainer } from "@/components/page-container";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { TournamentTrophyMark } from "@/components/tournament-trophy-mark";
+import { TournamentTrophyMark, TournamentTrophyZoom } from "@/components/tournament-trophy-mark";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -168,7 +168,7 @@ function TournamentViewLoaded({
             {winnerId && (
                 <Card className="border-warning/60">
                     <CardContent className="flex items-center gap-4 py-4">
-                        <TournamentTrophyMark tournament={tournament} className="h-20 w-20" />
+                        <TournamentTrophyZoom tournament={tournament} className="h-20 w-20" />
                         <span>
                             Победитель:{" "}
                             <Link href={playerHref(winnerId)} className="text-lg font-semibold underline">
