@@ -240,7 +240,7 @@ describe("useArenaFeed loadAll (leaders tab)", () => {
         marketsSSE.tick = 0;
     });
 
-    it("drains the cursor keeping only match events", async () => {
+    it("drains the stream keeping only match events, without consuming the feed's cursor", async () => {
         vi.mocked(getTenantFeedPagePromise)
             .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
             .mockResolvedValueOnce({ items: [marketEvent("c1"), matchEvent("m2")], next: "cursor-2" })
@@ -255,7 +255,77 @@ describe("useArenaFeed loadAll (leaders tab)", () => {
 
         expect(getTenantFeedPagePromise).toHaveBeenLastCalledWith(TENANT_ID, { next: "cursor-2", limit: 100 });
         expect(current.value.allMatches.map((m) => m.id)).toEqual(["m1", "m2"]);
-        expect(current.value.hasMore).toBe(false);
+        expect(current.value.allMatchesComplete).toBe(true);
+        // The drain must not kill the feed's own pagination (its infinite
+        // scroll dies after visiting leaders otherwise).
+        expect(current.value.hasMore).toBe(true);
+        unmount();
+    });
+
+    it("keeps infinite scroll working after loadAll: loadMore continues from the feed's cursor", async () => {
+        vi.mocked(getArenaFeedPagePromise)
+            .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
+            .mockResolvedValueOnce({ items: [matchEvent("m2")], next: "cursor-2" })
+            .mockResolvedValueOnce({ items: [matchEvent("m3")], next: null })
+            .mockResolvedValueOnce({ items: [matchEvent("m2")], next: "cursor-2" });
+
+        const { current, unmount } = renderHook(() => useArenaFeed(arenaScope, {}));
+        await flushFetches();
+
+        // Visiting leaders drains pages 2..3 into allMatches…
+        await act(async () => {
+            await current.value.loadAll();
+        });
+        expect(current.value.allMatches.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+        expect(current.value.events.map((e) => e.data.id)).toEqual(["m1"]);
+
+        // …but switching back to the feed still loads page 2 on scroll.
+        act(() => {
+            current.value.loadMore();
+        });
+        await flushFetches();
+        expect(getArenaFeedPagePromise).toHaveBeenLastCalledWith({ id: ARENA_ID, next: "cursor-1" });
+        expect(current.value.events.map((e) => e.data.id)).toEqual(["m1", "m2"]);
+        unmount();
+    });
+
+    it("runs a single drain when loadAll is called re-entrantly", async () => {
+        vi.mocked(getArenaFeedPagePromise)
+            .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
+            .mockResolvedValueOnce({ items: [], next: null });
+
+        const { current, unmount } = renderHook(() => useArenaFeed(arenaScope, {}));
+        await flushFetches();
+
+        await act(async () => {
+            await Promise.all([current.value.loadAll(), current.value.loadAll()]);
+        });
+
+        // Page 2 fetched exactly once despite two concurrent calls.
+        expect(getArenaFeedPagePromise).toHaveBeenCalledTimes(2);
+        expect(current.value.allMatchesComplete).toBe(true);
+        unmount();
+    });
+
+    it("resets allMatchesComplete on a live invalidation so leaders re-drains", async () => {
+        vi.mocked(getArenaFeedPagePromise)
+            .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
+            .mockResolvedValueOnce({ items: [], next: null })
+            .mockResolvedValueOnce({ items: [matchEvent("fresh")], next: null });
+
+        const { current, unmount } = renderHook(() => useArenaFeed(arenaScope, {}));
+        await flushFetches();
+
+        await act(async () => {
+            await current.value.loadAll();
+        });
+        expect(current.value.allMatchesComplete).toBe(true);
+
+        act(() => emitDataChange({ matches: true, players: false, arenas: false }));
+        await flushFetches();
+
+        expect(current.value.allMatchesComplete).toBe(false);
+        expect(current.value.allMatches.map((m) => m.id)).toEqual(["fresh"]);
         unmount();
     });
 });

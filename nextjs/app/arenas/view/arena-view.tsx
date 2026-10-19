@@ -161,10 +161,18 @@ export function ArenaView() {
 
   function setTab(value: string) {
     setUrlQuery((params) => params.set("tab", value), "push");
-    if (value === "leaders" && feed.hasMore) {
-      void feed.loadAll();
-    }
   }
+
+  // Entering the leaders tab — by click, direct ?tab=leaders link, or a live
+  // refresh while it is open (which resets allMatchesComplete) — drains the
+  // feed once into allMatches. The drain leaves the feed's cursor untouched,
+  // so its infinite scroll keeps working after switching back.
+  const { loading: feedLoading, allMatchesComplete: feedComplete, loadAll: feedLoadAll } = feed;
+  useEffect(() => {
+    if (tab === "leaders" && !feedLoading && !feedComplete) {
+      void feedLoadAll();
+    }
+  }, [tab, feedLoading, feedComplete, feedLoadAll]);
 
   // The game filter passed to the offline queue: an explicit filter wins,
   // otherwise a single-game arena implies its game.

@@ -49,9 +49,10 @@ function eventKey(e: FeedEvent): string {
  * coop matches included); an explicit arena page always renders that arena's
  * own feed.
  *
- * `allMatches` is the match-only slice the leaders tab pulls once via loadAll
- * (draining the feed's cursor); it stays separate so switching tabs never
- * re-renders hundreds of cards.
+ * `allMatches` is the match-only slice the leaders tab pulls once via loadAll;
+ * it stays separate so switching tabs never re-renders hundreds of cards.
+ * loadAll walks its own cursor — the feed's cursor and hasMore stay untouched,
+ * so the feed's infinite scroll keeps working after visiting leaders.
  */
 export function useArenaFeed(
     scope: ArenaFeedScope,
@@ -63,7 +64,9 @@ export function useArenaFeed(
     const [loading, setLoading] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(false);
+    const [allMatchesComplete, setAllMatchesComplete] = useState(false);
     const cursorRef = useRef<string | null>(null);
+    const drainingRef = useRef(false);
 
     // Live invalidation: the feed must reflect matches recorded elsewhere
     // (SSE "matches-changed") and landed by this device's offline sync — the
@@ -105,6 +108,7 @@ export function useArenaFeed(
                 cursorRef.current = page.next;
                 setEvents(page.items);
                 setAllMatches(null);
+                setAllMatchesComplete(false);
                 setHasMore(page.next !== null);
             })
             .catch(() => {
@@ -134,23 +138,25 @@ export function useArenaFeed(
             .finally(() => setLoadingMore(false));
     }, [loadingMore, arenaId, tenantId, fetchPage]);
 
-    // The leaders tab needs the full match set. Drains the feed's cursor,
-    // keeping only match events, into allMatches (a separate state, seeded
-    // from the already loaded pages).
+    // The leaders tab needs the full match set. Drains the feed's stream from
+    // a snapshot of its cursor, keeping only match events, into allMatches (a
+    // separate state, seeded from the already loaded pages). The feed's own
+    // cursor and hasMore stay untouched, so its infinite scroll resumes where
+    // it left off after switching tabs.
     const matchEvents = useMemo(
         () => events.filter((e): e is Extract<FeedEvent, { type: "match" }> => e.type === "match"),
         [events],
     );
 
     const loadAll = useCallback(async () => {
-        if (!tenantId && !arenaId) return;
+        if (drainingRef.current || (!tenantId && !arenaId)) return;
+        drainingRef.current = true;
         setLoadingMore(true);
         try {
             let acc: Match[] = matchEvents.map((e) => e.data);
             let cursor = cursorRef.current;
             while (cursor) {
                 const page = await fetchPage({ next: cursor, limit: 100 });
-                cursorRef.current = page.next;
                 acc = appendUnique(
                     acc,
                     page.items
@@ -161,8 +167,11 @@ export function useArenaFeed(
                 setAllMatches(acc);
                 cursor = page.next;
             }
-            setHasMore(false);
+            setAllMatchesComplete(true);
+        } catch {
+            // toast shown by API helper
         } finally {
+            drainingRef.current = false;
             setLoadingMore(false);
         }
     }, [arenaId, tenantId, matchEvents, fetchPage]);
@@ -171,6 +180,7 @@ export function useArenaFeed(
         events,
         matches: matchEvents.map((e) => e.data),
         allMatches: allMatches ?? matchEvents.map((e) => e.data),
+        allMatchesComplete,
         loading,
         loadingMore,
         hasMore,
