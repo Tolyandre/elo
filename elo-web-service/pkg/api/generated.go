@@ -2140,7 +2140,7 @@ type PlayerCollectionGame struct {
 	// ImageThumbUrl Box-art thumbnail (when BGG enrichment has fetched one).
 	ImageThumbUrl *string `json:"image_thumb_url,omitempty"`
 
-	// MatchesCount Matches of this player in the game (coop excluded, same as the «Частые игры» count) — the collection's primary sort key, most played first.
+	// MatchesCount Matches of this player in the game across all match types (competitive and coop alike) — the collection's primary sort key, most played first.
 	MatchesCount int    `json:"matches_count"`
 	Name         string `json:"name"`
 }

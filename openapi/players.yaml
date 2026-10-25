@@ -626,8 +626,8 @@ PlayerCollectionGame:
     matches_count:
       type: integer
       description: >-
-        Matches of this player in the game (coop excluded, same as the
-        «Частые игры» count) — the collection's primary sort key, most played
+        Matches of this player in the game across all match types (competitive
+        and coop alike) — the collection's primary sort key, most played
         first.
   required: [id, name, matches_count]
 

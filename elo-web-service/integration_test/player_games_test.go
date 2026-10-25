@@ -12,8 +12,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
@@ -134,6 +137,25 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 		t.Fatalf("rest = [%s, %s], want the untouched games alphabetical", data.Games[1].Name, data.Games[2].Name)
 	}
 
+	// Coop matches count too (ADR-33 participants land in match_scores with
+	// zero scores): a single coop play of «Гостевая игра» puts it second.
+	g4 := createCoopTestGame(t, pool, "Гостевая игра")
+	addCoopMatchDaysAgo(t, ctx, pool, g4, 1, []idpkg.ID{player, guest})
+	w = doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", myToken, `{"game_id":"`+g4.String()+`"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("linked POST %s = %d: %s", g4, w.Code, w.Body.String())
+	}
+	code, data = getCollection(t, router, "/players/"+player.String()+"/collection", "")
+	if code != http.StatusOK || len(data.Games) != 4 {
+		t.Fatalf("after coop add: len=%d, want 4", len(data.Games))
+	}
+	if data.Games[0].Name != "Вечерняя игра" || data.Games[0].MatchesCount != 2 {
+		t.Fatalf("first = %s (%d plays), want Вечерняя игра (2)", data.Games[0].Name, data.Games[0].MatchesCount)
+	}
+	if data.Games[1].Name != "Гостевая игра" || data.Games[1].MatchesCount != 1 {
+		t.Fatalf("second = %s (%d plays), want Гостевая игра (1 coop play)", data.Games[1].Name, data.Games[1].MatchesCount)
+	}
+
 	// Remove empties the shelf again; removing a non-member is a no-op.
 	for _, game := range []idpkg.ID{g1, g3} {
 		w := doJSON(t, router, http.MethodDelete, "/players/"+player.String()+"/collection/"+game.String(), myToken, "")
@@ -141,8 +163,8 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 			t.Fatalf("linked DELETE %s = %d: %s", game, w.Code, w.Body.String())
 		}
 	}
-	if code, data := getCollection(t, router, "/players/"+player.String()+"/collection", ""); code != http.StatusOK || data.Total != 1 || len(data.Games) != 1 {
-		t.Fatalf("after removes: total=%d len=%d, want 1/1 (g3 was never added)", data.Total, len(data.Games))
+	if code, data := getCollection(t, router, "/players/"+player.String()+"/collection", ""); code != http.StatusOK || data.Total != 2 || len(data.Games) != 2 {
+		t.Fatalf("after removes: total=%d len=%d, want 2/2 (Библиотечная + Гостевая remain)", data.Total, len(data.Games))
 	}
 
 	// Unknown references fail: a missing player is a 404 (same as the public
@@ -162,5 +184,35 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 	}
 	if code, _ := getCollection(t, router, "/players/garbage/collection", ""); code != http.StatusNotFound {
 		t.Fatalf("garbage id GET = %d, want 404", code)
+	}
+}
+
+// createCoopTestGame inserts a coop-only game (the mode decides itself, ADR-33).
+func createCoopTestGame(t *testing.T, pool *pgxpool.Pool, name string) idpkg.ID {
+	t.Helper()
+	q := db.New(pool)
+	id := newID(t)
+	g, err := q.AddGame(context.Background(), db.AddGameParams{ID: id, NameEn: pgText(name), GameMode: elo.GameModeCoop})
+	if err != nil {
+		t.Fatalf("create coop game %q: %v", name, err)
+	}
+	return g.ID
+}
+
+// addCoopMatchDaysAgo mirrors addMatchDaysAgo for a coop game: participants as
+// plain ids (they land in match_scores with zero scores — ADR-33), the shared
+// result on the match row.
+func addCoopMatchDaysAgo(t *testing.T, ctx context.Context, pool *pgxpool.Pool, game idpkg.ID, daysAgo int, playerIDs []idpkg.ID) {
+	t.Helper()
+	date := time.Now().UTC().AddDate(0, 0, -daysAgo)
+	score, won := 3.0, true
+	if _, err := newMatchService(pool).AddMatch(ctx, blueMenTenantID, game, nil, date, elo.AddMatchOpts{
+		ID:        newID(t),
+		Mode:      elo.MatchModeCoop,
+		PlayerIDs: playerIDs,
+		GameScore: &score,
+		GameWon:   &won,
+	}); err != nil {
+		t.Fatalf("AddCoopMatch %v %d days ago: %v", game, daysAgo, err)
 	}
 }

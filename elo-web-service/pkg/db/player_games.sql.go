@@ -49,8 +49,7 @@ SELECT
      FROM match_scores ms
      JOIN matches m ON m.id = ms.match_id
     WHERE ms.player_id = pg.player_id
-      AND m.game_id = pg.game_id
-      AND m.mode <> 'coop') AS matches_count
+      AND m.game_id = pg.game_id) AS matches_count
 FROM player_games pg
 JOIN games g ON g.id = pg.game_id
 WHERE pg.player_id = $1
@@ -65,9 +64,9 @@ type GetPlayerGameCollectionRow struct {
 }
 
 // Player game collection ("коллекция игр" on the profile page).
-// The player's collected games, most-played by this player first (coop
-// matches excluded, same as the «Частые игры» count), ties alphabetically by
-// the generated display name (alias → ru → en), id as the final tiebreaker.
+// The player's collected games, most-played by this player first (every match
+// type counts — competitive and coop alike), ties alphabetically by the
+// generated display name (alias → ru → en), id as the final tiebreaker.
 func (q *Queries) GetPlayerGameCollection(ctx context.Context, playerID id.ID) ([]GetPlayerGameCollectionRow, error) {
 	rows, err := q.db.Query(ctx, getPlayerGameCollection, playerID)
 	if err != nil {

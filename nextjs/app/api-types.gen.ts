@@ -1423,7 +1423,7 @@ export interface components {
             name: string;
             /** @description Box-art thumbnail (when BGG enrichment has fetched one). */
             image_thumb_url?: string | null;
-            /** @description Matches of this player in the game (coop excluded, same as the «Частые игры» count) — the collection's primary sort key, most played first. */
+            /** @description Matches of this player in the game across all match types (competitive and coop alike) — the collection's primary sort key, most played first. */
             matches_count: number;
         };
         PlayerGameCollection: {
