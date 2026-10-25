@@ -1,13 +1,23 @@
 -- Player game collection ("коллекция игр" on the profile page).
 
 -- name: GetPlayerGameCollection :many
--- The player's collected games, alphabetically by the generated display name
--- (alias → ru → en), id as the tiebreaker for a stable order.
-SELECT g.id, g.name, g.image_thumb_url
+-- The player's collected games, most-played by this player first (coop
+-- matches excluded, same as the «Частые игры» count), ties alphabetically by
+-- the generated display name (alias → ru → en), id as the final tiebreaker.
+SELECT
+  g.id,
+  g.name,
+  g.image_thumb_url,
+  (SELECT COUNT(*)::int
+     FROM match_scores ms
+     JOIN matches m ON m.id = ms.match_id
+    WHERE ms.player_id = pg.player_id
+      AND m.game_id = pg.game_id
+      AND m.mode <> 'coop') AS matches_count
 FROM player_games pg
 JOIN games g ON g.id = pg.game_id
 WHERE pg.player_id = $1
-ORDER BY g.name, g.id;
+ORDER BY matches_count DESC, g.name, g.id;
 
 -- name: CountPlayerGames :one
 SELECT COUNT(*)::int FROM player_games WHERE player_id = $1;

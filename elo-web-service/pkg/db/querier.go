@@ -258,8 +258,9 @@ type Querier interface {
 	GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsForMarketParams) ([]GetPlayerBetsForMarketRow, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	// Player game collection ("коллекция игр" on the profile page).
-	// The player's collected games, alphabetically by the generated display name
-	// (alias → ru → en), id as the tiebreaker for a stable order.
+	// The player's collected games, most-played by this player first (coop
+	// matches excluded, same as the «Частые игры» count), ties alphabetically by
+	// the generated display name (alias → ru → en), id as the final tiebreaker.
 	GetPlayerGameCollection(ctx context.Context, playerID id.ID) ([]GetPlayerGameCollectionRow, error)
 	GetPlayerGameEloStats(ctx context.Context, arg GetPlayerGameEloStatsParams) ([]GetPlayerGameEloStatsRow, error)
 	// Per-game stats for the player profile "Частые игры" table: match count plus

@@ -623,7 +623,13 @@ PlayerCollectionGame:
       type: string
       nullable: true
       description: Box-art thumbnail (when BGG enrichment has fetched one).
-  required: [id, name]
+    matches_count:
+      type: integer
+      description: >-
+        Matches of this player in the game (coop excluded, same as the
+        «Частые игры» count) — the collection's primary sort key, most played
+        first.
+  required: [id, name, matches_count]
 
 PlayerGameCollection:
   type: object

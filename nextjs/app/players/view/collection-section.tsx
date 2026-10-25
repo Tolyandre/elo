@@ -1,10 +1,10 @@
 'use client'
 
-// The profile's game collection ("Коллекция игр"): the games the player keeps
+// The profile's game collection («Коллекция игр»): the games the player keeps
 // on their shelf. Everyone sees it; only the user linked to the player
 // (users.player_id) may add or remove games — the same link the backend
 // enforces. The first PREVIEW_COUNT games show collapsed with the total; the
-// rest behind «Показать все».
+// rest behind «Показать все». The server orders by the player's play count.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
@@ -21,31 +21,27 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ConfirmDialog, useConfirmAction } from '@/components/confirm-dialog'
 import { ErrorAlert } from '@/components/error-alert'
 import { LoadingRows } from '@/components/loading-rows'
 import { EmptyState } from '@/components/empty-state'
 import { GameImage } from '@/components/game-image'
-import { GameCombobox } from '@/components/game-combobox'
+import { GameMultiSelect } from '@/components/game-multi-select'
 
 const PREVIEW_COUNT = 12
+
+function addedToast(count: number) {
+    toast.success(count === 1 ? 'Игра добавлена в коллекцию' : `Добавлено игр: ${count}`)
+}
 
 function GameChip({
     game,
     canManage,
-    busy,
     onRemove,
 }: {
     game: PlayerCollectionGame
     canManage: boolean
-    busy: boolean
     onRemove: (game: PlayerCollectionGame) => void
 }) {
     return (
@@ -69,10 +65,9 @@ function GameChip({
                     size="icon"
                     className="size-6 shrink-0 rounded-full text-muted-foreground hover:text-destructive"
                     onClick={() => onRemove(game)}
-                    disabled={busy}
                     aria-label={`Убрать «${game.name}» из коллекции`}
                 >
-                    {busy ? <Spinner className="size-3.5" /> : <X className="size-3.5" />}
+                    <X className="size-3.5" />
                 </Button>
             )}
         </li>
@@ -91,72 +86,75 @@ export function CollectionSection({ playerId }: { playerId: Base58ID }) {
 
     const [expanded, setExpanded] = useState(false)
     const [addOpen, setAddOpen] = useState(false)
-    // The chip whose remove is in flight (spinner on its X button).
-    const [busyId, setBusyId] = useState<string | null>(null)
-    // A brand-new game picked from the combobox lives only in the offline
-    // queue until a sync run lands it server-side — hold it here and add it
-    // to the collection the moment the games catalog knows it.
-    const [awaitingId, setAwaitingId] = useState<Base58ID | null>(null)
-    const [pickerValue, setPickerValue] = useState<Base58ID | undefined>(undefined)
+    // The games ticked in the multiselect, awaiting the «Добавить» press.
+    const [picked, setPicked] = useState<Base58ID[]>([])
+    const [adding, setAdding] = useState(false)
+    // Games created fresh in the picker: their ids are final but the rows do
+    // not exist server-side until a sync run lands them — hold them here and
+    // add to the collection the moment the games catalog knows each one.
+    const [awaitingIds, setAwaitingIds] = useState<Base58ID[]>([])
 
     const collected = useMemo(() => data?.games ?? [], [data])
     const total = data?.total ?? 0
     const collectedIds = useMemo(() => new Set(collected.map((g) => g.id)), [collected])
     const visible = expanded ? collected : collected.slice(0, PREVIEW_COUNT)
-    const awaitingName =
-        pendingGames.find((g) => g.clientId === awaitingId)?.name ?? 'Новая игра'
+    const awaitingName = (id: Base58ID) =>
+        pendingGames.find((g) => g.clientId === id)?.name ?? 'Новая игра'
 
-    // The catalog has learned the awaiting game — a sync run landed it, so
-    // the collection add can finally go through. The ref keeps the in-flight
-    // POST single-shot: the games context re-renders and re-fires this effect
-    // while the request is on the wire.
-    const addingRef = useRef<Base58ID | null>(null)
+    // The catalog has learned some awaiting games — a sync run landed them,
+    // so their collection adds can finally go through. The ref keeps each
+    // in-flight POST single-shot: the games context re-renders and re-fires
+    // this effect while the requests are on the wire.
+    const addingRef = useRef<Set<string>>(new Set())
     useEffect(() => {
-        if (!awaitingId || addingRef.current === awaitingId) return
-        if (!games.some((g) => g.id === awaitingId)) return
-        addingRef.current = awaitingId
-        addPlayerGamePromise(playerId, awaitingId)
-            .then(() => {
-                setAwaitingId(null)
-                toast.success('Игра добавлена в коллекцию')
+        if (awaitingIds.length === 0) return
+        const ready = awaitingIds.filter(
+            (id) => games.some((g) => g.id === id) && !addingRef.current.has(id),
+        )
+        if (ready.length === 0) return
+        ready.forEach((id) => addingRef.current.add(id))
+        Promise.all(ready.map((id) => addPlayerGamePromise(playerId, id).then(() => id)))
+            .then((addedIds) => {
+                setAwaitingIds((prev) => prev.filter((id) => !addedIds.includes(id)))
+                addedToast(addedIds.length)
                 invalidate()
             })
             .catch(() => {
                 // The error toast comes from the api client middleware; the
-                // awaiting chip goes so the game can simply be picked again.
-                setAwaitingId(null)
+                // awaiting chips go so the games can simply be picked again.
+                setAwaitingIds((prev) => prev.filter((id) => !ready.includes(id)))
             })
-    }, [awaitingId, games, playerId, invalidate])
+    }, [awaitingIds, games, playerId, invalidate])
 
-    const handleRemove = (game: PlayerCollectionGame) => {
-        setBusyId(game.id)
-        removePlayerGamePromise(playerId, game.id)
-            .then(() => invalidate())
-            .finally(() => setBusyId(null))
-    }
-
-    // Selecting an existing catalog game adds it right away. The combobox
-    // value resets so the trigger reads «Игра...» for the next pick.
-    const handlePicked = (id?: Base58ID) => {
-        setPickerValue(undefined)
-        if (!id || collectedIds.has(id) || id === awaitingId) return
-        if (!games.some((g) => g.id === id)) {
-            // Not in the catalog: a brand-new game queued offline (the
-            // combobox's create flow). Its id is final, but the row does not
-            // exist server-side until a sync run lands it — the watcher above
-            // finishes the collection add then.
-            setAwaitingId(id)
-            return
-        }
-        addPlayerGamePromise(playerId, id)
-            .then(() => {
-                toast.success('Игра добавлена в коллекцию')
-                invalidate()
+    const handleAddPicked = () => {
+        if (picked.length === 0 || adding) return
+        // A picked id absent from the catalog is a brand-new offline game
+        // (the picker's create flow); the known ones add right away, the
+        // fresh ones join through the watcher above once synced.
+        const fresh = picked.filter((id) => !games.some((g) => g.id === id))
+        const known = picked.filter((id) => games.some((g) => g.id === id))
+        setAdding(true)
+        Promise.all(known.map((id) => addPlayerGamePromise(playerId, id).then(() => id)))
+            .then((addedIds) => {
+                if (addedIds.length > 0) {
+                    addedToast(addedIds.length)
+                    invalidate()
+                }
+                setPicked([])
+                if (fresh.length > 0) setAwaitingIds((prev) => [...prev, ...fresh])
+                setAddOpen(false)
             })
             .catch(() => {
-                // The error toast comes from the api client middleware.
+                // The error toast comes from the api client middleware; the
+                // dialog stays open with the selection so the user can retry.
             })
+            .finally(() => setAdding(false))
     }
+
+    const removeAction = useConfirmAction(async (game: PlayerCollectionGame) => {
+        await removePlayerGamePromise(playerId, game.id)
+        invalidate()
+    })
 
     return (
         <Card>
@@ -177,7 +175,7 @@ export function CollectionSection({ playerId }: { playerId: Base58ID }) {
                     <ErrorAlert message={error} />
                 ) : loading ? (
                     <LoadingRows count={2} />
-                ) : collected.length === 0 && !awaitingId ? (
+                ) : collected.length === 0 && awaitingIds.length === 0 ? (
                     <EmptyState
                         icon={Library}
                         title="Коллекция пуста"
@@ -198,16 +196,18 @@ export function CollectionSection({ playerId }: { playerId: Base58ID }) {
                                     key={game.id}
                                     game={game}
                                     canManage={canManage}
-                                    busy={busyId === game.id}
-                                    onRemove={handleRemove}
+                                    onRemove={removeAction.trigger}
                                 />
                             ))}
-                            {awaitingId && (
-                                <li className="inline-flex items-center gap-2 rounded-full border border-dashed py-1 pl-3 pr-3 text-sm text-muted-foreground">
+                            {awaitingIds.map((id) => (
+                                <li
+                                    key={id}
+                                    className="inline-flex items-center gap-2 rounded-full border border-dashed py-1 pl-3 pr-3 text-sm text-muted-foreground"
+                                >
                                     <Spinner className="size-3.5" />
-                                    «{awaitingName}» — синхронизация…
+                                    «{awaitingName(id)}» — синхронизация…
                                 </li>
-                            )}
+                            ))}
                         </ul>
                         {collected.length > PREVIEW_COUNT && (
                             <div className="mt-3">
@@ -228,31 +228,44 @@ export function CollectionSection({ playerId }: { playerId: Base58ID }) {
                 <Dialog open={addOpen} onOpenChange={setAddOpen}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Добавить игру в коллекцию</DialogTitle>
-                            <DialogDescription>
-                                Найдите игру в каталоге или создайте новую — она появится в
-                                коллекции сразу после синхронизации.
-                            </DialogDescription>
+                            <DialogTitle>Добавить игры в коллекцию</DialogTitle>
                         </DialogHeader>
-                        <GameCombobox
-                            value={pickerValue}
-                            onChange={handlePicked}
-                            filterGame={(game) => !collectedIds.has(game.id)}
+                        <GameMultiSelect
+                            value={picked}
+                            onChange={setPicked}
+                            filter={(game) => !collectedIds.has(game.id)}
                         />
-                        {awaitingId && (
-                            <p className="text-sm text-muted-foreground">
-                                «{awaitingName}» создаётся — добавим её в коллекцию после
-                                синхронизации.
-                            </p>
-                        )}
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setAddOpen(false)}>
-                                Готово
+                                Отмена
+                            </Button>
+                            <Button
+                                onClick={handleAddPicked}
+                                disabled={picked.length === 0 || adding}
+                                aria-busy={adding}
+                            >
+                                {adding && <Spinner className="size-4" />}
+                                Добавить{picked.length > 0 ? ` (${picked.length})` : ''}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
             )}
+
+            <ConfirmDialog
+                open={removeAction.open}
+                onOpenChange={removeAction.onOpenChange}
+                title="Убрать игру из коллекции?"
+                description={
+                    removeAction.target
+                        ? `${removeAction.target.name}`
+                        : undefined
+                }
+                confirmText="Убрать"
+                confirmVariant="destructive"
+                loading={removeAction.pending}
+                onConfirm={removeAction.confirm}
+            />
         </Card>
     )
 }

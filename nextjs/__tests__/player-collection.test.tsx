@@ -11,9 +11,9 @@ const state = vi.hoisted(() => ({
     playerId: undefined as string | undefined,
     games: [] as { id: string; name: string; image_thumb_url?: string | null }[],
     pendingGames: [] as { clientId: string; name: string }[],
-    collection: { total: 0, games: [] as { id: string; name: string; image_thumb_url?: string | null }[] },
-    // The id the stubbed GameCombobox "picks" next.
-    pickId: undefined as string | undefined,
+    collection: { total: 0, games: [] as { id: string; name: string; matches_count: number; image_thumb_url?: string | null }[] },
+    // The ids the stubbed GameMultiSelect "picks" next.
+    pickIds: [] as string[],
     added: [] as string[],
     removed: [] as string[],
     fetches: 0,
@@ -47,11 +47,11 @@ vi.mock("@/app/offline/OfflineContext", () => ({
 vi.mock("sonner", () => ({
     toast: { success: () => {} },
 }));
-// The picker's internals are covered by game-combobox-tabs; the section only
-// needs its onChange contract.
-vi.mock("@/components/game-combobox", () => ({
-    GameCombobox: ({ onChange }: { onChange: (id?: string) => void }) => (
-        <button data-testid="pick" onClick={() => onChange(state.pickId)}>
+// The picker's internals are covered elsewhere; the section only needs its
+// onChange contract.
+vi.mock("@/components/game-multi-select", () => ({
+    GameMultiSelect: ({ onChange }: { onChange: (ids: string[]) => void }) => (
+        <button data-testid="pick" onClick={() => onChange(state.pickIds)}>
             pick
         </button>
     ),
@@ -60,7 +60,7 @@ vi.mock("@/components/game-combobox", () => ({
 import { CollectionSection } from "@/app/players/view/collection-section";
 import type { Base58ID } from "@/lib/id";
 
-const game = (id: string, name: string) => ({ id, name, image_thumb_url: null });
+const game = (id: string, name: string) => ({ id, name, matches_count: 0, image_thumb_url: null });
 
 const PLAYER = "player-1" as Base58ID;
 
@@ -98,8 +98,20 @@ function buttonByText(text: string): HTMLButtonElement | null {
     return [...container.querySelectorAll("button")].find((b) => b.textContent?.includes(text)) ?? null;
 }
 
+function dialogButtonByText(text: string): HTMLButtonElement | null {
+    return (
+        ([...document.querySelectorAll('[role="dialog"] button')].find(
+            (b) => b.textContent?.includes(text),
+        ) as HTMLButtonElement | undefined) ?? null
+    );
+}
+
 function gameLinks(): Element[] {
     return [...container.querySelectorAll('a[href^="/games/view?id="]')];
+}
+
+function pick() {
+    act(() => (document.querySelector('[data-testid="pick"]') as HTMLButtonElement).click());
 }
 
 beforeEach(() => {
@@ -107,7 +119,7 @@ beforeEach(() => {
     state.games = [];
     state.pendingGames = [];
     state.collection = { total: 0, games: [] };
-    state.pickId = undefined;
+    state.pickIds = [];
     state.added = [];
     state.removed = [];
     state.fetches = 0;
@@ -146,9 +158,9 @@ describe("CollectionSection", () => {
         expect(buttonByText("Добавить игру")).toBeNull();
     });
 
-    it("lets the linked user add an existing catalog game", async () => {
+    it("adds several catalog games at once", async () => {
         state.playerId = PLAYER;
-        state.games = [game("g1", "Шахматы"), game("g2", "Шашки")];
+        state.games = [game("g1", "Шахматы"), game("g2", "Шашки"), game("g3", "Шашки-2")];
         state.collection = { total: 1, games: [game("g1", "Шахматы")] };
         mount();
         await flush();
@@ -157,13 +169,16 @@ describe("CollectionSection", () => {
         act(() => buttonByText("Добавить")!.click());
         expect(document.querySelector('[role="dialog"]')).not.toBeNull();
 
-        state.pickId = "g2";
-        act(() => (document.querySelector('[data-testid="pick"]') as HTMLButtonElement).click());
+        state.pickIds = ["g2", "g3"];
+        pick();
+        expect(dialogButtonByText("Добавить (2)")).not.toBeNull();
+        act(() => dialogButtonByText("Добавить (2)")!.click());
         await flush();
 
-        expect(state.added).toEqual(["g2"]);
-        // The write refreshes the collection.
+        expect([...state.added].sort()).toEqual(["g2", "g3"]);
+        // The write refreshes the collection and the dialog closes.
         expect(state.fetches).toBe(2);
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
     });
 
     it("queues a brand-new offline game until the catalog learns it", async () => {
@@ -175,10 +190,11 @@ describe("CollectionSection", () => {
         await flush();
 
         act(() => buttonByText("Добавить")!.click());
-        // The combobox's create flow reports the fresh game's final id — not
-        // in the catalog yet, so nothing hits the server.
-        state.pickId = "fresh-1";
-        act(() => (document.querySelector('[data-testid="pick"]') as HTMLButtonElement).click());
+        // The picker's create flow reports the fresh game's final id — not in
+        // the catalog yet, so nothing hits the server.
+        state.pickIds = ["fresh-1"];
+        pick();
+        act(() => dialogButtonByText("Добавить (1)")!.click());
         await flush();
 
         expect(state.added).toEqual([]);
@@ -193,15 +209,20 @@ describe("CollectionSection", () => {
         expect(container.textContent).not.toContain("синхронизация");
     });
 
-    it("lets the linked user remove a game", async () => {
+    it("removes a game only after the confirmation", async () => {
         state.playerId = PLAYER;
         state.collection = { total: 1, games: [game("g1", "Шахматы")] };
         mount();
         await flush();
 
-        const remove = container.querySelector('button[aria-label="Убрать «Шахматы» из коллекции"]');
+        const remove = container.querySelector('button[aria-label="Убрать «Шахматы» из коллекции"]') as HTMLButtonElement;
         expect(remove).not.toBeNull();
-        act(() => (remove as HTMLButtonElement).click());
+        act(() => remove.click());
+        // The confirm dialog is up and nothing is removed yet.
+        expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Убрать игру из коллекции?");
+        expect(state.removed).toEqual([]);
+
+        act(() => dialogButtonByText("Убрать")!.click());
         await flush();
 
         expect(state.removed).toEqual(["g1"]);

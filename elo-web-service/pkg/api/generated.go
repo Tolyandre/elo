@@ -2139,7 +2139,10 @@ type PlayerCollectionGame struct {
 
 	// ImageThumbUrl Box-art thumbnail (when BGG enrichment has fetched one).
 	ImageThumbUrl *string `json:"image_thumb_url,omitempty"`
-	Name          string  `json:"name"`
+
+	// MatchesCount Matches of this player in the game (coop excluded, same as the «Частые игры» count) — the collection's primary sort key, most played first.
+	MatchesCount int    `json:"matches_count"`
+	Name         string `json:"name"`
 }
 
 // PlayerGameCollection defines model for PlayerGameCollection.

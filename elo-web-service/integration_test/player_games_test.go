@@ -21,6 +21,7 @@ type collectionGame struct {
 	Id            string  `json:"id"`
 	Name          string  `json:"name"`
 	ImageThumbURL *string `json:"image_thumb_url"`
+	MatchesCount  int     `json:"matches_count"`
 }
 
 type collectionPayload struct {
@@ -107,9 +108,30 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 	if code != http.StatusOK || data.Total != 2 || len(data.Games) != 2 {
 		t.Fatalf("after adds: total=%d len=%d, want 2/2 (duplicate collapsed)", data.Total, len(data.Games))
 	}
-	// Alphabetical ordering by the display name.
+	// Alphabetical ordering by the display name (nothing played yet).
 	if data.Games[0].Name != "Абстрактная игра" || data.Games[1].Name != "Библиотечная игра" {
 		t.Fatalf("order = [%s, %s], want alphabetical", data.Games[0].Name, data.Games[1].Name)
+	}
+
+	// Two matches of «Вечерняя игра» move it to the front once collected:
+	// most played by this player first, ties stay alphabetical. The guest
+	// fills the second seat.
+	guest := createBareTestPlayer(t, pool, "Гость-коллекционера")
+	addMatchDaysAgo(t, ctx, pool, g3, 1, map[idpkg.ID]float64{player: 10, guest: 5})
+	addMatchDaysAgo(t, ctx, pool, g3, 2, map[idpkg.ID]float64{player: 8, guest: 6})
+	w := doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", myToken, `{"game_id":"`+g3.String()+`"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("linked POST %s = %d: %s", g3, w.Code, w.Body.String())
+	}
+	code, data = getCollection(t, router, "/players/"+player.String()+"/collection", "")
+	if code != http.StatusOK || len(data.Games) != 3 {
+		t.Fatalf("after third add: len=%d, want 3", len(data.Games))
+	}
+	if data.Games[0].Name != "Вечерняя игра" || data.Games[0].MatchesCount != 2 {
+		t.Fatalf("first = %s (%d plays), want Вечерняя игра (2)", data.Games[0].Name, data.Games[0].MatchesCount)
+	}
+	if data.Games[1].Name != "Абстрактная игра" || data.Games[2].Name != "Библиотечная игра" {
+		t.Fatalf("rest = [%s, %s], want the untouched games alphabetical", data.Games[1].Name, data.Games[2].Name)
 	}
 
 	// Remove empties the shelf again; removing a non-member is a no-op.
@@ -125,7 +147,7 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 
 	// Unknown references fail: a missing player is a 404 (same as the public
 	// GET), a missing game a foreign-key 400.
-	w := doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", myToken, `{"game_id":"`+newID(t).String()+`"}`)
+	w = doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", myToken, `{"game_id":"`+newID(t).String()+`"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("unknown game POST = %d, want 400", w.Code)
 	}

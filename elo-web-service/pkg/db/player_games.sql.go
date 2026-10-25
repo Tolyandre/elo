@@ -41,22 +41,33 @@ func (q *Queries) CountPlayerGames(ctx context.Context, playerID id.ID) (int32, 
 
 const getPlayerGameCollection = `-- name: GetPlayerGameCollection :many
 
-SELECT g.id, g.name, g.image_thumb_url
+SELECT
+  g.id,
+  g.name,
+  g.image_thumb_url,
+  (SELECT COUNT(*)::int
+     FROM match_scores ms
+     JOIN matches m ON m.id = ms.match_id
+    WHERE ms.player_id = pg.player_id
+      AND m.game_id = pg.game_id
+      AND m.mode <> 'coop') AS matches_count
 FROM player_games pg
 JOIN games g ON g.id = pg.game_id
 WHERE pg.player_id = $1
-ORDER BY g.name, g.id
+ORDER BY matches_count DESC, g.name, g.id
 `
 
 type GetPlayerGameCollectionRow struct {
 	ID            id.ID       `json:"id"`
 	Name          string      `json:"name"`
 	ImageThumbUrl pgtype.Text `json:"image_thumb_url"`
+	MatchesCount  int32       `json:"matches_count"`
 }
 
 // Player game collection ("коллекция игр" on the profile page).
-// The player's collected games, alphabetically by the generated display name
-// (alias → ru → en), id as the tiebreaker for a stable order.
+// The player's collected games, most-played by this player first (coop
+// matches excluded, same as the «Частые игры» count), ties alphabetically by
+// the generated display name (alias → ru → en), id as the final tiebreaker.
 func (q *Queries) GetPlayerGameCollection(ctx context.Context, playerID id.ID) ([]GetPlayerGameCollectionRow, error) {
 	rows, err := q.db.Query(ctx, getPlayerGameCollection, playerID)
 	if err != nil {
@@ -66,7 +77,12 @@ func (q *Queries) GetPlayerGameCollection(ctx context.Context, playerID id.ID) (
 	items := []GetPlayerGameCollectionRow{}
 	for rows.Next() {
 		var i GetPlayerGameCollectionRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.ImageThumbUrl); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ImageThumbUrl,
+			&i.MatchesCount,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

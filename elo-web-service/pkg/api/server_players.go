@@ -386,7 +386,7 @@ func (s *StrictServer) collectionResponse(ctx context.Context, playerID id.ID) (
 			v := g.ImageThumbUrl.String
 			thumb = &v
 		}
-		out = append(out, PlayerCollectionGame{Id: g.ID, Name: g.Name, ImageThumbUrl: thumb})
+		out = append(out, PlayerCollectionGame{Id: g.ID, Name: g.Name, ImageThumbUrl: thumb, MatchesCount: int(g.MatchesCount)})
 	}
 	return PlayerGameCollection{Total: total, Games: out}, nil
 }
