@@ -366,3 +366,129 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 		},
 	}, nil
 }
+
+// ---------------------------------------------------------------------------
+// Player game collection ("Коллекция игр").
+// ---------------------------------------------------------------------------
+
+// collectionResponse loads the current collection for a response payload —
+// the writes return the updated collection so the client refreshes in one
+// round trip.
+func (s *StrictServer) collectionResponse(ctx context.Context, playerID id.ID) (PlayerGameCollection, error) {
+	games, total, err := s.api.PlayerService.ListPlayerGameCollection(ctx, playerID)
+	if err != nil {
+		return PlayerGameCollection{}, err
+	}
+	out := make([]PlayerCollectionGame, 0, len(games))
+	for _, g := range games {
+		var thumb *string
+		if g.ImageThumbUrl.Valid {
+			v := g.ImageThumbUrl.String
+			thumb = &v
+		}
+		out = append(out, PlayerCollectionGame{Id: g.ID, Name: g.Name, ImageThumbUrl: thumb})
+	}
+	return PlayerGameCollection{Total: total, Games: out}, nil
+}
+
+// requireCollectionManager authorizes a collection write: only the user linked
+// to the target player (users.player_id) manages their shelf — not editors,
+// not other users. A missing session maps to the typed 401; the wrong user to
+// the 403-carrying domain error.
+func (s *StrictServer) requireCollectionManager(ctx context.Context, playerID id.ID) error {
+	user, err := s.requireUser(ctx)
+	if err != nil {
+		return err
+	}
+	if user.PlayerID == nil || *user.PlayerID != playerID {
+		return elo.ErrPlayerCollectionForbidden
+	}
+	return nil
+}
+
+func (s *StrictServer) GetPlayerGameCollection(ctx context.Context, request GetPlayerGameCollectionRequestObject) (GetPlayerGameCollectionResponseObject, error) {
+	playerID := parseIDParam(request.Id)
+	if _, err := s.api.PlayerService.GetPlayer(ctx, playerID); err != nil {
+		if domainStatusCode(err) == http.StatusNotFound {
+			return GetPlayerGameCollection404JSONResponse{Status: StatusFail, Message: "player not found"}, nil
+		}
+		return nil, err
+	}
+
+	collection, err := s.collectionResponse(ctx, playerID)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetPlayerGameCollection200JSONResponse{Status: StatusSuccess, Data: collection}, nil
+}
+
+func (s *StrictServer) AddPlayerGame(ctx context.Context, request AddPlayerGameRequestObject) (AddPlayerGameResponseObject, error) {
+	playerID := parseIDParam(request.Id)
+	// Existence first (the public GET 404s unknown players, so this leaks
+	// nothing): an unknown player is a 404, not a 403-for-strangers or an FK
+	// 400; after this the only possible FK violation is the game id.
+	if _, err := s.api.PlayerService.GetPlayer(ctx, playerID); err != nil {
+		if domainStatusCode(err) == http.StatusNotFound {
+			return AddPlayerGame404JSONResponse{Status: StatusFail, Message: "player not found"}, nil
+		}
+		return nil, err
+	}
+	if err := s.requireCollectionManager(ctx, playerID); err != nil {
+		if err == errAuthRequired {
+			return AddPlayerGame401JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		}
+		if domainStatusCode(err) == http.StatusForbidden {
+			return AddPlayerGame403JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		}
+		return nil, err
+	}
+
+	if err := s.api.PlayerService.AddPlayerGame(ctx, playerID, request.Body.GameId); err != nil {
+		if domainStatusCode(err) == http.StatusBadRequest {
+			return AddPlayerGame400JSONResponse{Status: StatusFail, Message: "game not found"}, nil
+		}
+		return nil, err
+	}
+
+	s.api.broadcastDataChange(false, true)
+
+	collection, err := s.collectionResponse(ctx, playerID)
+	if err != nil {
+		return nil, err
+	}
+	return AddPlayerGame200JSONResponse{Status: StatusSuccess, Data: collection}, nil
+}
+
+func (s *StrictServer) RemovePlayerGame(ctx context.Context, request RemovePlayerGameRequestObject) (RemovePlayerGameResponseObject, error) {
+	playerID := parseIDParam(request.Id)
+	// A missing player still 404s (the join-table delete of a nonexistent
+	// player is a silent no-op otherwise); a missing game entry is a no-op.
+	if _, err := s.api.PlayerService.GetPlayer(ctx, playerID); err != nil {
+		if domainStatusCode(err) == http.StatusNotFound {
+			return RemovePlayerGame404JSONResponse{Status: StatusFail, Message: "player not found"}, nil
+		}
+		return nil, err
+	}
+	if err := s.requireCollectionManager(ctx, playerID); err != nil {
+		if err == errAuthRequired {
+			return RemovePlayerGame401JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		}
+		if domainStatusCode(err) == http.StatusForbidden {
+			return RemovePlayerGame403JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		}
+		return nil, err
+	}
+
+	if err := s.api.PlayerService.RemovePlayerGame(ctx, playerID, parseIDParam(request.GameId)); err != nil {
+		return nil, err
+	}
+
+	s.api.broadcastDataChange(false, true)
+
+	collection, err := s.collectionResponse(ctx, playerID)
+	if err != nil {
+		return nil, err
+	}
+	return RemovePlayerGame200JSONResponse{Status: StatusSuccess, Data: collection}, nil
+}

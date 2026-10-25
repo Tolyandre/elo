@@ -230,6 +230,12 @@ type PlayerClubMembership struct {
 	LeftAt   pgtype.Timestamptz `json:"left_at"`
 }
 
+type PlayerGame struct {
+	PlayerID id.ID     `json:"player_id"`
+	GameID   id.ID     `json:"game_id"`
+	AddedAt  time.Time `json:"added_at"`
+}
+
 type Tag struct {
 	ID   id.ID  `json:"id"`
 	Name string `json:"name"`

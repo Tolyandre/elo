@@ -51,6 +51,15 @@ type IPlayerService interface {
 	// display arena (ADR-36: the ?tenant= main arena; the global arena
 	// otherwise).
 	GetPlayerGameEloStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameEloStatsRow, error)
+	// ListPlayerGameCollection reads the profile's "Коллекция игр" section:
+	// the collected games (alphabetical by display name) with the total count.
+	ListPlayerGameCollection(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameCollectionRow, int, error)
+	// AddPlayerGame/RemovePlayerGame manage the collection. The linked-user
+	// authorization lives in the API layer (it needs the request's path player
+	// id); both are idempotent — a duplicate add and removing a non-member are
+	// no-ops, and an unknown player/game surfaces as a foreign-key violation.
+	AddPlayerGame(ctx context.Context, playerID, gameID id.ID) error
+	RemovePlayerGame(ctx context.Context, playerID, gameID id.ID) error
 }
 
 type PlayerService struct {
@@ -322,4 +331,24 @@ func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID id.ID) 
 
 func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameEloStatsRow, error) {
 	return s.Queries.GetPlayerGameEloStats(ctx, db.GetPlayerGameEloStatsParams{PlayerID: playerID, ArenaID: arenaID})
+}
+
+func (s *PlayerService) ListPlayerGameCollection(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameCollectionRow, int, error) {
+	games, err := s.Queries.GetPlayerGameCollection(ctx, playerID)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.Queries.CountPlayerGames(ctx, playerID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return games, int(total), nil
+}
+
+func (s *PlayerService) AddPlayerGame(ctx context.Context, playerID, gameID id.ID) error {
+	return s.Queries.AddPlayerGame(ctx, db.AddPlayerGameParams{PlayerID: playerID, GameID: gameID})
+}
+
+func (s *PlayerService) RemovePlayerGame(ctx context.Context, playerID, gameID id.ID) error {
+	return s.Queries.RemovePlayerGame(ctx, db.RemovePlayerGameParams{PlayerID: playerID, GameID: gameID})
 }

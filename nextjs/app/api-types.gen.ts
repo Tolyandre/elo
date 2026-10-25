@@ -76,6 +76,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/players/{id}/collection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the player's game collection ("коллекция игр")
+         * @description The games the player keeps on their shelf. Public to read, like the stats; managing it is allowed only to the user linked to this player (users.player_id).
+         */
+        get: operations["GetPlayerGameCollection"];
+        put?: never;
+        /**
+         * Add a game to the player's collection
+         * @description Only the user linked to this player (users.player_id) may manage the collection — anyone else authenticated gets a 403. Adding a game that is already in the collection is an idempotent no-op.
+         */
+        post: operations["AddPlayerGame"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/players/{id}/collection/{gameId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a game from the player's collection
+         * @description Only the user linked to this player (users.player_id) may manage the collection — anyone else authenticated gets a 403. Removing a game that is not in the collection is an idempotent no-op.
+         */
+        delete: operations["RemovePlayerGame"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/players/{id}": {
         parameters: {
             query?: never;
@@ -1373,6 +1417,17 @@ export interface components {
             top_games_by_matches: components["schemas"]["GameMatchStat"][];
             top_games_by_elo_earned: components["schemas"]["GameEloStat"][];
             worst_games_by_elo_earned: components["schemas"]["GameEloStat"][];
+        };
+        PlayerCollectionGame: {
+            id: components["schemas"]["Base58ID"];
+            name: string;
+            /** @description Box-art thumbnail (when BGG enrichment has fetched one). */
+            image_thumb_url?: string | null;
+        };
+        PlayerGameCollection: {
+            /** @description Total games in the collection (the profile shows it next to the preview). */
+            total: number;
+            games: components["schemas"]["PlayerCollectionGame"][];
         };
         GameListItem: {
             id: components["schemas"]["Base58ID"];
@@ -2725,6 +2780,169 @@ export interface operations {
             };
             /** @description Bad request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Player not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    GetPlayerGameCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The collection with the total count */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["PlayerGameCollection"];
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Player not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    AddPlayerGame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    game_id: components["schemas"]["Base58ID"];
+                };
+            };
+        };
+        responses: {
+            /** @description The updated collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["PlayerGameCollection"];
+                    };
+                };
+            };
+            /** @description Game not found */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not the player's linked user */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Player not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    RemovePlayerGame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                gameId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The updated collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["PlayerGameCollection"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not the player's linked user */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

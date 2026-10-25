@@ -227,6 +227,11 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.GET("/players", strictWrapper.ListPlayers)
 	r.GET("/players/recent", o.DeserializeUser(), strictWrapper.ListRecentPlayers)
 	r.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
+	// Player game collection: public read, session-gated writes (the
+	// linked-user check lives in the handler, like main.go).
+	r.GET("/players/:id/collection", strictWrapper.GetPlayerGameCollection)
+	r.POST("/players/:id/collection", o.DeserializeUser(), strictWrapper.AddPlayerGame)
+	r.DELETE("/players/:id/collection/:gameId", o.DeserializeUser(), strictWrapper.RemovePlayerGame)
 	r.POST("/players", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreatePlayer)
 	r.PATCH("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchPlayer)
 	r.DELETE("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeletePlayer)

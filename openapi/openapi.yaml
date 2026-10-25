@@ -43,6 +43,10 @@ components:
       $ref: './players.yaml#/GameEloStat'
     PlayerStats:
       $ref: './players.yaml#/PlayerStats'
+    PlayerCollectionGame:
+      $ref: './players.yaml#/PlayerCollectionGame'
+    PlayerGameCollection:
+      $ref: './players.yaml#/PlayerGameCollection'
 
     # Games
     GameListItem:
@@ -241,6 +245,10 @@ paths:
     $ref: './players.yaml#/PlayersRecent'
   /players/{id}/stats:
     $ref: './players.yaml#/PlayerStatsPath'
+  /players/{id}/collection:
+    $ref: './players.yaml#/PlayerCollectionPath'
+  /players/{id}/collection/{gameId}:
+    $ref: './players.yaml#/PlayerCollectionItemPath'
   /players/{id}:
     $ref: './players.yaml#/PlayerItem'
 

@@ -4,6 +4,7 @@ import React, { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
+import { bggUrl, teseraUrl } from "@/lib/game-names";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { PageContainer } from "@/components/page-container";
 import { Arena, getArenasPromise, getGamePromise, parseArenaSettings } from "@/app/api";
@@ -11,8 +12,9 @@ import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { BackButton } from "@/components/back-button";
 import { ErrorAlert } from "@/components/error-alert";
 import { GameImage } from "@/components/game-image";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trophy } from "lucide-react";
+import { ExternalLink, Trophy } from "lucide-react";
 
 // We cannot use /games/<GAME_ID> path in exported application.
 // So use query parameters instead /games/view?id=<GAME_ID>
@@ -60,6 +62,27 @@ function GameContent() {
           <GameImage src={imageUrl} alt={game?.name ?? ""} className="max-h-44 w-auto rounded-md border object-contain" />
         )}
         <p className="text-sm text-muted-foreground">Партий: {game?.total_matches ?? "…"}</p>
+
+        {(game?.bgg_ref != null || game?.tesera_ref != null) && (
+          <div className="flex flex-wrap gap-2">
+            {game?.bgg_ref != null && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={bggUrl(game.bgg_ref)} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="size-4" />
+                  BGG
+                </a>
+              </Button>
+            )}
+            {game?.tesera_ref != null && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={teseraUrl(game.tesera_ref)} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="size-4" />
+                  Тесера
+                </a>
+              </Button>
+            )}
+          </div>
+        )}
 
         {error && <ErrorAlert message={error} />}
         {loading && (

@@ -2,6 +2,7 @@
 
 import { Suspense, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { Dices } from 'lucide-react'
 import { toBase58ID, type Base58ID } from '@/lib/id'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,15 +11,18 @@ import { RatingChart } from '@/components/rating-chart'
 import { findExtremes } from '@/lib/rating-chart'
 import { getPlayerStatsPromise, type PlayerStats, type GameEloStat, type GameMatchStat } from '@/app/api'
 import { useMe } from '@/app/meContext'
+import { useGames } from '@/app/gamesContext'
 import { useTenantScope } from '@/app/tenantScopeContext'
 import { PageHeader } from '@/app/pageHeaderContext'
 import { PageContainer } from '@/components/page-container'
 import { ErrorAlert } from '@/components/error-alert'
 import { TenantChooser } from '@/components/tenant-chooser'
 import { RankIcon } from '@/components/rank-icon'
+import { GameImage } from '@/components/game-image'
 import { formatDate } from '@/lib/datetime'
 import { useAsyncResource } from '@/hooks/useAsyncResource'
 import { BackButton } from '@/components/back-button'
+import { CollectionSection } from './collection-section'
 
 function formatElo(value: number, roundToInteger: boolean) {
     if (roundToInteger) {
@@ -27,6 +31,26 @@ function formatElo(value: number, roundToInteger: boolean) {
     }
     const fixed = value.toFixed(1)
     return value >= 0 ? `+${fixed}` : fixed
+}
+
+// The «Игра» cell shared by the profile's stat tables: box-art thumbnail from
+// the catalog (a muted die when BGG enrichment has fetched none), then the
+// name. The fixed-size box keeps rows aligned with and without art.
+function GameCell({ gameId, gameName }: { gameId: Base58ID; gameName: string }) {
+    const { games } = useGames()
+    const thumb = games.find((g) => g.id === gameId)?.image_thumb_url ?? null
+    return (
+        <div className="flex items-center gap-2">
+            {thumb ? (
+                <GameImage src={thumb} alt="" className="size-7 shrink-0 rounded" />
+            ) : (
+                <span className="flex size-7 shrink-0 items-center justify-center rounded bg-muted">
+                    <Dices className="size-4 text-muted-foreground" />
+                </span>
+            )}
+            <span className="min-w-0">{gameName}</span>
+        </div>
+    )
 }
 
 function EloTable({ rows, title }: { rows: GameEloStat[]; title: string }) {
@@ -51,7 +75,7 @@ function EloTable({ rows, title }: { rows: GameEloStat[]; title: string }) {
                             <tbody>
                                 {rows.map(row => (
                                     <tr key={row.game_id} className="border-b last:border-0">
-                                        <td className="py-2 pr-4">{row.game_name}</td>
+                                        <td className="py-2 pr-4"><GameCell gameId={row.game_id} gameName={row.game_name} /></td>
                                         <td className={`py-2 text-right font-mono ${row.elo_earned >= 0 ? 'text-success' : 'text-destructive'}`}>
                                             {formatElo(row.elo_earned, roundToInteger)}
                                         </td>
@@ -90,7 +114,7 @@ function MatchesTable({ rows }: { rows: GameMatchStat[] }) {
                             <tbody>
                                 {rows.map(row => (
                                     <tr key={row.game_id} className="border-b last:border-0">
-                                        <td className="py-2 pr-4">{row.game_name}</td>
+                                        <td className="py-2 pr-4"><GameCell gameId={row.game_id} gameName={row.game_name} /></td>
                                         <td className="py-2 pr-4 text-right">{row.matches_count}</td>
                                         <td className="py-2 px-1 text-center">{row.gold_count}</td>
                                         <td className="py-2 px-1 text-center">{row.silver_count}</td>
@@ -118,7 +142,7 @@ function LoadingSkeleton() {
     )
 }
 
-function PlayerProfileContent({ stats, tenantName }: { stats: PlayerStats; tenantName?: string }) {
+function PlayerProfileContent({ playerId, stats, tenantName }: { playerId: Base58ID; stats: PlayerStats; tenantName?: string }) {
     const history = stats.rating_history
     const current = history.length > 0 ? history[history.length - 1] : null
     const extremes = useMemo(() => findExtremes(history), [history])
@@ -160,6 +184,8 @@ function PlayerProfileContent({ stats, tenantName }: { stats: PlayerStats; tenan
                     <RatingChart history={history} />
                 </CardContent>
             </Card>
+
+            <CollectionSection playerId={playerId} />
 
             <MatchesTable rows={stats.top_games_by_matches} />
             <EloTable rows={stats.top_games_by_elo_earned} title="Успешные игры" />
@@ -206,7 +232,7 @@ function PlayerStatsView({ id, tenantId, tenantName }: { id: Base58ID; tenantId:
     if (error) return <div className="p-6"><ErrorAlert message={error} /></div>
     if (!stats) return <div className="p-6"><ErrorAlert message="Данные игрока не найдены" /></div>
 
-    return <PlayerProfileContent stats={stats} tenantName={tenantName} />
+    return <PlayerProfileContent playerId={id} stats={stats} tenantName={tenantName} />
 }
 
 export default function PlayerPage() {

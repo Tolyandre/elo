@@ -120,6 +120,12 @@ func main() {
 	// "Недавние" picker candidates for the signed-in user — before /players/:id.
 	router.GET("/players/recent", oauth2Handler.DeserializeUser(), strictWrapper.ListRecentPlayers)
 	router.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
+	// The game collection ("Коллекция игр") is public to read; its writes are
+	// session-gated here and player-linked in the handler (only the user whose
+	// users.player_id is this player may manage the shelf).
+	router.GET("/players/:id/collection", strictWrapper.GetPlayerGameCollection)
+	router.POST("/players/:id/collection", oauth2Handler.DeserializeUser(), strictWrapper.AddPlayerGame)
+	router.DELETE("/players/:id/collection/:gameId", oauth2Handler.DeserializeUser(), strictWrapper.RemovePlayerGame)
 	router.POST("/players", append(editorAuth(), strictWrapper.CreatePlayer)...)
 	router.PATCH("/players/:id", append(editorAuth(), strictWrapper.PatchPlayer)...)
 	router.DELETE("/players/:id", append(editorAuth(), strictWrapper.DeletePlayer)...)

@@ -17,6 +17,7 @@ var (
 	ErrGuaranteeFeeOutOfRange           = errors.New("комиссия поручителя должна быть от 0% до 25%")
 	ErrPlayerHasNoLinkedPlayer          = errors.New("у пользователя нет привязанного игрока")
 	ErrPlayerAlreadyLinked              = errors.New("player already linked to another user")
+	ErrPlayerCollectionForbidden        = errors.New("менять коллекцию игр может только пользователь, связанный с этим игроком")
 	ErrHistoryChangeConflict            = errors.New("изменение истории невозможно: ставка была сделана до того, как рынок был разрешён в результате новой даты партии")
 	ErrHistoryChangeConflictBettingLock = errors.New("изменение истории невозможно: приём ставок был закрыт до того, как рынок был разрешён в результате новой даты партии")
 	ErrMatchNotFound                    = errors.New("матч не найден")

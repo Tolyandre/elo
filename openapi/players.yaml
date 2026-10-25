@@ -298,6 +298,164 @@ PlayerStatsPath:
             schema:
               $ref: './common.yaml#/ApiError'
 
+PlayerCollectionPath:
+  get:
+    operationId: GetPlayerGameCollection
+    tags: [players]
+    summary: Get the player's game collection ("коллекция игр")
+    description: >-
+      The games the player keeps on their shelf. Public to read, like the
+      stats; managing it is allowed only to the user linked to this player
+      (users.player_id).
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: The collection with the total count
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/PlayerGameCollection'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Player not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  post:
+    operationId: AddPlayerGame
+    tags: [players]
+    summary: Add a game to the player's collection
+    description: >-
+      Only the user linked to this player (users.player_id) may manage the
+      collection — anyone else authenticated gets a 403. Adding a game that is
+      already in the collection is an idempotent no-op.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              game_id:
+                $ref: './common.yaml#/Base58ID'
+            required: [game_id]
+    responses:
+      "200":
+        description: The updated collection
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/PlayerGameCollection'
+              required: [status, data]
+      "400":
+        description: Game not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Not the player's linked user
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Player not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+PlayerCollectionItemPath:
+  delete:
+    operationId: RemovePlayerGame
+    tags: [players]
+    summary: Remove a game from the player's collection
+    description: >-
+      Only the user linked to this player (users.player_id) may manage the
+      collection — anyone else authenticated gets a 403. Removing a game that
+      is not in the collection is an idempotent no-op.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: gameId
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: The updated collection
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/PlayerGameCollection'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Not the player's linked user
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Player not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
 EloRank:
@@ -453,3 +611,28 @@ PlayerStats:
       items:
         $ref: '#/GameEloStat'
   required: [player_name, rating_history, top_games_by_matches, top_games_by_elo_earned, worst_games_by_elo_earned]
+
+PlayerCollectionGame:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+    image_thumb_url:
+      type: string
+      nullable: true
+      description: Box-art thumbnail (when BGG enrichment has fetched one).
+  required: [id, name]
+
+PlayerGameCollection:
+  type: object
+  properties:
+    total:
+      type: integer
+      description: Total games in the collection (the profile shows it next to the preview).
+    games:
+      type: array
+      items:
+        $ref: '#/PlayerCollectionGame'
+  required: [total, games]

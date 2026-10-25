@@ -1,6 +1,6 @@
 // Players and their stats.
 import { client, unwrap } from "./client";
-import type { PlayerStats } from "./types";
+import type { PlayerGameCollection, PlayerStats } from "./types";
 import type { Base58ID } from "@/lib/id";
 
 export async function getPlayersPromise(tenant?: Base58ID) {
@@ -34,5 +34,26 @@ export async function deletePlayerPromise(playerId: Base58ID) {
 export async function getPlayerStatsPromise(id: Base58ID, opts: { tenant: Base58ID }): Promise<PlayerStats> {
     return (await unwrap(client.GET("/players/{id}/stats", {
         params: { path: { id }, query: { tenant: opts.tenant } },
+    }))).data;
+}
+
+// The profile's game collection. Reads are public; the writes below only
+// succeed for the user linked to the player (the backend 403s everyone else).
+export async function getPlayerGameCollectionPromise(id: Base58ID): Promise<PlayerGameCollection> {
+    return (await unwrap(client.GET("/players/{id}/collection", {
+        params: { path: { id } },
+    }))).data;
+}
+
+export async function addPlayerGamePromise(playerId: Base58ID, gameId: Base58ID): Promise<PlayerGameCollection> {
+    return (await unwrap(client.POST("/players/{id}/collection", {
+        params: { path: { id: playerId } },
+        body: { game_id: gameId },
+    }))).data;
+}
+
+export async function removePlayerGamePromise(playerId: Base58ID, gameId: Base58ID): Promise<PlayerGameCollection> {
+    return (await unwrap(client.DELETE("/players/{id}/collection/{gameId}", {
+        params: { path: { id: playerId, gameId } },
     }))).data;
 }

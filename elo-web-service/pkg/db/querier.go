@@ -28,6 +28,7 @@ type Querier interface {
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayerParams) (GameTable, error)
 	AddGameTag(ctx context.Context, arg AddGameTagParams) error
+	AddPlayerGame(ctx context.Context, arg AddPlayerGameParams) error
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
 	AddSlotAdvance(ctx context.Context, arg AddSlotAdvanceParams) error
 	AddSlotMatch(ctx context.Context, arg AddSlotMatchParams) error
@@ -62,6 +63,7 @@ type Querier interface {
 	// and by-tournament lookups need the count without re-running the whole list.
 	CountArenaMatches(ctx context.Context, arenaID id.ID) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
+	CountPlayerGames(ctx context.Context, playerID id.ID) (int32, error)
 	// Matches of one player inside the arena (per the membership function) within
 	// [date_from, date_to] — the elite promotion counters. Camp arenas have no
 	// leagues, so the counters are never consulted for them.
@@ -255,6 +257,10 @@ type Querier interface {
 	// maker fee) on the detail page.
 	GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsForMarketParams) ([]GetPlayerBetsForMarketRow, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
+	// Player game collection ("коллекция игр" on the profile page).
+	// The player's collected games, alphabetically by the generated display name
+	// (alias → ru → en), id as the tiebreaker for a stable order.
+	GetPlayerGameCollection(ctx context.Context, playerID id.ID) ([]GetPlayerGameCollectionRow, error)
 	GetPlayerGameEloStats(ctx context.Context, arg GetPlayerGameEloStatsParams) ([]GetPlayerGameEloStatsRow, error)
 	// Per-game stats for the player profile "Частые игры" table: match count plus
 	//   gold/silver/bronze counts from ranking players by score within each match.
@@ -610,6 +616,7 @@ type Querier interface {
 	// stint → empty RETURNING → the service skips the audit row.
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) (id.ID, error)
 	RemoveGameTag(ctx context.Context, arg RemoveGameTagParams) error
+	RemovePlayerGame(ctx context.Context, arg RemovePlayerGameParams) error
 	RemoveTournamentParticipant(ctx context.Context, arg RemoveTournamentParticipantParams) error
 	// resolution_outcome is the winning outcome id; NULL for cancelled markets
 	// (cancellation is carried by the status column).

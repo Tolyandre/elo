@@ -53,6 +53,8 @@ export type TableSubmitInput =
     | components["schemas"]["SkullKingResultInput"]
     | components["schemas"]["IawwScoreInput"];
 export type PlayerStats = components["schemas"]["PlayerStats"];
+export type PlayerGameCollection = components["schemas"]["PlayerGameCollection"];
+export type PlayerCollectionGame = components["schemas"]["PlayerCollectionGame"];
 export type GameEloStat = components["schemas"]["GameEloStat"];
 export type GameMatchStat = components["schemas"]["GameMatchStat"];
 export type Tournament = components["schemas"]["Tournament"];

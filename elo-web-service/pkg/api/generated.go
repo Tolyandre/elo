@@ -2132,6 +2132,24 @@ type Player struct {
 	UserId *Base58ID    `json:"user_id,omitempty"`
 }
 
+// PlayerCollectionGame defines model for PlayerCollectionGame.
+type PlayerCollectionGame struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// ImageThumbUrl Box-art thumbnail (when BGG enrichment has fetched one).
+	ImageThumbUrl *string `json:"image_thumb_url,omitempty"`
+	Name          string  `json:"name"`
+}
+
+// PlayerGameCollection defines model for PlayerGameCollection.
+type PlayerGameCollection struct {
+	Games []PlayerCollectionGame `json:"games"`
+
+	// Total Total games in the collection (the profile shows it next to the preview).
+	Total int `json:"total"`
+}
+
 // PlayerRef Minimal player object returned after create/patch
 type PlayerRef struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -3046,6 +3064,12 @@ type PatchPlayerJSONBody struct {
 	Name string `json:"name"`
 }
 
+// AddPlayerGameJSONBody defines parameters for AddPlayerGame.
+type AddPlayerGameJSONBody struct {
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId Base58ID `json:"game_id"`
+}
+
 // GetPlayerStatsParams defines parameters for GetPlayerStats.
 type GetPlayerStatsParams struct {
 	// Tenant Scope the stats to a tenant (ADR-36): the rating history and the Elo-per-game tables are read from the tenant's main arena. Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. The per-game match counts ("Частые игры") are tenant-independent either way. Naming no existing tenant is a 404.
@@ -3344,6 +3368,9 @@ type CreatePlayerJSONRequestBody CreatePlayerJSONBody
 
 // PatchPlayerJSONRequestBody defines body for PatchPlayer for application/json ContentType.
 type PatchPlayerJSONRequestBody PatchPlayerJSONBody
+
+// AddPlayerGameJSONRequestBody defines body for AddPlayerGame for application/json ContentType.
+type AddPlayerGameJSONRequestBody AddPlayerGameJSONBody
 
 // DeleteSettingsJSONRequestBody defines body for DeleteSettings for application/json ContentType.
 type DeleteSettingsJSONRequestBody DeleteSettingsJSONBody
@@ -4439,6 +4466,15 @@ type ServerInterface interface {
 	// PatchPlayer Update player name
 	// (PATCH /players/{id})
 	PatchPlayer(c *gin.Context, id string)
+	// GetPlayerGameCollection Get the player's game collection ("коллекция игр")
+	// (GET /players/{id}/collection)
+	GetPlayerGameCollection(c *gin.Context, id string)
+	// AddPlayerGame Add a game to the player's collection
+	// (POST /players/{id}/collection)
+	AddPlayerGame(c *gin.Context, id string)
+	// RemovePlayerGame Remove a game from the player's collection
+	// (DELETE /players/{id}/collection/{gameId})
+	RemovePlayerGame(c *gin.Context, id string, gameId string)
 	// GetPlayerStats Get player rating history and game statistics
 	// (GET /players/{id}/stats)
 	GetPlayerStats(c *gin.Context, id string, params GetPlayerStatsParams)
@@ -5902,6 +5938,90 @@ func (siw *ServerInterfaceWrapper) PatchPlayer(c *gin.Context) {
 	siw.Handler.PatchPlayer(c, id)
 }
 
+// GetPlayerGameCollection operation middleware
+func (siw *ServerInterfaceWrapper) GetPlayerGameCollection(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetPlayerGameCollection(c, id)
+}
+
+// AddPlayerGame operation middleware
+func (siw *ServerInterfaceWrapper) AddPlayerGame(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.AddPlayerGame(c, id)
+}
+
+// RemovePlayerGame operation middleware
+func (siw *ServerInterfaceWrapper) RemovePlayerGame(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "gameId" -------------
+	var gameId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "gameId", c.Param("gameId"), &gameId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter gameId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RemovePlayerGame(c, id, gameId)
+}
+
 // GetPlayerStats operation middleware
 func (siw *ServerInterfaceWrapper) GetPlayerStats(c *gin.Context) {
 
@@ -7048,6 +7168,9 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/players/recent", wrapper.ListRecentPlayers)
 	router.DELETE(options.BaseURL+"/players/:id", wrapper.DeletePlayer)
 	router.PATCH(options.BaseURL+"/players/:id", wrapper.PatchPlayer)
+	router.GET(options.BaseURL+"/players/:id/collection", wrapper.GetPlayerGameCollection)
+	router.POST(options.BaseURL+"/players/:id/collection", wrapper.AddPlayerGame)
+	router.DELETE(options.BaseURL+"/players/:id/collection/:gameId", wrapper.RemovePlayerGame)
 	router.GET(options.BaseURL+"/players/:id/stats", wrapper.GetPlayerStats)
 	router.DELETE(options.BaseURL+"/settings", wrapper.DeleteSettings)
 	router.GET(options.BaseURL+"/settings", wrapper.GetSettings)
@@ -10118,6 +10241,209 @@ func (response PatchPlayer409JSONResponse) VisitPatchPlayerResponse(w http.Respo
 	return err
 }
 
+type GetPlayerGameCollectionRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetPlayerGameCollectionResponseObject interface {
+	VisitGetPlayerGameCollectionResponse(w http.ResponseWriter) error
+}
+
+type GetPlayerGameCollection200JSONResponse struct {
+	Data   PlayerGameCollection `json:"data"`
+	Status string               `json:"status"`
+}
+
+func (response GetPlayerGameCollection200JSONResponse) VisitGetPlayerGameCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlayerGameCollection400JSONResponse ApiError
+
+func (response GetPlayerGameCollection400JSONResponse) VisitGetPlayerGameCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlayerGameCollection404JSONResponse ApiError
+
+func (response GetPlayerGameCollection404JSONResponse) VisitGetPlayerGameCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPlayerGameRequestObject struct {
+	Id   string `json:"id"`
+	Body *AddPlayerGameJSONRequestBody
+}
+
+type AddPlayerGameResponseObject interface {
+	VisitAddPlayerGameResponse(w http.ResponseWriter) error
+}
+
+type AddPlayerGame200JSONResponse struct {
+	Data   PlayerGameCollection `json:"data"`
+	Status string               `json:"status"`
+}
+
+func (response AddPlayerGame200JSONResponse) VisitAddPlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPlayerGame400JSONResponse ApiError
+
+func (response AddPlayerGame400JSONResponse) VisitAddPlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPlayerGame401JSONResponse ApiError
+
+func (response AddPlayerGame401JSONResponse) VisitAddPlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPlayerGame403JSONResponse ApiError
+
+func (response AddPlayerGame403JSONResponse) VisitAddPlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPlayerGame404JSONResponse ApiError
+
+func (response AddPlayerGame404JSONResponse) VisitAddPlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemovePlayerGameRequestObject struct {
+	Id     string `json:"id"`
+	GameId string `json:"gameId"`
+}
+
+type RemovePlayerGameResponseObject interface {
+	VisitRemovePlayerGameResponse(w http.ResponseWriter) error
+}
+
+type RemovePlayerGame200JSONResponse struct {
+	Data   PlayerGameCollection `json:"data"`
+	Status string               `json:"status"`
+}
+
+func (response RemovePlayerGame200JSONResponse) VisitRemovePlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemovePlayerGame401JSONResponse ApiError
+
+func (response RemovePlayerGame401JSONResponse) VisitRemovePlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemovePlayerGame403JSONResponse ApiError
+
+func (response RemovePlayerGame403JSONResponse) VisitRemovePlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemovePlayerGame404JSONResponse ApiError
+
+func (response RemovePlayerGame404JSONResponse) VisitRemovePlayerGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPlayerStatsRequestObject struct {
 	Id     string `json:"id"`
 	Params GetPlayerStatsParams
@@ -13070,6 +13396,15 @@ type StrictServerInterface interface {
 	// PatchPlayer Update player name
 	// (PATCH /players/{id})
 	PatchPlayer(ctx context.Context, request PatchPlayerRequestObject) (PatchPlayerResponseObject, error)
+	// GetPlayerGameCollection Get the player's game collection ("коллекция игр")
+	// (GET /players/{id}/collection)
+	GetPlayerGameCollection(ctx context.Context, request GetPlayerGameCollectionRequestObject) (GetPlayerGameCollectionResponseObject, error)
+	// AddPlayerGame Add a game to the player's collection
+	// (POST /players/{id}/collection)
+	AddPlayerGame(ctx context.Context, request AddPlayerGameRequestObject) (AddPlayerGameResponseObject, error)
+	// RemovePlayerGame Remove a game from the player's collection
+	// (DELETE /players/{id}/collection/{gameId})
+	RemovePlayerGame(ctx context.Context, request RemovePlayerGameRequestObject) (RemovePlayerGameResponseObject, error)
 	// GetPlayerStats Get player rating history and game statistics
 	// (GET /players/{id}/stats)
 	GetPlayerStats(ctx context.Context, request GetPlayerStatsRequestObject) (GetPlayerStatsResponseObject, error)
@@ -14650,6 +14985,92 @@ func (sh *strictHandler) PatchPlayer(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PatchPlayerResponseObject); ok {
 		if err := validResponse.VisitPatchPlayerResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPlayerGameCollection operation middleware
+func (sh *strictHandler) GetPlayerGameCollection(ctx *gin.Context, id string) {
+	var request GetPlayerGameCollectionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPlayerGameCollection(ctx, request.(GetPlayerGameCollectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPlayerGameCollection")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(GetPlayerGameCollectionResponseObject); ok {
+		if err := validResponse.VisitGetPlayerGameCollectionResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddPlayerGame operation middleware
+func (sh *strictHandler) AddPlayerGame(ctx *gin.Context, id string) {
+	var request AddPlayerGameRequestObject
+
+	request.Id = id
+
+	var body AddPlayerGameJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.AddPlayerGame(ctx, request.(AddPlayerGameRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddPlayerGame")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(AddPlayerGameResponseObject); ok {
+		if err := validResponse.VisitAddPlayerGameResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemovePlayerGame operation middleware
+func (sh *strictHandler) RemovePlayerGame(ctx *gin.Context, id string, gameId string) {
+	var request RemovePlayerGameRequestObject
+
+	request.Id = id
+	request.GameId = gameId
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RemovePlayerGame(ctx, request.(RemovePlayerGameRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemovePlayerGame")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(RemovePlayerGameResponseObject); ok {
+		if err := validResponse.VisitRemovePlayerGameResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
