@@ -70,8 +70,8 @@ vi.mock("@/components/ui/popover", () => ({
 import { GameMultiSelect } from "@/components/game-multi-select";
 import type { Base58ID } from "@/lib/id";
 
-const game = (id: string, name: string): GameListItem =>
-    ({ id, name, alias: null, name_en: null, name_ru: null, total_matches: 0, last_played_order: 0, tags: [] }) as unknown as GameListItem;
+const game = (id: string, name: string, gameMode?: string): GameListItem =>
+    ({ id, name, game_mode: gameMode ?? "competitive", alias: null, name_en: null, name_ru: null, total_matches: 0, last_played_order: 0, tags: [] }) as unknown as GameListItem;
 
 const chess = game("g1", "Chess");
 const catan = game("g2", "Catan");
@@ -79,13 +79,20 @@ const catan = game("g2", "Catan");
 let container: HTMLDivElement;
 
 function mount(
-    props: { value?: Base58ID[]; onChange?: (ids: Base58ID[]) => void; filter?: (g: GameListItem) => boolean } = {},
+    props: { value?: Base58ID[]; onChange?: (ids: Base58ID[]) => void; filter?: (g: GameListItem) => boolean; hideCoop?: boolean } = {},
 ): void {
     container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
     act(() => {
-        root.render(<GameMultiSelect value={props.value ?? []} onChange={props.onChange} filter={props.filter} />);
+        root.render(
+            <GameMultiSelect
+                value={props.value ?? []}
+                onChange={props.onChange}
+                filter={props.filter}
+                hideCoop={props.hideCoop}
+            />,
+        );
     });
 }
 
@@ -143,12 +150,21 @@ describe("GameMultiSelect", () => {
         expect(document.body.textContent).toContain("Скелет Кинг (офлайн)");
     });
 
-    it("hides pending coop games when a catalog filter is set (ADR-33)", () => {
+    it("keeps pending coop games under a plain filter — the collection shows every owned game", () => {
+        state.pendingGames = [{ clientId: "offline-1", name: "Пандемия", meta: { gameMode: "coop" } }];
+        mount({ filter: () => true });
+        clickTab("Офлайн");
+        expect(document.body.textContent).toContain("Пандемия (офлайн)");
+    });
+
+    it("hides coop games, catalog and pending, when hideCoop is set (ADR-33)", () => {
+        state.games = [chess, catan, game("g3", "Пандемия", "coop")];
         state.pendingGames = [
             { clientId: "offline-1", name: "Пандемия", meta: { gameMode: "coop" } },
             { clientId: "offline-2", name: "Корпорация", meta: { gameMode: "competitive" } },
         ];
-        mount({ filter: () => true });
+        mount({ hideCoop: true });
+        expect(document.body.textContent).not.toContain("Пандемия");
         clickTab("Офлайн");
         expect(document.body.textContent).not.toContain("Пандемия (офлайн)");
         expect(document.body.textContent).toContain("Корпорация (офлайн)");

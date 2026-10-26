@@ -12,6 +12,7 @@ import { useFavoriteGames } from "@/app/useFavoriteGames"
 import { MultiSelect, MultiSelectGroup, MultiSelectOption, MultiSelectTab } from "./vendor/multi-select"
 import { buildGameGroups, buildGameTabs, type GameGroup } from "@/lib/game-groups"
 import { allNames, secondaryNames } from "@/lib/game-names"
+import { isRatingGame } from "@/lib/game-modes"
 import { GameImage } from "@/components/game-image"
 import { GameCreateDialog } from "@/components/game-create-dialog"
 import { Button } from "@/components/ui/button"
@@ -54,11 +55,19 @@ export function GameMultiSelect({
   value,
   onChange,
   filter,
+  hideCoop,
 }: {
   value: Base58ID[]
   onChange?: (ids: Base58ID[]) => void
-  /** Optional game filter — e.g. hiding coop-only games from market pickers (ADR-33). */
+  /** Optional game filter — e.g. hiding already-collected games in the collection picker. */
   filter?: (game: GameListItem) => boolean
+  /**
+   * Hide coop-only games, catalog and offline alike — for rating-constrained
+   * pickers (markets, ADR-33). A `filter` alone never hides anything offline:
+   * the collection's not-yet-collected filter must keep every game pickable,
+   * coop included.
+   */
+  hideCoop?: boolean
 }) {
   const { games } = useGames()
   const { matches } = useMatches()
@@ -66,17 +75,17 @@ export function GameMultiSelect({
   const { pendingGames } = useOffline()
   const favorites = useFavoriteGames()
 
-  const visibleGames = useMemo(
-    () => (filter ? games.filter(filter) : games),
-    [games, filter],
-  )
+  const visibleGames = useMemo(() => {
+    const visible = filter ? games.filter(filter) : games
+    return hideCoop ? visible.filter(isRatingGame) : visible
+  }, [games, filter, hideCoop])
 
   // Games created offline ride on top of both views — the same group the
   // single combobox shows, and what makes a just-created game render as a
-  // selected badge before the sync lands it in the catalog. A pending coop
-  // game is equally unusable in a rating picker (ADR-33).
+  // selected badge before the sync lands it in the catalog. With hideCoop
+  // they get the same rating filter as catalog games (ADR-33).
   const offlineGroup = useMemo<MultiSelectGroup | null>(() => {
-    const visiblePending = filter
+    const visiblePending = hideCoop
       ? pendingGames.filter((g) => g.meta?.gameMode !== "coop")
       : pendingGames
     if (visiblePending.length === 0) return null
@@ -84,7 +93,7 @@ export function GameMultiSelect({
       heading: "Офлайн (не сохранено)",
       options: visiblePending.map((g) => ({ value: g.clientId, label: `${g.name} (офлайн)` })),
     }
-  }, [pendingGames, filter])
+  }, [pendingGames, hideCoop])
 
   // Browsing view: the «Избранные» / «Остальные» tabs (+ pending games).
   const tabs = useMemo<MultiSelectTab[]>(() => {

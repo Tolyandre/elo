@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { isRatingGame } from "@/lib/game-modes";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
     Select,
@@ -281,7 +280,7 @@ export function CreateMarketForm() {
                         </div>
                         <div className="space-y-1.5">
                             <Label>Игры (необязательно)</Label>
-                            <GameMultiSelect value={gameIDs} onChange={setGameIDs} filter={isRatingGame} />
+                            <GameMultiSelect value={gameIDs} onChange={setGameIDs} hideCoop />
                         </div>
                     </>
                 )}
@@ -299,7 +298,7 @@ export function CreateMarketForm() {
                         </div>
                         <div className="space-y-1.5">
                             <Label>Игры (необязательно)</Label>
-                            <GameMultiSelect value={streakGameIDs} onChange={setStreakGameIDs} filter={isRatingGame} />
+                            <GameMultiSelect value={streakGameIDs} onChange={setStreakGameIDs} hideCoop />
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="wins_required">Побед требуется</Label>
