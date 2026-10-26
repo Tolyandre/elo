@@ -23,15 +23,19 @@ const (
 	bottleImpThumb  = "https://cf.geekdo-images.com/x__small/img/b.png"
 	secondDawnImage = "https://cf.geekdo-images.com/x__original/img/eclipse.png"
 	secondDawnThumb = "https://cf.geekdo-images.com/x__small/img/eclipse.png"
+	gamematImage    = "https://cf.geekdo-images.com/x__original/img/gamemat.png"
+	gamematThumb    = "https://cf.geekdo-images.com/x__small/img/gamemat.png"
 )
 
 // newBggStub serves /xmlapi2/thing the way BGG does for the ids the art tests
 // use: 12345 ("The Bottle Imp") carries box art, 246900 ("Eclipse: Second
 // Dawn for the Galaxy") carries its own (and answers slowly, so tests can
 // observe the cleared-images window after a bgg_id change before the
-// background refill lands), 999 ("Другая игра") has no image elements at
-// all, and anything else is simply absent from the response. The token is
-// checked because the real API requires it.
+// background refill lands), 375216 (the Second Dawn Gamemat expansion) and
+// 999 ("Другая игра") round out the cases, and anything else is simply
+// absent from the response. The token is checked because the real API
+// requires it. A type-scoped request fails the test: BGG filters /thing by
+// subtype, and exact-id lookups must not lose expansion things.
 func newBggStub(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -40,6 +44,9 @@ func newBggStub(t *testing.T) *httptest.Server {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte("Unauthorized"))
 			return
+		}
+		if r.URL.Query().Get("type") != "" {
+			t.Errorf("thing request carries a type filter (%q): BGG would drop expansion things from the answer", r.URL.RawQuery)
 		}
 		ids := r.URL.Query().Get("id")
 		if strings.Contains(ids, "246900") {
@@ -58,6 +65,12 @@ func newBggStub(t *testing.T) *httptest.Server {
 					`<thumbnail>` + secondDawnThumb + `</thumbnail>` +
 					`<image>` + secondDawnImage + `</image>` +
 					`<name type="primary" sortindex="1" value="Eclipse: Second Dawn for the Galaxy"/></item>`)
+			case "375216":
+				items.WriteString(`<item type="boardgameexpansion" id="375216">` +
+					`<thumbnail>` + gamematThumb + `</thumbnail>` +
+					`<image>` + gamematImage + `</image>` +
+					`<name type="primary" sortindex="1" value="Eclipse: Second Dawn for the Galaxy – Gamemat"/>` +
+					`<link type="boardgameexpansion" id="246900" inbound="true" value="Eclipse: Second Dawn for the Galaxy"/></item>`)
 			case "999":
 				items.WriteString(`<item type="boardgame" id="999">` +
 					`<name type="primary" sortindex="1" value="Другая игра"/></item>`)
@@ -125,6 +138,9 @@ func TestRefreshGameArtEndpoint(t *testing.T) {
 	setArt(t, q, noImage, "https://cdn.example/keep.png", "https://cdn.example/keep-t.png")
 	unknown := seedGameWithBgg(t, q, "Несуществующая на BGG", 555)
 	noRef := seedGameWithBgg(t, q, "Без ссылки", 0)
+	// An expansion thing: its art must refresh too (BGG drops expansion
+	// things from type-scoped lookups — the Gamemat case).
+	gamemat := seedGameWithBgg(t, q, "Eclipse: Second Dawn Gamemat", 375216)
 
 	path := func(id idpkg.ID) string { return "/games/" + id.String() + "/bgg-refresh-art" }
 	if w := doJSON(t, router, http.MethodPost, path(withArt), "", ""); w.Code != http.StatusUnauthorized {
@@ -211,6 +227,19 @@ func TestRefreshGameArtEndpoint(t *testing.T) {
 	}
 	if resp.Data.Refreshed || resp.Data.Reason == nil || *resp.Data.Reason != "not found on BGG" {
 		t.Errorf("not-found result = %+v, want reason", resp.Data)
+	}
+
+	// An expansion's art refreshes just like a base game's.
+	w = doJSON(t, router, http.MethodPost, path(gamemat), editorToken, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expansion refresh: %d %s", w.Code, w.Body.String())
+	}
+	resp = refreshArtResponse{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Data.Refreshed || resp.Data.ImageUrl == nil || *resp.Data.ImageUrl != gamematImage {
+		t.Errorf("expansion result = %+v, want refreshed with the Gamemat art", resp.Data)
 	}
 
 	// Without the BGG integration configured the endpoint refuses with 503.

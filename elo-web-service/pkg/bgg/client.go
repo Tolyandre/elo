@@ -47,9 +47,9 @@ type Thing struct {
 	ImageURL       string
 	ThumbURL       string
 	Year           int32
-	// IsExpansion marks a game BGG links to a base game as its expansion
-	// (inbound expansion links — a base game's list of expansions — do not
-	// count).
+	// IsExpansion marks an expansion: BGG links it to its base game with an
+	// inbound boardgameexpansion link. A base game's own expansion links —
+	// outbound, listing the things that expand it — do not count.
 	IsExpansion bool
 }
 
@@ -254,7 +254,7 @@ func (c *Client) fetchThings(ctx context.Context, q string) ([]Thing, bool, erro
 			}
 		}
 		for _, l := range item.Links {
-			if l.Type == "boardgameexpansion" && l.Inbound != "true" {
+			if l.Type == "boardgameexpansion" && l.Inbound == "true" {
 				thing.IsExpansion = true
 			}
 		}
@@ -333,12 +333,16 @@ type linkXML struct {
 	Inbound string `xml:"inbound,attr"`
 }
 
+// idsParam builds the id list of a /thing request. No type filter: BGG
+// scopes it by thing subtype, so a type=boardgame lookup silently drops
+// expansion and accessory things (subtype boardgameexpansion/
+// boardgameaccessory) — exact-id lookups want the thing whatever it is.
 func idsParam(ids []int64) string {
 	parts := make([]string, len(ids))
 	for i, v := range ids {
 		parts[i] = fmt.Sprintf("%d", v)
 	}
-	return "id=" + strings.Join(parts, ",") + "&type=boardgame"
+	return "id=" + strings.Join(parts, ",")
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {

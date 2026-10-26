@@ -48,8 +48,8 @@ func TestGetThingsParsesItems(t *testing.T) {
 	if gotAuth != "Bearer test-token" {
 		t.Errorf("Authorization header = %q", gotAuth)
 	}
-	if gotQuery != "id=13,822&type=boardgame" {
-		t.Errorf("query = %q", gotQuery)
+	if gotQuery != "id=13,822" {
+		t.Errorf("query = %q (exact-id lookups carry no type filter)", gotQuery)
 	}
 	if len(things) != 2 {
 		t.Fatalf("got %d things, want 2", len(things))
@@ -157,21 +157,30 @@ func TestGetThingsFatalStatusNotRetried(t *testing.T) {
 	}
 }
 
+// Real BGG link directions: an expansion's thing links to its base game
+// with inbound="true"; a base game's thing lists its expansions with
+// outbound links. The stub also models the subtype filtering BGG applies to
+// type-scoped /thing requests (an expansion thing drops out of a
+// type=boardgame answer — exact-id requests must not carry the filter).
 const thingWithExpansionLinkXML = `<items termsofuse="https://boardgamegeek.com/xmlapi/termsofuse">
-<item type="boardgame" id="4101">
+<item type="boardgameexpansion" id="4101">
 <name type="primary" sortindex="1" value="Carcassonne: The River"/>
 <name type="alternate" sortindex="1" value="Каркассон. Река"/>
 <yearpublished value="2001"/>
-<link type="boardgameexpansion" id="822" value="Carcassonne"/>
+<link type="boardgameexpansion" id="822" inbound="true" value="Carcassonne"/>
 </item>
 <item type="boardgame" id="822">
 <name type="primary" sortindex="1" value="Carcassonne"/>
-<link type="boardgameexpansion" id="4101" inbound="true" value="The River"/>
+<link type="boardgameexpansion" id="4101" value="Carcassonne: The River"/>
 </item>
 </items>`
 
 func TestGetThingsParsesAlternatesYearsAndExpansionLinks(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("type") != "" {
+			_, _ = w.Write([]byte(`<items termsofuse="https://boardgamegeek.com/xmlapi/termsofuse"><item type="boardgame" id="822"><name type="primary" sortindex="1" value="Carcassonne"/></item></items>`))
+			return
+		}
 		_, _ = w.Write([]byte(thingWithExpansionLinkXML))
 	}))
 	defer srv.Close()
@@ -182,7 +191,7 @@ func TestGetThingsParsesAlternatesYearsAndExpansionLinks(t *testing.T) {
 		t.Fatalf("GetThings: %v", err)
 	}
 	if len(things) != 2 {
-		t.Fatalf("things = %d, want 2", len(things))
+		t.Fatalf("things = %d, want 2 (unfiltered; a type-scoped request would lose the expansion)", len(things))
 	}
 	river := things[0]
 	if river.PrimaryName != "Carcassonne: The River" || river.Year != 2001 || !river.IsExpansion {
@@ -192,7 +201,7 @@ func TestGetThingsParsesAlternatesYearsAndExpansionLinks(t *testing.T) {
 		t.Errorf("river alternates = %v", river.AlternateNames)
 	}
 	base := things[1]
-	// Inbound links are the base game's list of expansions, not a mark.
+	// The base game's outbound expansion links are a list, not a mark.
 	if base.IsExpansion || base.Year != 0 || len(base.AlternateNames) != 0 {
 		t.Errorf("base = %+v, want no expansion mark, year or alternates", base)
 	}

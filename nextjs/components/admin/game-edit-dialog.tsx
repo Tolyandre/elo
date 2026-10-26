@@ -260,7 +260,7 @@ export function GameEditDialog({
                                 Обновить обложку
                             </Button>
                             <span className="text-xs text-muted-foreground">
-                                Обложка берётся из BGG по id и перезаписывает текущую.
+                                Обложка берётся из BGG.
                             </span>
                         </div>
                     )}

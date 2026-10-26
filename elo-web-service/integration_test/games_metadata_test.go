@@ -133,19 +133,22 @@ func newBggSuggestStub(t *testing.T) *httptest.Server {
 					`<yearpublished value="2000"/>` +
 					`<thumbnail>https://cf.geekdo-images.com/c__small/img/c.png</thumbnail></item>`)
 			case "4101":
-				items.WriteString(`<item type="boardgame" id="4101">` +
+				items.WriteString(`<item type="boardgameexpansion" id="4101">` +
 					`<name type="primary" sortindex="1" value="Carcassonne: The River"/>` +
-					`<link type="boardgameexpansion" id="822" value="Carcassonne"/>` +
+					`<link type="boardgameexpansion" id="822" inbound="true" value="Carcassonne"/>` +
 					`<yearpublished value="2001"/></item>`)
 			case "100":
 				items.WriteString(`<item type="boardgame" id="100">` +
 					`<name type="primary" sortindex="1" value="Eclipse"/><yearpublished value="2011"/></item>`)
 			case "101", "102", "103", "104", "105":
-				items.WriteString(`<item type="boardgame" id="` + id + `">` +
-					`<link type="boardgameexpansion" id="100" value="Eclipse"/></item>`)
+				items.WriteString(`<item type="boardgameexpansion" id="` + id + `">` +
+					`<link type="boardgameexpansion" id="100" inbound="true" value="Eclipse"/></item>`)
 			case "246900":
+				// A base game lists its expansions with outbound links (the
+				// Gamemat here) — that must NOT mark it an expansion.
 				items.WriteString(`<item type="boardgame" id="246900">` +
 					`<name type="primary" sortindex="1" value="Eclipse: Second Dawn for the Galaxy"/>` +
+					`<link type="boardgameexpansion" id="375216" value="Eclipse: Second Dawn for the Galaxy – Gamemat"/>` +
 					`<yearpublished value="2020"/></item>`)
 			}
 		}
