@@ -12,7 +12,6 @@ import {
     addGameTagPromise,
     removeGameTagPromise,
     autoMatchGamesPromise,
-    enrichGameImagesPromise,
     Tag,
     GameListItem,
 } from "@/app/api";
@@ -49,7 +48,6 @@ export default function GamesAdminPage() {
     const [createOpen, setCreateOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<GameRow | null>(null);
     const [matching, setMatching] = useState(false);
-    const [enriching, setEnriching] = useState(false);
 
     const del = useConfirmAction(async (g: GameRow) => {
         await deleteGamePromise(g.id);
@@ -97,28 +95,6 @@ export default function GamesAdminPage() {
     }
 
     const unmatchedCount = gamesFromContext.filter((g) => !g.tesera_ref).length;
-    // Games with a BGG link whose box art was not fetched yet (the enrich run
-    // fills image URLs for exactly this set).
-    const unenrichedCount = gamesFromContext.filter((g) => g.bgg_ref && !g.image_url && !g.image_thumb_url).length;
-
-    /** BGG box-art backfill for games with a bgg_ref and no image yet. */
-    async function runBggEnrich() {
-        setEnriching(true);
-        try {
-            const results = await enrichGameImagesPromise();
-            const enriched = results.filter((r) => r.enriched).length;
-            if (results.length === 0) {
-                toast.success("Все обложки уже загружены");
-            } else {
-                toast.success(`Загружено обложек: ${enriched} из ${results.length}`);
-            }
-            invalidateGames();
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setEnriching(false);
-        }
-    }
 
     return (
         <PageContainer width="full">
@@ -147,7 +123,7 @@ export default function GamesAdminPage() {
                 <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-medium">Сопоставление с каталогами</h3>
                     <p className="text-sm text-muted-foreground">
-                        Автоматически проставить ссылки на BoardGameGeek и Тесеру, загрузить обложки из BGG.
+                        Автоматически проставить ссылки на BoardGameGeek и Тесеру.
                     </p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 shrink-0">
@@ -157,14 +133,6 @@ export default function GamesAdminPage() {
                     >
                         {matching && <Spinner className="size-4" />}
                         Подобрать ссылки{unmatchedCount > 0 ? ` (${unmatchedCount})` : ""}
-                    </Button>
-                    <Button
-                        onClick={runBggEnrich}
-                        disabled={!canEdit || enriching}
-                        variant="outline"
-                    >
-                        {enriching ? <Spinner className="size-4" /> : <SiBoardgamegeek className="size-4" />}
-                        Загрузить обложки{unenrichedCount > 0 ? ` (${unenrichedCount})` : ""}
                     </Button>
                 </div>
             </section>

@@ -111,14 +111,6 @@ SELECT * FROM games
 WHERE tesera_id IS NULL
 ORDER BY name;
 
--- name: ListGamesForBggEnrich :many
--- Games carrying a BGG reference whose box art has not been fetched yet.
--- The both-NULL predicate means a row enriched with only one URL (BGG has a
--- thumbnail but no full image) leaves the enrichment set for good.
-SELECT * FROM games
-WHERE bgg_id IS NOT NULL AND image_url IS NULL AND image_thumb_url IS NULL
-ORDER BY id;
-
 -- name: UpdateGameBggImages :one
 UPDATE games
 SET	image_url = $2,

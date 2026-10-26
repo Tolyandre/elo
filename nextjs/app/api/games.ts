@@ -1,6 +1,6 @@
 // Games, their catalogue metadata, tags, and the Tesera suggestion matching.
 import { client, unwrap, newId } from "./client";
-import type { Game, GameAutoMatchResult, GameEnrichResult, GameList, GameSuggestion, FavoriteGames, Tag } from "./types";
+import type { Game, GameAutoMatchResult, GameArtRefreshResult, GameList, GameSuggestion, FavoriteGames, Tag } from "./types";
 import type { Base58ID } from "@/lib/id";
 import type { GameMode } from "@/lib/game-modes";
 
@@ -36,13 +36,14 @@ export async function patchGamePromise(id: Base58ID, payload: GameMetadata) {
  * Catalogue matches for a name being typed. BGG-first with Tesera
  * enrichment; a failing catalogue degrades the result instead of failing
  * the request (the *_unavailable flags say which source is out), and a total
- * failure (network error, 5xx, offline) still resolves to an empty list —
- * suggestions must never block game creation.
+ * failure (network error, 5xx, offline) still resolves to an empty list with
+ * failed=true — suggestions must never block game creation.
  */
 export type GameSuggestions = {
     games: GameSuggestion[];
     teseraUnavailable: boolean;
     bggUnavailable: boolean;
+    failed: boolean;
 };
 
 export async function suggestGamesPromise(query: string): Promise<GameSuggestions> {
@@ -52,9 +53,10 @@ export async function suggestGamesPromise(query: string): Promise<GameSuggestion
             games: data.games,
             teseraUnavailable: data.tesera_unavailable === true,
             bggUnavailable: data.bgg_unavailable === true,
+            failed: false,
         };
     } catch {
-        return { games: [], teseraUnavailable: false, bggUnavailable: false };
+        return { games: [], teseraUnavailable: false, bggUnavailable: false, failed: true };
     }
 }
 
@@ -64,12 +66,12 @@ export async function autoMatchGamesPromise(): Promise<GameAutoMatchResult[]> {
 }
 
 /**
- * BGG box-art backfill for games with a bgg_ref but no image yet. Requires a
- * configured BGG API token server-side; per-game failures are reported in
- * the results, request-level errors throw (toast via the API helper).
+ * Re-fetch and store one game's box art from BGG by its bgg_ref, overwriting
+ * whatever URLs are stored. Requires a configured BGG API token server-side;
+ * request-level errors throw (toast via the API helper).
  */
-export async function enrichGameImagesPromise(): Promise<GameEnrichResult[]> {
-    return (await unwrap(client.POST("/games/bgg-enrich"))).data.games;
+export async function refreshGameArtPromise(id: Base58ID): Promise<GameArtRefreshResult> {
+    return (await unwrap(client.POST("/games/{id}/bgg-refresh-art", { params: { path: { id } } }))).data;
 }
 
 export async function deleteGamePromise(id: Base58ID) {

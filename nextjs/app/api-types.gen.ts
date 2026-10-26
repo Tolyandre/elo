@@ -185,7 +185,7 @@ export interface paths {
         };
         /**
          * Suggest catalogue matches for a name being typed
-         * @description BoardGameGeek is the primary source (search plus the localized Russian titles of the matches, picked from their alternate names); Tesera enriches the matches with its ids and adds its own rows. Exact (normalized) name matches sort first, base games before additions. A failing catalogue degrades the result instead of failing the request — the corresponding *_unavailable flag is set. Callers must treat an empty list as "no suggestions" and never block on it.
+         * @description BoardGameGeek is the primary source (search plus the localized Russian titles of the matches, picked from their alternate names); Tesera enriches the matches with its ids and adds its own rows. Both sources are queried in parallel under an overall deadline. Ranking is tiered against the query: exact (normalized) name matches first, then word-prefix matches, then contains; base games sort before additions within a tier. A failing catalogue degrades the result instead of failing the request — the corresponding *_unavailable flag is set. Callers must treat an empty list as "no suggestions" and never block on it.
          */
         get: operations["SuggestGames"];
         put?: never;
@@ -216,7 +216,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/games/bgg-enrich": {
+    "/games/{id}/bgg-refresh-art": {
         parameters: {
             query?: never;
             header?: never;
@@ -226,10 +226,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
-         * @description Batched /xmlapi2/thing lookups paced per BGG's documented rate guidance; the resulting URLs are stored on the game and hotlinked at render time (ADR-31). Per-game failures are reported in the response and skipped, never fatal. Requires a configured BGG API token server-side — without one the endpoint errors, same as the Tesera endpoints when their client is not configured.
+         * Re-fetch and store one game's box art from the BoardGameGeek XML API
+         * @description A single /xmlapi2/thing lookup by the game's stored bgg_ref, stored on the game and hotlinked at render time (ADR-31). Unlike the automatic enrichment (which only fills empty images when a bgg_ref is written or changed), this overwrites whatever URLs are stored — the remedy for wrong or stale art. Requires a configured BGG API token server-side — without one the endpoint errors, same as the Tesera endpoints when their client is not configured.
          */
-        post: operations["EnrichGameImages"];
+        post: operations["RefreshGameArt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2314,16 +2314,18 @@ export interface components {
          * @enum {string}
          */
         GameMode: "competitive" | "coop" | "mixed";
-        GameEnrichResult: {
+        GameArtRefreshResult: {
             id: components["schemas"]["Base58ID"];
-            /** @description The game's display name at the time of enrichment */
+            /** @description The game's display name at the time of the refresh */
             name: string;
-            enriched: boolean;
-            /** @description Why the game was not enriched ("no image on BGG", "not found on BGG", "bgg request failed", "update failed") */
+            /** @description Whether new image URLs were stored */
+            refreshed: boolean;
+            /** @description The stored full box-art URL, set when refreshed */
+            image_url?: string | null;
+            /** @description The stored thumbnail URL, set when refreshed */
+            image_thumb_url?: string | null;
+            /** @description Why nothing was refreshed ("not found on BGG", "no image on BGG") */
             reason?: string | null;
-        };
-        GameEnrichResults: {
-            games: components["schemas"]["GameEnrichResult"][];
         };
         /**
          * @description The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
@@ -3331,16 +3333,18 @@ export interface operations {
             };
         };
     };
-    EnrichGameImages: {
+    RefreshGameArt: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Per-game enrichment results */
+            /** @description The refresh outcome (reason is set when nothing was refreshed) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3348,8 +3352,17 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: string;
-                        data: components["schemas"]["GameEnrichResults"];
+                        data: components["schemas"]["GameArtRefreshResult"];
                     };
+                };
+            };
+            /** @description Bad request (the game has no BGG reference) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Unauthorized */
@@ -3363,6 +3376,24 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The BGG integration is not configured or is unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

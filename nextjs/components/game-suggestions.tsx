@@ -5,6 +5,7 @@ import { Check, X } from "lucide-react"
 
 import { suggestGamesPromise, type GameSuggestion } from "@/app/api"
 import { cn } from "@/lib/utils"
+import { Spinner } from "@/components/ui/spinner"
 
 /** Metadata carried into game creation from an accepted suggestion. */
 export type AcceptedGameSuggestion = {
@@ -26,28 +27,38 @@ export function suggestionMeta(s: GameSuggestion): AcceptedGameSuggestion {
 /**
  * Debounced catalogue lookups for a name being typed. Failures resolve to an
  * empty list inside suggestGamesPromise, so suggestions never block creation;
- * the *_unavailable flags survive so the UI can say which catalogue is out.
+ * `failed` distinguishes that from a genuine no-match, and the
+ * *_unavailable flags say which catalogue is out.
  */
 export type GameSuggestions = {
     suggestions: GameSuggestion[]
+    loading: boolean
+    failed: boolean
     teseraUnavailable: boolean
     bggUnavailable: boolean
 }
 
-const NO_SUGGESTIONS: GameSuggestions = { suggestions: [], teseraUnavailable: false, bggUnavailable: false }
+const NO_SUGGESTIONS: GameSuggestions = {
+    suggestions: [],
+    loading: false,
+    failed: false,
+    teseraUnavailable: false,
+    bggUnavailable: false,
+}
 
 export function useGameSuggestions(name: string, enabled: boolean): GameSuggestions {
     const trimmed = name.trim()
     const [state, setState] = React.useState<(GameSuggestions & { query: string })>({ ...NO_SUGGESTIONS, query: "" })
     React.useEffect(() => {
+        if (!enabled || trimmed.length < 2) {
+            return
+        }
         let cancelled = false
         const timer = setTimeout(() => {
-            if (!enabled || trimmed.length < 2) {
-                if (!cancelled) setState({ ...NO_SUGGESTIONS, query: "" })
-                return
-            }
-            suggestGamesPromise(trimmed).then(({ games, teseraUnavailable, bggUnavailable }) => {
-                if (!cancelled) setState({ query: trimmed, suggestions: games, teseraUnavailable, bggUnavailable })
+            suggestGamesPromise(trimmed).then(({ games, teseraUnavailable, bggUnavailable, failed }) => {
+                if (!cancelled) {
+                    setState({ query: trimmed, suggestions: games, loading: false, failed, teseraUnavailable, bggUnavailable })
+                }
             })
         }, 350)
         return () => {
@@ -55,8 +66,17 @@ export function useGameSuggestions(name: string, enabled: boolean): GameSuggesti
             clearTimeout(timer)
         }
     }, [trimmed, enabled])
-    // Suggestions for a previous query are never shown while typing.
-    return state.query === trimmed ? state : NO_SUGGESTIONS
+    // Derived view: a stored answer for some other query (or none yet) means
+    // a search for the current one is pending — the debounce window counts
+    // as loading too, so the picker says "searching" from the first
+    // qualifying keystroke, and a previous query's results never show.
+    if (!enabled || trimmed.length < 2) {
+        return NO_SUGGESTIONS
+    }
+    if (state.query !== trimmed) {
+        return { ...NO_SUGGESTIONS, loading: true }
+    }
+    return state
 }
 
 /** Suggestions are keyed by whichever catalogue id identifies the row. */
@@ -76,14 +96,17 @@ export function suggestionLabel(s: GameSuggestion): string {
 
 /**
  * Clickable catalogue matches: one is "accepted" (highlighted, removable);
- * accepting fills the canonical names and external links. The unavailable
- * flags render as hints — a degraded catalogue is not an error.
+ * accepting fills the canonical names and external links. The loading,
+ * failed, and unavailable flags render as hints — a degraded catalogue is
+ * not an error, and a search in progress is not "no results".
  */
 export function GameSuggestionChips({
     suggestions,
     accepted,
     onAccept,
     onClear,
+    loading,
+    failed,
     teseraUnavailable,
     bggUnavailable,
 }: {
@@ -91,14 +114,27 @@ export function GameSuggestionChips({
     accepted: AcceptedGameSuggestion | null
     onAccept: (s: GameSuggestion) => void
     onClear: () => void
+    loading?: boolean
+    failed?: boolean
     teseraUnavailable?: boolean
     bggUnavailable?: boolean
 }) {
-    if (suggestions.length === 0 && !accepted && !teseraUnavailable && !bggUnavailable) return null
+    if (suggestions.length === 0 && !accepted && !loading && !failed && !teseraUnavailable && !bggUnavailable) return null
     return (
         <div className="flex flex-col gap-1">
-            {!accepted && suggestions.length > 0 && (
+            {loading && (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+                    <Spinner className="size-3" />
+                    Ищем в каталогах…
+                </p>
+            )}
+            {!accepted && !loading && suggestions.length > 0 && (
                 <p className="text-xs text-muted-foreground">Нашли в каталогах:</p>
+            )}
+            {failed && !loading && (
+                <p className="text-xs text-warning">
+                    Каталоги недоступны — не удалось выполнить поиск.
+                </p>
             )}
             {teseraUnavailable && (
                 <p className="text-xs text-warning">

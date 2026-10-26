@@ -47,7 +47,13 @@ vi.mock("@/app/tagsContext", () => ({
 }));
 // game-suggestions imports the API client (env-var gated) — not under test.
 vi.mock("@/components/game-suggestions", () => ({
-    useGameSuggestions: () => ({ suggestions: [], teseraUnavailable: false, bggUnavailable: false }),
+    useGameSuggestions: () => ({
+        suggestions: [],
+        loading: false,
+        failed: false,
+        teseraUnavailable: false,
+        bggUnavailable: false,
+    }),
     GameSuggestionChips: () => null,
     AcceptedMetaLine: () => null,
     suggestionMeta: (s: unknown) => s,

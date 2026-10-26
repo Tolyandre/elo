@@ -1,11 +1,16 @@
 "use client"
 import { useState } from "react";
+import { toast } from "sonner";
+import { SiBoardgamegeek } from "@icons-pack/react-simple-icons";
 import {
     patchGamePromise,
+    refreshGameArtPromise,
     type GameListItem,
+    type GameMetadata,
     type GameSuggestion,
 } from "@/app/api";
 import { useOffline } from "@/app/offline/OfflineContext";
+import { useGames } from "@/app/gamesContext";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -29,6 +34,7 @@ import { GAME_MODES, GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes";
 import { accentName } from "@/lib/game-names";
 import { cn } from "@/lib/utils";
 import { suggestionKey, suggestionLabel, useGameSuggestions } from "@/components/game-suggestions";
+import { GameImage } from "@/components/game-image";
 
 type GameRow = GameListItem;
 
@@ -40,8 +46,10 @@ type GameRow = GameListItem;
  * offline exactly like the old inline form did. With a game, the full
  * metadata state is PATCHed. Both modes share the canonical names, BGG/Tesera
  * ids, game mode, and a catalogue picker (BGG first, Tesera second) that fills
- * the canonical fields from a picked candidate. The server recomputes the
- * display name (alias/name → ru → English)
+ * the canonical fields from a picked candidate. Editing also carries the
+ * box-art row: a preview plus an explicit refresh that overwrites stored art
+ * (the automatic enrichment only fills empty images). The server recomputes
+ * the display name (alias/name → ru → English)
  * and rejects a save that leaves no name at all.
  */
 export function GameEditDialog({
@@ -54,6 +62,7 @@ export function GameEditDialog({
     onSaved: () => void;
 }) {
     const { addPendingGame } = useOffline();
+    const { invalidate: invalidateGames } = useGames();
     const [name, setName] = useState("");
     const [alias, setAlias] = useState(game?.alias ?? "");
     const [nameEn, setNameEn] = useState(game?.name_en ?? "");
@@ -62,25 +71,41 @@ export function GameEditDialog({
     const [teseraRef, setTeseraRef] = useState(game?.tesera_ref != null ? String(game.tesera_ref) : "");
     const [gameMode, setGameMode] = useState<GameMode>(game?.game_mode ?? "competitive");
     const [saving, setSaving] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [art, setArt] = useState<{ imageUrl: string | null; thumbUrl: string | null }>({
+        imageUrl: game?.image_url ?? null,
+        thumbUrl: game?.image_thumb_url ?? null,
+    });
     const [pickerQuery, setPickerQuery] = useState("");
 
-    const { suggestions, teseraUnavailable, bggUnavailable } = useGameSuggestions(pickerQuery, pickerQuery.trim().length >= 2);
+    const { suggestions, loading: searching, failed: searchFailed, teseraUnavailable, bggUnavailable } = useGameSuggestions(pickerQuery, pickerQuery.trim().length >= 2);
 
     const preview = [game ? alias.trim() : name.trim(), nameRu.trim(), nameEn.trim()].find((n) => n !== "") ?? "";
     const canSave = game ? preview !== "" : name.trim() !== "";
 
+    /** The full-state metadata payload both save and the art refresh persist. */
+    function metadata(): GameMetadata {
+        return {
+            alias: alias.trim() || null,
+            name_en: nameEn.trim() || null,
+            name_ru: nameRu.trim() || null,
+            bgg_ref: bggRef.trim() ? Number.parseInt(bggRef, 10) : null,
+            tesera_ref: teseraRef.trim() ? Number.parseInt(teseraRef, 10) : null,
+            game_mode: gameMode,
+        };
+    }
+
     async function save() {
         if (!canSave) return;
-        const bgg = bggRef.trim() ? Number.parseInt(bggRef, 10) : null;
-        const tesera = teseraRef.trim() ? Number.parseInt(teseraRef, 10) : null;
         if (!game) {
+            const meta = metadata();
             // Creates always queue (the clientId is the final server id); the
             // sync flushes it within a round trip while online.
             addPendingGame(name.trim(), [], {
-                nameEn: nameEn.trim() || null,
-                nameRu: nameRu.trim() || null,
-                bggRef: bgg,
-                teseraRef: tesera,
+                nameEn: meta.name_en ?? null,
+                nameRu: meta.name_ru ?? null,
+                bggRef: meta.bgg_ref ?? null,
+                teseraRef: meta.tesera_ref ?? null,
                 gameMode,
             });
             onSaved();
@@ -88,19 +113,41 @@ export function GameEditDialog({
         }
         setSaving(true);
         try {
-            await patchGamePromise(game.id, {
-                alias: alias.trim() || null,
-                name_en: nameEn.trim() || null,
-                name_ru: nameRu.trim() || null,
-                bgg_ref: bgg,
-                tesera_ref: tesera,
-                game_mode: gameMode,
-            });
+            await patchGamePromise(game.id, metadata());
             onSaved();
         } catch {
             // toast shown by API helper
         } finally {
             setSaving(false);
+        }
+    }
+
+    /**
+     * Save-then-refresh, dialog stays open: persist the current fields (the
+     * possibly just-typed BGG id is what the refresh fetches by), then
+     * re-fetch the box art, overwriting whatever is stored — the remedy for
+     * wrong or stale art that the automatic enrichment (empty-images-only)
+     * deliberately leaves alone.
+     */
+    async function refreshArt() {
+        if (!game || refreshing || !canSave || !bggRef.trim()) return;
+        setRefreshing(true);
+        try {
+            await patchGamePromise(game.id, metadata());
+            const res = await refreshGameArtPromise(game.id);
+            if (res.refreshed) {
+                setArt({ imageUrl: res.image_url ?? null, thumbUrl: res.image_thumb_url ?? null });
+                toast.success("Обложка обновлена");
+            } else if (res.reason === "no image on BGG") {
+                toast.info("У этой игры на BoardGameGeek нет обложки");
+            } else {
+                toast.error("Игра с таким id не найдена на BoardGameGeek — проверьте id");
+            }
+            invalidateGames();
+        } catch {
+            // toast shown by API helper
+        } finally {
+            setRefreshing(false);
         }
     }
 
@@ -194,6 +241,29 @@ export function GameEditDialog({
                             />
                         </label>
                     </div>
+                    {game && (
+                        <div className="flex items-center gap-3">
+                            {art.thumbUrl ? (
+                                <GameImage src={art.thumbUrl} alt="" className="size-10 shrink-0 rounded" />
+                            ) : (
+                                <div className="size-10 shrink-0 rounded bg-muted" aria-hidden />
+                            )}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={refreshArt}
+                                disabled={!canSave || refreshing || !bggRef.trim()}
+                                aria-busy={refreshing}
+                            >
+                                {refreshing ? <Spinner className="size-4" /> : <SiBoardgamegeek className="size-4" />}
+                                Обновить обложку
+                            </Button>
+                            <span className="text-xs text-muted-foreground">
+                                Обложка берётся из BGG по id и перезаписывает текущую.
+                            </span>
+                        </div>
+                    )}
                     <div className="flex flex-col gap-1 text-sm">
                         <Label htmlFor="game-mode">Режим игры</Label>
                         <Select value={gameMode} onValueChange={(v) => setGameMode(v as GameMode)}>
@@ -229,6 +299,17 @@ export function GameEditDialog({
                             value={pickerQuery}
                             onChange={(e) => setPickerQuery(e.target.value)}
                         />
+                        {searching && (
+                            <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+                                <Spinner className="size-3" />
+                                Ищем в каталогах…
+                            </p>
+                        )}
+                        {searchFailed && !searching && (
+                            <p className="text-xs text-warning">
+                                Каталоги недоступны — не удалось выполнить поиск.
+                            </p>
+                        )}
                         {teseraUnavailable && (
                             <p className="text-xs text-warning">
                                 Каталог Tesera недоступен — показаны результаты BoardGameGeek.
@@ -239,8 +320,8 @@ export function GameEditDialog({
                                 BoardGameGeek недоступен — показаны результаты Tesera.
                             </p>
                         )}
-                        {pickerQuery.trim().length >= 2 && suggestions.length === 0 && (
-                            <p className="text-xs text-muted-foreground">Ничего не найдено (или каталоги недоступны).</p>
+                        {pickerQuery.trim().length >= 2 && !searching && !searchFailed && suggestions.length === 0 && !teseraUnavailable && !bggUnavailable && (
+                            <p className="text-xs text-muted-foreground">Ничего не найдено</p>
                         )}
                         <div className="flex flex-wrap gap-1">
                             {suggestions.map((s) => (

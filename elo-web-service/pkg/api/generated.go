@@ -2614,23 +2614,25 @@ type AuditAuditUserUpdateDetails struct {
 	SchemaVersion int `json:"schema_version"`
 }
 
-// GamesGameEnrichResult defines model for games_GameEnrichResult.
-type GamesGameEnrichResult struct {
-	Enriched bool `json:"enriched"`
-
+// GamesGameArtRefreshResult defines model for games_GameArtRefreshResult.
+type GamesGameArtRefreshResult struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// Name The game's display name at the time of enrichment
+	// ImageThumbUrl The stored thumbnail URL, set when refreshed
+	ImageThumbUrl *string `json:"image_thumb_url,omitempty"`
+
+	// ImageUrl The stored full box-art URL, set when refreshed
+	ImageUrl *string `json:"image_url,omitempty"`
+
+	// Name The game's display name at the time of the refresh
 	Name string `json:"name"`
 
-	// Reason Why the game was not enriched ("no image on BGG", "not found on BGG", "bgg request failed", "update failed")
+	// Reason Why nothing was refreshed ("not found on BGG", "no image on BGG")
 	Reason *string `json:"reason,omitempty"`
-}
 
-// GamesGameEnrichResults defines model for games_GameEnrichResults.
-type GamesGameEnrichResults struct {
-	Games []GamesGameEnrichResult `json:"games"`
+	// Refreshed Whether new image URLs were stored
+	Refreshed bool `json:"refreshed"`
 }
 
 // GamesGameMode What the game is played as (ADR-33). competitive — rating events only; coop — cooperative or solo only (never rated, excluded from arenas, markets, tournaments and profile stats); mixed — each match picks one of the two.
@@ -4394,9 +4396,6 @@ type ServerInterface interface {
 	// AutoMatchGames Match every game lacking a Tesera reference against the Tesera catalogue
 	// (POST /games/auto-match)
 	AutoMatchGames(c *gin.Context)
-	// EnrichGameImages Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
-	// (POST /games/bgg-enrich)
-	EnrichGameImages(c *gin.Context)
 	// ListFavoriteGames Favorite games for the current user's game picker
 	// (GET /games/favorites)
 	ListFavoriteGames(c *gin.Context)
@@ -4412,6 +4411,9 @@ type ServerInterface interface {
 	// PatchGame Replace game metadata (names, alias, external references)
 	// (PATCH /games/{id})
 	PatchGame(c *gin.Context, id string)
+	// RefreshGameArt Re-fetch and store one game's box art from the BoardGameGeek XML API
+	// (POST /games/{id}/bgg-refresh-art)
+	RefreshGameArt(c *gin.Context, id string)
 	// AddGameTag Attach a tag to a game (idempotent)
 	// (POST /games/{id}/tags)
 	AddGameTag(c *gin.Context, id string)
@@ -5270,19 +5272,6 @@ func (siw *ServerInterfaceWrapper) AutoMatchGames(c *gin.Context) {
 	siw.Handler.AutoMatchGames(c)
 }
 
-// EnrichGameImages operation middleware
-func (siw *ServerInterfaceWrapper) EnrichGameImages(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.EnrichGameImages(c)
-}
-
 // ListFavoriteGames operation middleware
 func (siw *ServerInterfaceWrapper) ListFavoriteGames(c *gin.Context) {
 
@@ -5396,6 +5385,31 @@ func (siw *ServerInterfaceWrapper) PatchGame(c *gin.Context) {
 	}
 
 	siw.Handler.PatchGame(c, id)
+}
+
+// RefreshGameArt operation middleware
+func (siw *ServerInterfaceWrapper) RefreshGameArt(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RefreshGameArt(c, id)
 }
 
 // AddGameTag operation middleware
@@ -7146,12 +7160,12 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/games", wrapper.ListGames)
 	router.POST(options.BaseURL+"/games", wrapper.CreateGame)
 	router.POST(options.BaseURL+"/games/auto-match", wrapper.AutoMatchGames)
-	router.POST(options.BaseURL+"/games/bgg-enrich", wrapper.EnrichGameImages)
 	router.GET(options.BaseURL+"/games/favorites", wrapper.ListFavoriteGames)
 	router.GET(options.BaseURL+"/games/suggestions", wrapper.SuggestGames)
 	router.DELETE(options.BaseURL+"/games/:id", wrapper.DeleteGame)
 	router.GET(options.BaseURL+"/games/:id", wrapper.GetGame)
 	router.PATCH(options.BaseURL+"/games/:id", wrapper.PatchGame)
+	router.POST(options.BaseURL+"/games/:id/bgg-refresh-art", wrapper.RefreshGameArt)
 	router.POST(options.BaseURL+"/games/:id/tags", wrapper.AddGameTag)
 	router.DELETE(options.BaseURL+"/games/:id/tags/:tagId", wrapper.RemoveGameTag)
 	router.GET(options.BaseURL+"/markets", wrapper.ListMarkets)
@@ -8536,58 +8550,6 @@ func (response AutoMatchGames403JSONResponse) VisitAutoMatchGamesResponse(w http
 	return err
 }
 
-type EnrichGameImagesRequestObject struct {
-}
-
-type EnrichGameImagesResponseObject interface {
-	VisitEnrichGameImagesResponse(w http.ResponseWriter) error
-}
-
-type EnrichGameImages200JSONResponse struct {
-	Data   GamesGameEnrichResults `json:"data"`
-	Status string                 `json:"status"`
-}
-
-func (response EnrichGameImages200JSONResponse) VisitEnrichGameImagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type EnrichGameImages401JSONResponse ApiError
-
-func (response EnrichGameImages401JSONResponse) VisitEnrichGameImagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type EnrichGameImages403JSONResponse ApiError
-
-func (response EnrichGameImages403JSONResponse) VisitEnrichGameImagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type ListFavoriteGamesRequestObject struct {
 }
 
@@ -8940,6 +8902,101 @@ func (response PatchGame409JSONResponse) VisitPatchGameResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshGameArtRequestObject struct {
+	Id string `json:"id"`
+}
+
+type RefreshGameArtResponseObject interface {
+	VisitRefreshGameArtResponse(w http.ResponseWriter) error
+}
+
+type RefreshGameArt200JSONResponse struct {
+	Data   GamesGameArtRefreshResult `json:"data"`
+	Status string                    `json:"status"`
+}
+
+func (response RefreshGameArt200JSONResponse) VisitRefreshGameArtResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshGameArt400JSONResponse ApiError
+
+func (response RefreshGameArt400JSONResponse) VisitRefreshGameArtResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshGameArt401JSONResponse ApiError
+
+func (response RefreshGameArt401JSONResponse) VisitRefreshGameArtResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshGameArt403JSONResponse ApiError
+
+func (response RefreshGameArt403JSONResponse) VisitRefreshGameArtResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshGameArt404JSONResponse ApiError
+
+func (response RefreshGameArt404JSONResponse) VisitRefreshGameArtResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshGameArt503JSONResponse ApiError
+
+func (response RefreshGameArt503JSONResponse) VisitRefreshGameArtResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13324,9 +13381,6 @@ type StrictServerInterface interface {
 	// AutoMatchGames Match every game lacking a Tesera reference against the Tesera catalogue
 	// (POST /games/auto-match)
 	AutoMatchGames(ctx context.Context, request AutoMatchGamesRequestObject) (AutoMatchGamesResponseObject, error)
-	// EnrichGameImages Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
-	// (POST /games/bgg-enrich)
-	EnrichGameImages(ctx context.Context, request EnrichGameImagesRequestObject) (EnrichGameImagesResponseObject, error)
 	// ListFavoriteGames Favorite games for the current user's game picker
 	// (GET /games/favorites)
 	ListFavoriteGames(ctx context.Context, request ListFavoriteGamesRequestObject) (ListFavoriteGamesResponseObject, error)
@@ -13342,6 +13396,9 @@ type StrictServerInterface interface {
 	// PatchGame Replace game metadata (names, alias, external references)
 	// (PATCH /games/{id})
 	PatchGame(ctx context.Context, request PatchGameRequestObject) (PatchGameResponseObject, error)
+	// RefreshGameArt Re-fetch and store one game's box art from the BoardGameGeek XML API
+	// (POST /games/{id}/bgg-refresh-art)
+	RefreshGameArt(ctx context.Context, request RefreshGameArtRequestObject) (RefreshGameArtResponseObject, error)
 	// AddGameTag Attach a tag to a game (idempotent)
 	// (POST /games/{id}/tags)
 	AddGameTag(ctx context.Context, request AddGameTagRequestObject) (AddGameTagResponseObject, error)
@@ -14295,30 +14352,6 @@ func (sh *strictHandler) AutoMatchGames(ctx *gin.Context) {
 	}
 }
 
-// EnrichGameImages operation middleware
-func (sh *strictHandler) EnrichGameImages(ctx *gin.Context) {
-	var request EnrichGameImagesRequestObject
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.EnrichGameImages(ctx, request.(EnrichGameImagesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "EnrichGameImages")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(EnrichGameImagesResponseObject); ok {
-		if err := validResponse.VisitEnrichGameImagesResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // ListFavoriteGames operation middleware
 func (sh *strictHandler) ListFavoriteGames(ctx *gin.Context) {
 	var request ListFavoriteGamesRequestObject
@@ -14447,6 +14480,32 @@ func (sh *strictHandler) PatchGame(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PatchGameResponseObject); ok {
 		if err := validResponse.VisitPatchGameResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RefreshGameArt operation middleware
+func (sh *strictHandler) RefreshGameArt(ctx *gin.Context, id string) {
+	var request RefreshGameArtRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RefreshGameArt(ctx, request.(RefreshGameArtRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RefreshGameArt")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(RefreshGameArtResponseObject); ok {
+		if err := validResponse.VisitRefreshGameArtResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

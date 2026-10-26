@@ -245,24 +245,33 @@ func (s *StrictServer) AutoMatchGames(ctx context.Context, _ AutoMatchGamesReque
 	return AutoMatchGames200JSONResponse{Status: StatusSuccess, Data: GameAutoMatchResults{Games: items}}, nil
 }
 
-// EnrichGameImages stores BGG box-art URLs for every game that has a BGG
-// reference but no image yet; per-game failures are reported, not fatal.
-func (s *StrictServer) EnrichGameImages(ctx context.Context, _ EnrichGameImagesRequestObject) (EnrichGameImagesResponseObject, error) {
-	results, err := s.api.GameService.EnrichGameImages(ctx, currentActorID(ctx))
+// RefreshGameArt re-fetches and stores one game's box art from BGG,
+// overwriting stale URLs; a reason rides along when nothing was refreshed.
+func (s *StrictServer) RefreshGameArt(ctx context.Context, request RefreshGameArtRequestObject) (RefreshGameArtResponseObject, error) {
+	res, err := s.api.GameService.RefreshGameArt(ctx, parseIDParam(request.Id), currentActorID(ctx))
 	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusNotFound:
+			return RefreshGameArt404JSONResponse{Status: StatusFail, Message: "game not found"}, nil
+		case http.StatusBadRequest:
+			return RefreshGameArt400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		case http.StatusServiceUnavailable:
+			return RefreshGameArt503JSONResponse{Status: StatusFail, Message: "BoardGameGeek недоступен, попробуйте позже"}, nil
+		}
 		return nil, err
 	}
 
-	items := make([]GamesGameEnrichResult, 0, len(results))
-	for _, r := range results {
-		items = append(items, GamesGameEnrichResult{
-			Id:       r.GameID,
-			Name:     r.Name,
-			Enriched: r.Enriched,
-			Reason:   strPtrOrNil(r.Reason),
-		})
+	data := GamesGameArtRefreshResult{
+		Id:        res.GameID,
+		Name:      res.Name,
+		Refreshed: res.Refreshed,
+		ImageUrl:  strPtrOrNil(res.ImageURL),
+		Reason:    strPtrOrNil(res.Reason),
 	}
-	return EnrichGameImages200JSONResponse{Status: StatusSuccess, Data: GamesGameEnrichResults{Games: items}}, nil
+	if res.ImageThumbURL != "" {
+		data.ImageThumbUrl = &res.ImageThumbURL
+	}
+	return RefreshGameArt200JSONResponse{Status: StatusSuccess, Data: data}, nil
 }
 
 // gameNotFound reports whether err is the games table's no-rows error.

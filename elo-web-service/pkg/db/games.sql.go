@@ -154,46 +154,6 @@ func (q *Queries) GetGameByName(ctx context.Context, name string) (Game, error) 
 	return i, err
 }
 
-const listGamesForBggEnrich = `-- name: ListGamesForBggEnrich :many
-SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode FROM games
-WHERE bgg_id IS NOT NULL AND image_url IS NULL AND image_thumb_url IS NULL
-ORDER BY id
-`
-
-// Games carrying a BGG reference whose box art has not been fetched yet.
-// The both-NULL predicate means a row enriched with only one URL (BGG has a
-// thumbnail but no full image) leaves the enrichment set for good.
-func (q *Queries) ListGamesForBggEnrich(ctx context.Context) ([]Game, error) {
-	rows, err := q.db.Query(ctx, listGamesForBggEnrich)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Game{}
-	for rows.Next() {
-		var i Game
-		if err := rows.Scan(
-			&i.ID,
-			&i.NameEn,
-			&i.NameRu,
-			&i.Alias,
-			&i.BggID,
-			&i.TeseraID,
-			&i.Name,
-			&i.ImageUrl,
-			&i.ImageThumbUrl,
-			&i.GameMode,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listGamesOrderedByLastPlayed = `-- name: ListGamesOrderedByLastPlayed :many
 SELECT
 	g.id AS id,

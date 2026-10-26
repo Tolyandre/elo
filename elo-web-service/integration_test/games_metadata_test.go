@@ -38,6 +38,11 @@ func newTeseraStub(t *testing.T) *httptest.Server {
 			rows = []map[string]any{
 				{"type": "Game", "alias": "the-bottle-imp", "teseraId": 555, "title": "Тень в бутылке", "title2": "The Bottle Imp"},
 			}
+		case strings.Contains(query, "старая"):
+			rows = []map[string]any{
+				// A Tesera entry that knows no BGG link (bggId 0 in the detail).
+				{"type": "Game", "alias": "old-game", "teseraId": 888, "title": "Старая игра", "title2": "Old Game"},
+			}
 		default:
 			rows = []map[string]any{
 				{"type": "Game", "alias": "other-game", "teseraId": 999, "title": "Другая игра", "title2": "Other Game"},
@@ -51,6 +56,7 @@ func newTeseraStub(t *testing.T) *httptest.Server {
 		"carcassonne":       {"teseraId": 707, "bggId": 822, "title": "Каркассон", "title2": "Carcassonne", "alias": "carcassonne", "year": 2000, "isAddition": false},
 		"carcassonne-river": {"teseraId": 26664, "bggId": 4101, "title": "Каркассон. Река", "title2": "2001", "isAddition": true},
 		"the-bottle-imp":    {"teseraId": 555, "bggId": 12345, "title": "Тень в бутылке", "title2": "The Bottle Imp", "year": 2011, "isAddition": false},
+		"old-game":          {"teseraId": 888, "bggId": 0, "title": "Старая игра", "title2": "Old Game", "isAddition": false},
 		"other-game":        {"teseraId": 999, "bggId": 999, "title": "Другая игра", "title2": "Other Game", "isAddition": false},
 	}
 	mux.HandleFunc("/games/", func(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +82,9 @@ func newTeseraStub(t *testing.T) *httptest.Server {
 // 822 carries several Russian spellings plus nothing disambiguating, so the
 // script heuristics stay empty and the Tesera fallback fills the name.
 // «бутыл» finds nothing on BGG — that query exercises the Tesera-only path.
+// «eclipse» returns the exact base game, a flood of expansions, and the
+// Second Dawn base game buried last — BGG's raw order must not decide what
+// the user sees.
 func newBggSuggestStub(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -93,6 +102,15 @@ func newBggSuggestStub(t *testing.T) *httptest.Server {
 				`<name type="alternate" value="Каркассон"/><yearpublished value="2000"/></item>` +
 				`<item type="boardgame" id="4101">` +
 				`<name type="primary" value="Carcassonne: The River"/><yearpublished value="2001"/></item>`
+		} else if strings.Contains(query, "eclipse") {
+			items = `<item type="boardgame" id="100"><name type="primary" value="Eclipse"/><yearpublished value="2011"/></item>` +
+				`<item type="boardgame" id="101"><name type="primary" value="Eclipse: Rise of the Ancients"/><yearpublished value="2012"/></item>` +
+				`<item type="boardgame" id="102"><name type="primary" value="Eclipse: Shadow of the Rift"/><yearpublished value="2015"/></item>` +
+				`<item type="boardgame" id="103"><name type="primary" value="Eclipse: Ship Pack One"/><yearpublished value="2013"/></item>` +
+				`<item type="boardgame" id="104"><name type="primary" value="Eclipse: Microcosm"/><yearpublished value="2017"/></item>` +
+				`<item type="boardgame" id="105"><name type="primary" value="Eclipse: Nebula"/></item>` +
+				`<item type="boardgame" id="106"><name type="primary" value="Quel Eclipse"/></item>` +
+				`<item type="boardgame" id="246900"><name type="primary" value="Eclipse: Second Dawn for the Galaxy"/><yearpublished value="2020"/></item>`
 		}
 		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
 		_, _ = w.Write([]byte(`<items total="0" termsofuse="https://boardgamegeek.com/xmlapi/termsofuse">` + items + `</items>`))
@@ -119,6 +137,16 @@ func newBggSuggestStub(t *testing.T) *httptest.Server {
 					`<name type="primary" sortindex="1" value="Carcassonne: The River"/>` +
 					`<link type="boardgameexpansion" id="822" value="Carcassonne"/>` +
 					`<yearpublished value="2001"/></item>`)
+			case "100":
+				items.WriteString(`<item type="boardgame" id="100">` +
+					`<name type="primary" sortindex="1" value="Eclipse"/><yearpublished value="2011"/></item>`)
+			case "101", "102", "103", "104", "105":
+				items.WriteString(`<item type="boardgame" id="` + id + `">` +
+					`<link type="boardgameexpansion" id="100" value="Eclipse"/></item>`)
+			case "246900":
+				items.WriteString(`<item type="boardgame" id="246900">` +
+					`<name type="primary" sortindex="1" value="Eclipse: Second Dawn for the Galaxy"/>` +
+					`<yearpublished value="2020"/></item>`)
 			}
 		}
 		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
@@ -228,6 +256,40 @@ func TestGameSuggestionsEndpoint(t *testing.T) {
 	}
 }
 
+// A query like «eclipse» must surface the base games — the exact «Eclipse»
+// and the prefix-matched «Eclipse: Second Dawn for the Galaxy» — ahead of the
+// expansion flood, whatever order BGG's search returned (the fixture buries
+// Second Dawn last).
+func TestGameSuggestionsRankBaseGamesAboveExpansions(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouterWithClients(pool, newTeseraStub(t).URL, newBggSuggestStub(t).URL)
+	editorToken, _ := createTestUserWithID(t, pool, true)
+
+	w := doJSON(t, router, http.MethodGet, "/games/suggestions?query=eclipse", editorToken, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("suggest: %d %s", w.Code, w.Body.String())
+	}
+	var resp suggestionsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, w.Body.String())
+	}
+	if len(resp.Data.Games) != 6 {
+		t.Fatalf("games = %d rows, want the suggestResultLimit cap of 6: %+v", len(resp.Data.Games), resp.Data.Games)
+	}
+	if resp.Data.Games[0].Title != "Eclipse" || resp.Data.Games[0].IsAddition {
+		t.Errorf("first = %+v, want the exact base game Eclipse", resp.Data.Games[0])
+	}
+	if resp.Data.Games[1].Title != "Eclipse: Second Dawn for the Galaxy" || resp.Data.Games[1].IsAddition {
+		t.Errorf("second = %+v, want the prefix-matched base game", resp.Data.Games[1])
+	}
+	for i, g := range resp.Data.Games[2:] {
+		if !g.IsAddition {
+			t.Errorf("candidate %d %+v: the tail must be expansions", i+2, g)
+		}
+	}
+}
+
 // When the Tesera guard rejects the search, the answer degrades to the BGG
 // rows with the flag set — and the guard's HTML body must not surface
 // anywhere in the response.
@@ -326,6 +388,14 @@ func TestAutoMatchEndpoint(t *testing.T) {
 	latin := createGame("Каркассон")        // equals the localized title: no alias
 	custom := createGame("Бутылочка")       // custom name: becomes alias
 	noMatch := createGame("Несуществующая") // stub has no exact match for it
+	// Already carries a BGG reference the Tesera match does not know: the
+	// reference must survive the auto-match (a NULL would erase the link
+	// along with its box art).
+	withBgg := newID(t)
+	body := fmt.Sprintf(`{"id":%q,"name":"Старая игра","bgg_ref":12345}`, withBgg.String())
+	if w := doJSON(t, router, http.MethodPost, "/games", editorToken, body); w.Code != http.StatusOK {
+		t.Fatalf("create Старая игра: %d %s", w.Code, w.Body.String())
+	}
 
 	w := doJSON(t, router, http.MethodPost, "/games/auto-match", editorToken, "")
 	if w.Code != http.StatusOK {
@@ -354,6 +424,9 @@ func TestAutoMatchEndpoint(t *testing.T) {
 	if !byID[shortOf(t, latin)] {
 		t.Errorf("Каркассон must match, got %+v", resp.Data.Games)
 	}
+	if !byID[shortOf(t, withBgg)] {
+		t.Errorf("Старая игра must match, got %+v", resp.Data.Games)
+	}
 	// Auto-match applies only exact name matches: the custom alias and the
 	// unknown game stay unmatched for the admin picker.
 	if byID[shortOf(t, custom)] || reasonOf[shortOf(t, custom)] != "no exact match" {
@@ -376,6 +449,16 @@ func TestAutoMatchEndpoint(t *testing.T) {
 	}
 	if !got.BggID.Valid || got.BggID.Int32 != 822 || !got.TeseraID.Valid || got.TeseraID.Int32 != 707 {
 		t.Errorf("Каркассон refs = %+v", got)
+	}
+
+	// The match without a BGG link carries the game's existing reference
+	// through instead of erasing it.
+	got, err = q.GetGameByID(ctx, withBgg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.BggID.Valid || got.BggID.Int32 != 12345 || !got.TeseraID.Valid || got.TeseraID.Int32 != 888 {
+		t.Errorf("Старая игра refs = %+v, want bgg 12345 kept and tesera 888 added", got)
 	}
 
 	// The unmatched game keeps its original single-name state.

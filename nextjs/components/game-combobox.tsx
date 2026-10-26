@@ -437,6 +437,8 @@ function GameCreateForm({
         accepted={accepted}
         onAccept={(s) => setAccepted(suggestionMeta(s))}
         onClear={() => setAccepted(null)}
+        loading={suggestions.loading}
+        failed={suggestions.failed}
         teseraUnavailable={suggestions.teseraUnavailable}
         bggUnavailable={suggestions.bggUnavailable}
       />

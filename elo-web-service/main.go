@@ -154,7 +154,7 @@ func main() {
 	router.GET("/games/favorites", oauth2Handler.DeserializeUser(), strictWrapper.ListFavoriteGames)
 	router.GET("/games/suggestions", append(editorAuth(), strictWrapper.SuggestGames)...)
 	router.POST("/games/auto-match", append(editorAuth(), strictWrapper.AutoMatchGames)...)
-	router.POST("/games/bgg-enrich", append(editorAuth(), strictWrapper.EnrichGameImages)...)
+	router.POST("/games/:id/bgg-refresh-art", append(editorAuth(), strictWrapper.RefreshGameArt)...)
 	router.GET("/games/:id", strictWrapper.GetGame)
 	router.DELETE("/games/:id", append(editorAuth(), strictWrapper.DeleteGame)...)
 	router.PATCH("/games/:id", append(editorAuth(), strictWrapper.PatchGame)...)

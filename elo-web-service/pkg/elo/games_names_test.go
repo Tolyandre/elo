@@ -76,4 +76,28 @@ func TestBuildGameUpdateDetails(t *testing.T) {
 	if d.IsEmpty() || d.GameMode == nil || d.GameMode.To != GameModeCoop {
 		t.Errorf("mode diff = %+v, want → coop", d.GameMode)
 	}
+
+	artCleared := old
+	artCleared.ImageUrl = pgText("https://cdn.example/old.png")
+	artCleared.ImageThumbUrl = pgText("https://cdn.example/old-t.png")
+	cleared := old
+	d = buildGameUpdateDetails(artCleared, cleared)
+	if d.IsEmpty() || d.ImageURL == nil || d.ImageURL.From == nil || *d.ImageURL.From != "https://cdn.example/old.png" || d.ImageURL.To != nil {
+		t.Errorf("image clear diff = %+v, want url from → null", d.ImageURL)
+	}
+	if d.ImageThumbURL == nil || d.ImageThumbURL.From == nil || d.ImageThumbURL.To != nil {
+		t.Errorf("thumb clear diff = %+v, want thumb from → null", d.ImageThumbURL)
+	}
+
+	artReplaced := old
+	artReplaced.ImageUrl = pgText("https://cdn.example/new.png")
+	artReplaced.ImageThumbUrl = pgText("https://cdn.example/old-t.png")
+	d = buildGameUpdateDetails(artCleared, artReplaced)
+	if d.IsEmpty() || d.ImageURL == nil || d.ImageURL.From == nil || d.ImageURL.To == nil || *d.ImageURL.To != "https://cdn.example/new.png" {
+		t.Errorf("image replace diff = %+v, want from → to", d.ImageURL)
+	}
+	// Only the full URL changed; the untouched thumbnail records nothing.
+	if d.ImageThumbURL != nil {
+		t.Errorf("untouched thumb recorded a change: %+v", d.ImageThumbURL)
+	}
 }

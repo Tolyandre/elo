@@ -7,6 +7,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -165,18 +166,24 @@ type AutoMatchResult struct {
 	Reason  string
 }
 
-// BggEnrichResult reports the box-art enrichment outcome for one game.
-type BggEnrichResult struct {
-	GameID   id.ID
-	Name     string
-	Enriched bool
-	Reason   string
+// ArtRefreshResult reports the outcome of one game's on-demand box-art
+// refresh: either new URLs were stored, or Reason says why not.
+type ArtRefreshResult struct {
+	GameID        id.ID
+	Name          string
+	Refreshed     bool
+	ImageURL      string
+	ImageThumbURL string
+	Reason        string
 }
 
 var (
 	// ErrGameNameRequired: an update would leave the game without any name
 	// (alias, localized, and English all empty).
 	ErrGameNameRequired = errors.New("at least one game name is required")
+	// ErrGameBggRefMissing: an art refresh was requested for a game without
+	// a BGG reference.
+	ErrGameBggRefMissing = errors.New("game has no bgg reference")
 	// ErrTeseraUnavailable: the Tesera client is not configured.
 	ErrTeseraUnavailable = errors.New("tesera integration is unavailable")
 	// ErrBggUnavailable: the BGG client is not configured (no API token).
@@ -202,9 +209,10 @@ type IGameService interface {
 	AddGame(ctx context.Context, gameID id.ID, name string, actor id.ID, meta ...GameMetaPatch) (*db.Game, error)
 	SuggestGames(ctx context.Context, query string) (SuggestResult, error)
 	AutoMatchGames(ctx context.Context, actor id.ID) ([]AutoMatchResult, error)
-	// EnrichGameImages fetches box art from the BGG XML API for every game
-	// that has a BGG reference but no image yet, and stores the URLs.
-	EnrichGameImages(ctx context.Context, actor id.ID) ([]BggEnrichResult, error)
+	// RefreshGameArt re-fetches and stores one game's box art from the BGG
+	// XML API, overwriting whatever URLs are stored — the manual remedy for
+	// wrong or stale art (the automatic paths only fill empty images).
+	RefreshGameArt(ctx context.Context, gameID id.ID, actor id.ID) (ArtRefreshResult, error)
 }
 
 type GameService struct {
@@ -226,13 +234,17 @@ func NewGameService(pool *pgxpool.Pool, arenas *ArenaService, teseraClient *tese
 }
 
 // Suggestion search/enrichment bounds: how many BGG search rows get their
-// thing fetched per query (one ≤20-id batch), how many Tesera search rows get
-// their detail fetched per query (bggId/isAddition live only on the detail
-// object), and how many candidates are returned.
+// thing fetched per query (exactly one ≤20-id batch), how many Tesera search
+// rows get their detail fetched per query (bggId/isAddition live only on the
+// detail object), how many candidates are returned, and the overall deadline
+// for one suggest request (both sources run in parallel under it; a source
+// that misses the deadline reports its *_unavailable flag instead of hanging
+// the picker — Tesera's guard retries alone can stretch into minutes).
 const (
-	suggestBggSearchLimit   = 10
+	suggestBggSearchLimit   = 20
 	suggestDetailFetchLimit = 8
 	suggestResultLimit      = 6
+	suggestTimeout          = 12 * time.Second
 	// autoMatchThrottle spaces out requests to the undocumented Tesera API
 	// while bulk-matching the catalogue; the client adds retries with backoff
 	// for DDos-Guard's bursty 403s on top.
@@ -329,6 +341,7 @@ func (s *GameService) DeleteGame(ctx context.Context, gameID id.ID, actor id.ID)
 // another game's display name surfaces the usual unique-constraint conflict.
 func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMetaPatch, actor id.ID) (*db.Game, error) {
 	var updated *db.Game
+	bggChanged := false
 	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		old, err := q.GetGameByID(ctx, gameID)
 		if err != nil {
@@ -357,6 +370,22 @@ func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMet
 		if err != nil {
 			return err
 		}
+		// A changed BGG reference invalidates the stored box art (it belongs
+		// to the old thing); drop both URLs so the row reads as imageless
+		// until the post-commit re-fetch lands. The returned row feeds the
+		// audit diff, so the image columns appear in it as cleared.
+		if int64Of(old.BggID) != int64Of(g.BggID) {
+			bggChanged = true
+			cleared, err := q.UpdateGameBggImages(ctx, db.UpdateGameBggImagesParams{
+				ID:            gameID,
+				ImageUrl:      pgText(""),
+				ImageThumbUrl: pgText(""),
+			})
+			if err != nil {
+				return err
+			}
+			g = cleared
+		}
 		updated = &g
 		// The game's arena is auto-managed: its name follows the game's.
 		if arena, aerr := q.GetArenaByGame(ctx, &gameID); aerr == nil {
@@ -378,6 +407,11 @@ func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMet
 	})
 	if err != nil {
 		return nil, err
+	}
+	// A newly written BGG reference enriches box art in the background, same
+	// as the create path — the images were just cleared above.
+	if bggChanged && updated.BggID.Valid {
+		s.scheduleBggEnrich(updated.ID)
 	}
 	return updated, nil
 }
@@ -464,17 +498,30 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 // alternate names, picked by script heuristics (pkg/bgg). Tesera enriches the
 // BGG matches with its ids and adds its own rows for anything BGG lacks; its
 // localized titles fill the Russian name where BGG's alternates stay
-// ambiguous. A source failing alone degrades the result (reported in the
-// flags) — typically Tesera behind its bot guard — and only a request with
-// both catalogues unconfigured is an error.
+// ambiguous. Both sources are queried in parallel under one deadline —
+// Tesera's DDoS-Guard retries alone can stretch a sequential run into
+// minutes while the picker waits. A source failing alone degrades the result
+// (reported in the flags) — typically Tesera behind its bot guard — and only
+// a request with both catalogues unconfigured is an error.
 func (s *GameService) SuggestGames(ctx context.Context, query string) (SuggestResult, error) {
 	if s.Bgg == nil && s.Tesera == nil {
 		return SuggestResult{}, ErrCataloguesUnavailable
 	}
 	res := SuggestResult{}
-	res.Games, res.BggUnavailable = s.suggestFromBgg(ctx, query)
+	sctx, cancel := context.WithTimeout(ctx, suggestTimeout)
+	defer cancel()
 	var candidates []*tesera.Candidate
-	candidates, res.TeseraUnavailable = s.teseraCandidates(ctx, query)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		res.Games, res.BggUnavailable = s.suggestFromBgg(sctx, query)
+	}()
+	go func() {
+		defer wg.Done()
+		candidates, res.TeseraUnavailable = s.teseraCandidates(sctx, query)
+	}()
+	wg.Wait()
 	res.Games = mergeSuggestions(res.Games, candidates, query)
 	return res, nil
 }
@@ -578,8 +625,10 @@ func (s *GameService) teseraCandidates(ctx context.Context, query string) ([]*te
 
 // mergeSuggestions attaches Tesera rows to their BGG matches (by the BGG id
 // when Tesera knows it, otherwise by the normalized titles), appends the rest
-// as Tesera-only rows, and sorts: exact normalized matches first, then base
-// games before additions, capped at suggestResultLimit.
+// as Tesera-only rows, and sorts by query relevance: exact normalized match,
+// then word-prefix match, then contains; base games before additions within a
+// tier, shorter titles first (BGG's own rank survives as the stable
+// tiebreak), capped at suggestResultLimit.
 func mergeSuggestions(bggSuggestions []GameSuggestion, candidates []*tesera.Candidate, query string) []GameSuggestion {
 	games := make([]GameSuggestion, 0, len(bggSuggestions)+len(candidates))
 	used := make(map[int64]bool, len(candidates))
@@ -616,26 +665,28 @@ func mergeSuggestions(bggSuggestions []GameSuggestion, candidates []*tesera.Cand
 
 	type scored struct {
 		suggestion GameSuggestion
-		exact      bool
+		tier       int
 		addition   bool
+		titleLen   int
 	}
 	norm := tesera.NormalizeName(query)
 	out := make([]scored, 0, len(games))
 	for _, g := range games {
-		exact := norm != "" &&
-			(norm == tesera.NormalizeName(g.Title) ||
-				(g.NameEn != "" && norm == tesera.NormalizeName(g.NameEn)) ||
-				(g.NameRu != "" && norm == tesera.NormalizeName(g.NameRu)))
-		out = append(out, scored{suggestion: g, exact: exact, addition: g.IsAddition})
+		out = append(out, scored{
+			suggestion: g,
+			tier:       suggestionTier(norm, g),
+			addition:   g.IsAddition,
+			titleLen:   len(tesera.NormalizeName(g.Title)),
+		})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].exact != out[j].exact {
-			return out[i].exact
+		if out[i].tier != out[j].tier {
+			return out[i].tier < out[j].tier
 		}
 		if out[i].addition != out[j].addition {
 			return !out[i].addition
 		}
-		return false
+		return out[i].titleLen < out[j].titleLen
 	})
 	if len(out) > suggestResultLimit {
 		out = out[:suggestResultLimit]
@@ -645,6 +696,36 @@ func mergeSuggestions(bggSuggestions []GameSuggestion, candidates []*tesera.Cand
 		games = append(games, o.suggestion)
 	}
 	return games
+}
+
+// suggestionTier ranks a candidate against the normalized query by its best
+// matching name (title, English, Russian): 0 exact equality, 1 word-boundary
+// prefix, 2 substring, 3 no match on any of them (the candidate matched via
+// some other name the row does not carry). The prefix tier is what keeps a
+// base game named "Eclipse: Second Dawn for the Galaxy" ahead of the flood
+// of same-prefix expansions when the user types "eclipse".
+func suggestionTier(norm string, g GameSuggestion) int {
+	best := 3
+	for _, name := range []string{g.Title, g.NameEn, g.NameRu} {
+		nn := tesera.NormalizeName(name)
+		var tier int
+		switch {
+		case norm == "" || nn == "":
+			tier = 3
+		case nn == norm:
+			tier = 0
+		case strings.HasPrefix(nn, norm+" "):
+			tier = 1
+		case strings.Contains(nn, norm):
+			tier = 2
+		default:
+			tier = 3
+		}
+		if tier < best {
+			best = tier
+		}
+	}
+	return best
 }
 
 // candidateMatches ties a Tesera row to a BGG suggestion. The BGG id wins
@@ -693,10 +774,16 @@ func (s *GameService) AutoMatchGames(ctx context.Context, actor id.ID) ([]AutoMa
 		default:
 			_, alias := canonicalizeNames(g.Name, cand.NameRu, cand.NameEn)
 			nameRu, nameEn := cand.NameRu, cand.NameEn
-			bgg, teseraRef := cand.BggRef, cand.TeseraRef
 			// The patch is full-state: carry the game's own mode through so
-			// an auto-match never resets it (ADR-33).
+			// an auto-match never resets it (ADR-33), and its BGG reference
+			// when the Tesera match knows no BGG link — a NULL would erase a
+			// good reference along with its box art.
 			mode := g.GameMode
+			bgg := int64Of(g.BggID)
+			if cand.BggRef != 0 {
+				bgg = cand.BggRef
+			}
+			teseraRef := cand.TeseraRef
 			patch := GameMetaPatch{
 				Alias:     strPtr(alias),
 				NameEn:    strPtr(nameEn),
@@ -759,87 +846,74 @@ func (s *GameService) findExactMatch(ctx context.Context, name string) (*tesera.
 	return flaggedExact, nil
 }
 
-// EnrichGameImages stores BGG box-art URLs for every game that has a BGG
-// reference but no image yet. One batched /thing request covers the whole
-// backlog (the client paces multi-batch runs per BGG's rate guidance);
-// per-game failures are reported in the response and skipped, never fatal.
-func (s *GameService) EnrichGameImages(ctx context.Context, actor id.ID) ([]BggEnrichResult, error) {
+// RefreshGameArt re-fetches and stores one game's box art by its stored BGG
+// reference, overwriting whatever URLs are already there — the manual remedy
+// for wrong or stale art (the automatic paths only fill empty images). BGG
+// knowing no such thing, or the thing carrying no art, reports a reason
+// instead of touching the stored URLs; a failed request surfaces as
+// ErrBggUnavailable.
+func (s *GameService) RefreshGameArt(ctx context.Context, gameID id.ID, actor id.ID) (ArtRefreshResult, error) {
 	if s.Bgg == nil {
-		return nil, ErrBggUnavailable
+		return ArtRefreshResult{}, ErrBggUnavailable
 	}
-	rows, err := s.Queries.ListGamesForBggEnrich(ctx)
+	game, err := s.Queries.GetGameByID(ctx, gameID)
 	if err != nil {
-		return nil, fmt.Errorf("list games for bgg enrich: %w", err)
+		return ArtRefreshResult{}, fmt.Errorf("get game: %w", err)
 	}
-
-	results := make([]BggEnrichResult, 0, len(rows))
-	if len(rows) == 0 {
-		return results, nil
+	if !game.BggID.Valid {
+		return ArtRefreshResult{}, ErrGameBggRefMissing
 	}
-	ids := make([]int64, 0, len(rows))
-	for _, g := range rows {
-		ids = append(ids, int64Of(g.BggID))
+	res := ArtRefreshResult{GameID: game.ID, Name: game.Name}
+	things, err := s.Bgg.GetThings(ctx, []int64{int64(game.BggID.Int32)})
+	if err != nil {
+		return ArtRefreshResult{}, fmt.Errorf("%w: %w", ErrBggUnavailable, err)
 	}
-	things, fetchErr := s.Bgg.GetThings(ctx, ids)
-	byBggID := make(map[int64]bgg.Thing, len(things))
-	for _, t := range things {
-		byBggID[t.BggID] = t
+	if len(things) == 0 {
+		res.Reason = "not found on BGG"
+		return res, nil
 	}
-
-	for _, g := range rows {
-		res := BggEnrichResult{GameID: g.ID, Name: g.Name}
-		thing, fetched := byBggID[int64Of(g.BggID)]
-		switch {
-		case fetched && thing.ImageURL == "" && thing.ThumbURL == "":
-			res.Reason = "no image on BGG"
-		case fetched:
-			if err := s.applyBggImages(ctx, g.ID, g.Name, thing, actor); err != nil {
-				log.Printf("bgg enrich: store images for %s: %v", g.Name, err)
-				res.Reason = "update failed"
-			} else {
-				res.Enriched = true
-			}
-		case fetchErr != nil:
-			// Its batch failed while others may have succeeded — partial
-			// results were applied above.
-			res.Reason = "bgg request failed"
-		default:
-			res.Reason = "not found on BGG"
-		}
-		results = append(results, res)
+	thing := things[0]
+	if thing.ImageURL == "" && thing.ThumbURL == "" {
+		res.Reason = "no image on BGG"
+		return res, nil
 	}
-	return results, nil
+	if err := s.applyBggImages(ctx, gameID, thing, actor); err != nil {
+		return ArtRefreshResult{}, fmt.Errorf("store images: %w", err)
+	}
+	res.Refreshed = true
+	res.ImageURL = thing.ImageURL
+	res.ImageThumbURL = thing.ThumbURL
+	return res, nil
 }
 
-// applyBggImages persists one game's box-art URLs in its own transaction with
-// an audit event on the first fill. A concurrent enrich cannot double-apply:
-// the row is re-read inside the transaction and only NULL→set transitions
-// audit.
-func (s *GameService) applyBggImages(ctx context.Context, gameID id.ID, name string, thing bgg.Thing, actor id.ID) error {
+// applyBggImages persists one game's box-art URLs in its own transaction,
+// auditing whenever a stored URL actually changes (a first fill records the
+// To side only; an overwrite by a manual refresh records From→To). A
+// concurrent apply cannot double-audit: the row is re-read inside the
+// transaction and unchanged URLs record nothing.
+func (s *GameService) applyBggImages(ctx context.Context, gameID id.ID, thing bgg.Thing, actor id.ID) error {
 	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		current, err := q.GetGameByID(ctx, gameID)
 		if err != nil {
 			return err
 		}
-		firstFill := !current.ImageUrl.Valid && !current.ImageThumbUrl.Valid
+		imageURL, imageThumbURL := pgText(thing.ImageURL), pgText(thing.ThumbURL)
 		if _, err := q.UpdateGameBggImages(ctx, db.UpdateGameBggImagesParams{
 			ID:            gameID,
-			ImageUrl:      pgText(thing.ImageURL),
-			ImageThumbUrl: pgText(thing.ThumbURL),
+			ImageUrl:      imageURL,
+			ImageThumbUrl: imageThumbURL,
 		}); err != nil {
 			return err
 		}
-		if firstFill {
-			d := audit.NewGameUpdateDetails()
-			if thing.ImageURL != "" {
-				d.ImageURL = &audit.ValueChange{To: &thing.ImageURL}
-			}
-			if thing.ThumbURL != "" {
-				d.ImageThumbURL = &audit.ValueChange{To: &thing.ThumbURL}
-			}
-			if !d.IsEmpty() {
-				return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindGameUpdate, d)
-			}
+		d := audit.NewGameUpdateDetails()
+		if textOf(current.ImageUrl) != textOf(imageURL) {
+			d.ImageURL = textChange(current.ImageUrl, imageURL)
+		}
+		if textOf(current.ImageThumbUrl) != textOf(imageThumbURL) {
+			d.ImageThumbURL = textChange(current.ImageThumbUrl, imageThumbURL)
+		}
+		if !d.IsEmpty() {
+			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindGameUpdate, d)
 		}
 		return nil
 	})
@@ -876,7 +950,7 @@ func (s *GameService) enrichGameByID(ctx context.Context, gameID id.ID) error {
 		return nil
 	}
 	// An empty actor records the audit event as a system event.
-	return s.applyBggImages(ctx, gameID, game.Name, things[0], id.ID(""))
+	return s.applyBggImages(ctx, gameID, things[0], id.ID(""))
 }
 
 // displayName is the stored games.name: alias if set, else the localized,
@@ -924,6 +998,12 @@ func buildGameUpdateDetails(old, new db.Game) audit.GameUpdateDetails {
 	}
 	if int64Of(old.TeseraID) != int64Of(new.TeseraID) {
 		d.TeseraRef = &audit.RefChange{From: int4Ref(old.TeseraID), To: int4Ref(new.TeseraID)}
+	}
+	if textOf(old.ImageUrl) != textOf(new.ImageUrl) {
+		d.ImageURL = textChange(old.ImageUrl, new.ImageUrl)
+	}
+	if textOf(old.ImageThumbUrl) != textOf(new.ImageThumbUrl) {
+		d.ImageThumbURL = textChange(old.ImageThumbUrl, new.ImageThumbUrl)
 	}
 	if old.GameMode != new.GameMode {
 		d.GameMode = &audit.StringChange{From: old.GameMode, To: new.GameMode}

@@ -10,14 +10,26 @@ const mocks = vi.hoisted(() => ({
     addPendingGame: vi.fn(),
     patchGamePromise: vi.fn(),
     suggestGamesPromise: vi.fn(),
+    refreshGameArtPromise: vi.fn(),
+    invalidateGames: vi.fn(),
+    toastSuccess: vi.fn(),
+    toastInfo: vi.fn(),
+    toastError: vi.fn(),
 }));
 
 vi.mock("@/app/offline/OfflineContext", () => ({
     useOffline: () => ({ addPendingGame: mocks.addPendingGame }),
 }));
+vi.mock("@/app/gamesContext", () => ({
+    useGames: () => ({ games: [], invalidate: mocks.invalidateGames }),
+}));
+vi.mock("sonner", () => ({
+    toast: { success: mocks.toastSuccess, info: mocks.toastInfo, error: mocks.toastError },
+}));
 vi.mock("@/app/api", () => ({
     patchGamePromise: mocks.patchGamePromise,
     suggestGamesPromise: mocks.suggestGamesPromise,
+    refreshGameArtPromise: mocks.refreshGameArtPromise,
 }));
 
 import { GameEditDialog } from "@/components/admin/game-edit-dialog";
@@ -47,6 +59,15 @@ function findButton(text: string): HTMLButtonElement {
         (b) => b.textContent?.trim() === text,
     );
     if (!button) throw new Error(`button "${text}" not found`);
+    return button;
+}
+
+/** Buttons whose icon carries an SVG <title> never match by exact text. */
+function findButtonContaining(text: string): HTMLButtonElement {
+    const button = Array.from(document.body.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes(text),
+    );
+    if (!button) throw new Error(`button containing "${text}" not found`);
     return button;
 }
 
@@ -84,8 +105,13 @@ describe("GameEditDialog", () => {
         mocks.addPendingGame.mockClear();
         mocks.patchGamePromise.mockReset();
         mocks.suggestGamesPromise.mockReset();
+        mocks.refreshGameArtPromise.mockReset();
+        mocks.invalidateGames.mockClear();
+        mocks.toastSuccess.mockClear();
+        mocks.toastInfo.mockClear();
+        mocks.toastError.mockClear();
         mocks.suggestGamesPromise.mockImplementation(
-            async () => ({ games: [], teseraUnavailable: false, bggUnavailable: false }),
+            async () => ({ games: [], teseraUnavailable: false, bggUnavailable: false, failed: false }),
         );
     });
 
@@ -186,6 +212,7 @@ describe("GameEditDialog", () => {
                 ],
                 teseraUnavailable: true,
                 bggUnavailable: false,
+                failed: false,
             });
             const onClose = vi.fn();
             const onSaved = vi.fn();
@@ -226,5 +253,123 @@ describe("GameEditDialog", () => {
         } finally {
             vi.useRealTimers();
         }
+    });
+
+    it("picker: показывает поиск, а затем сбой каталогов вместо пустого результата", async () => {
+        vi.useFakeTimers();
+        try {
+            let resolveSuggest: (v: unknown) => void = () => {};
+            mocks.suggestGamesPromise.mockImplementation(
+                () => new Promise((resolve) => { resolveSuggest = resolve; }),
+            );
+            const { unmount } = renderDialog(
+                <GameEditDialog game={game} onClose={vi.fn()} onSaved={vi.fn()} />,
+            );
+
+            act(() => {
+                setInputValue(findInput("Название для поиска"), "Скелет Кинг");
+            });
+            // Loading covers the debounce window too — from the first
+            // qualifying keystroke, not 350ms later.
+            expect(document.body.textContent).toContain("Ищем в каталогах…");
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(350);
+            });
+            expect(document.body.textContent).toContain("Ищем в каталогах…");
+
+            await act(async () => {
+                resolveSuggest({ games: [], teseraUnavailable: false, bggUnavailable: false, failed: true });
+            });
+            expect(document.body.textContent).toContain(
+                "Каталоги недоступны — не удалось выполнить поиск.",
+            );
+            expect(document.body.textContent).not.toContain("Ничего не найдено");
+            unmount();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("edit mode: Обновить обложку saves first, then refreshes, and keeps the dialog open", async () => {
+        mocks.patchGamePromise.mockResolvedValue(undefined);
+        mocks.refreshGameArtPromise.mockResolvedValue({
+            id: game.id,
+            name: game.name,
+            refreshed: true,
+            image_url: "https://cf.geekdo-images.com/original/img/sk.png",
+            image_thumb_url: "https://cf.geekdo-images.com/small/img/sk.png",
+            reason: null,
+        });
+        const onClose = vi.fn();
+        const onSaved = vi.fn();
+        const { unmount } = renderDialog(
+            <GameEditDialog game={game} onClose={onClose} onSaved={onSaved} />,
+        );
+
+        act(() => {
+            findButtonContaining("Обновить обложку").click();
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        // The refresh persists the possibly-just-typed BGG id before fetching
+        // by it, and overwrites the preview with the returned art.
+        expect(mocks.patchGamePromise).toHaveBeenCalledWith(game.id, {
+            alias: null,
+            name_en: "Skull King",
+            name_ru: "Скелет Кинг",
+            bgg_ref: 12345,
+            tesera_ref: null,
+            game_mode: "competitive",
+        });
+        expect(mocks.refreshGameArtPromise).toHaveBeenCalledWith(game.id);
+        expect(mocks.patchGamePromise.mock.invocationCallOrder[0]).toBeLessThan(
+            mocks.refreshGameArtPromise.mock.invocationCallOrder[0],
+        );
+        expect(mocks.toastSuccess).toHaveBeenCalledTimes(1);
+        expect(mocks.invalidateGames).toHaveBeenCalledTimes(1);
+        const img = document.body.querySelector("img");
+        expect(img?.getAttribute("src")).toBe("https://cf.geekdo-images.com/small/img/sk.png");
+        // The dialog stays open for further edits.
+        expect(onSaved).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+        unmount();
+    });
+
+    it("edit mode: Обновить обложку disabled without a BGG id; a reason reports instead of success", async () => {
+        const noBgg = { ...game, bgg_ref: null };
+        mocks.patchGamePromise.mockResolvedValue(undefined);
+        mocks.refreshGameArtPromise.mockResolvedValue({
+            id: game.id,
+            name: game.name,
+            refreshed: false,
+            image_url: null,
+            image_thumb_url: null,
+            reason: "no image on BGG",
+        });
+        const { unmount } = renderDialog(
+            <GameEditDialog game={noBgg} onClose={vi.fn()} onSaved={vi.fn()} />,
+        );
+
+        expect(findButtonContaining("Обновить обложку").disabled).toBe(true);
+        // Typing an id enables the flow.
+        act(() => {
+            const inputs = Array.from(document.body.querySelectorAll("input[inputmode='numeric']"));
+            setInputValue(inputs[0] as HTMLInputElement, "12345");
+        });
+        expect(findButtonContaining("Обновить обложку").disabled).toBe(false);
+
+        act(() => {
+            findButtonContaining("Обновить обложку").click();
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+        expect(mocks.refreshGameArtPromise).toHaveBeenCalledWith(noBgg.id);
+        expect(mocks.toastInfo).toHaveBeenCalledTimes(1);
+        expect(mocks.toastSuccess).not.toHaveBeenCalled();
+        unmount();
     });
 });

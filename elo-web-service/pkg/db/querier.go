@@ -446,10 +446,6 @@ type Querier interface {
 	// still live.
 	ListGameTables(ctx context.Context, tenantID id.ID) ([]GameTable, error)
 	ListGameTags(ctx context.Context) ([]ListGameTagsRow, error)
-	// Games carrying a BGG reference whose box art has not been fetched yet.
-	// The both-NULL predicate means a row enriched with only one URL (BGG has a
-	// thumbnail but no full image) leaves the enrichment set for good.
-	ListGamesForBggEnrich(ctx context.Context) ([]Game, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListGamesWithoutTeseraRef(ctx context.Context) ([]Game, error)
 	// The current state (latest settlement row) of every player in the arena.
