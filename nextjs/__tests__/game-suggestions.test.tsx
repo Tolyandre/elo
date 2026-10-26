@@ -9,7 +9,7 @@ vi.mock("@/app/api", () => ({
     suggestGamesPromise: vi.fn(),
 }));
 
-import { GameSuggestionChips, suggestionMeta } from "@/components/game-suggestions";
+import { GameSuggestionChips, suggestionMeta, suggestionName } from "@/components/game-suggestions";
 import type { GameSuggestion } from "@/app/api";
 
 function render(ui: React.ReactElement): void {
@@ -184,5 +184,13 @@ describe("GameSuggestionChips", () => {
         );
         expect(document.body.textContent).toContain("Каталог Tesera недоступен — показаны результаты BoardGameGeek.");
         expect(document.body.textContent).toContain("BoardGameGeek недоступен — показаны результаты Tesera.");
+    });
+});
+
+describe("suggestionName", () => {
+    it("prefers the Russian canonical name, then English, then the display title", () => {
+        expect(suggestionName({ ...carcassonne, name_ru: "Каркассон" })).toBe("Каркассон");
+        expect(suggestionName(carcassonne)).toBe("Carcassonne");
+        expect(suggestionName({ ...carcassonne, bgg_ref: null, name_en: null, title: "Каркассон" })).toBe("Каркассон");
     });
 });

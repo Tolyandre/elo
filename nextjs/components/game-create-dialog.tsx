@@ -27,6 +27,7 @@ import {
   AcceptedGameSuggestion,
   GameSuggestionChips,
   suggestionMeta,
+  suggestionName,
   useGameSuggestions,
 } from "@/components/game-suggestions"
 import { useTags } from "@/app/tagsContext"
@@ -95,7 +96,9 @@ function GameCreateForm({
   const [selectedTagIds, setSelectedTagIds] = React.useState<Set<Base58ID>>(new Set())
   const [gameMode, setGameMode] = React.useState<GameMode>("competitive")
   const [creating, setCreating] = React.useState(false)
+  const [saved, setSaved] = React.useState(false)
   const [accepted, setAccepted] = React.useState<AcceptedGameSuggestion | null>(null)
+  const [queuedId, setQueuedId] = React.useState<Base58ID | null>(null)
 
   // Catalogue suggestions for the typed name; best-effort — a network failure
   // or offline state simply leaves the list empty and creation continues.
@@ -106,11 +109,20 @@ function GameCreateForm({
   // would only fail at sync time with the unique-name error. Both lists come
   // from local sources (localStorage cache / offline store), so the check
   // works fully offline; with neither available it simply finds nothing and
-  // the server stays the final gate.
+  // the server stays the final gate. Two exclusions keep a successful save
+  // from flashing the error while the dialog fades out: the game this dialog
+  // itself queued (the store update lands first), and — once saved — every
+  // later candidate change, because the auto-sync's invalidateGames can drop
+  // the refreshed server list (the new game included) into `games` mid-animation.
   const duplicate = React.useMemo(
-    () => findDuplicateGame([...games, ...pendingGames], name),
-    [games, pendingGames, name],
+    () =>
+      findDuplicateGame(
+        [...games, ...pendingGames.filter((g) => g.clientId !== queuedId)],
+        name,
+      ),
+    [games, pendingGames, queuedId, name],
   )
+  const duplicateError = saved ? null : duplicate
 
   const sortedTags = React.useMemo(
     () => [...tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
@@ -128,7 +140,7 @@ function GameCreateForm({
 
   async function confirmCreate() {
     const trimmed = name.trim()
-    if (!trimmed || creating || duplicate) return
+    if (!trimmed || creating || saved || duplicate) return
     setCreating(true)
     try {
       const game = addPendingGame(trimmed, [...selectedTagIds], {
@@ -138,6 +150,11 @@ function GameCreateForm({
         teseraRef: accepted?.teseraRef,
         gameMode,
       })
+      setQueuedId(game.clientId)
+      // Validation output freezes from here on: the form keeps rendering
+      // through the dialog's close animation, and must not react to the
+      // queue/store/server-list churn the save itself kicks off.
+      setSaved(true)
       onClose()
       onCreated(game.clientId)
     } finally {
@@ -154,11 +171,11 @@ function GameCreateForm({
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmCreate(); } }}
         autoFocus
         aria-label="Название новой игры"
-        aria-invalid={duplicate != null || undefined}
+        aria-invalid={duplicateError != null || undefined}
       />
-      {duplicate && (
+      {duplicateError && (
         <p className="text-destructive text-sm" role="alert">
-          Игра «{accentName(duplicate)}» уже существует
+          Игра «{accentName(duplicateError)}» уже существует
         </p>
       )}
       <div className="space-y-1.5">
@@ -179,7 +196,14 @@ function GameCreateForm({
       <GameSuggestionChips
         suggestions={suggestions.suggestions}
         accepted={accepted}
-        onAccept={(s) => setAccepted(suggestionMeta(s))}
+        onAccept={(s) => {
+          setAccepted(suggestionMeta(s))
+          // The typed search text is rarely a canonical title; the queued
+          // name must be one of the forwarded canonical names (ru, else en),
+          // or AddGame derives the typed text into an alias — which this
+          // dialog never wants.
+          setName(suggestionName(s))
+        }}
         onClear={() => setAccepted(null)}
         loading={suggestions.loading}
         failed={suggestions.failed}

@@ -28,6 +28,16 @@ export function suggestionMeta(s: GameSuggestion): AcceptedGameSuggestion {
 }
 
 /**
+ * The catalogue name to create the game under: the curated Russian title
+ * when known, else the canonical English one, else the display title. Always
+ * one of the names the create payload forwards, so the server's
+ * canonicalizeNames keeps it as the display name and derives no alias.
+ */
+export function suggestionName(s: GameSuggestion): string {
+    return s.name_ru || s.name_en || s.title
+}
+
+/**
  * Debounced catalogue lookups for a name being typed. Failures resolve to an
  * empty list inside suggestGamesPromise, so suggestions never block creation;
  * `failed` distinguishes that from a genuine no-match, and the
