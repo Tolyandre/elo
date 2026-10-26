@@ -128,7 +128,7 @@ describe("GameEditDialog", () => {
         expect(add().disabled).toBe(true);
 
         act(() => {
-            setInputValue(findInput("например, Скелет Кинг"), "Скелет Кинг");
+            setInputValue(findInput("например, Бутылочка"), "Скелет Кинг");
         });
         expect(add().disabled).toBe(false);
 
@@ -234,10 +234,13 @@ describe("GameEditDialog", () => {
             );
 
             // Accepting a BGG-only candidate fills the English name and the
-            // BGG id; the empty Tesera id stays empty.
+            // BGG id; the empty Tesera id stays empty. The alias field is
+            // never touched by a pick — the queued name falls back to the
+            // canonical English title.
             act(() => {
                 findButton("Carcassonne").click();
             });
+            expect(findInput("например, Бутылочка").value).toBe("");
             act(() => {
                 findButton("Добавить").click();
             });
@@ -249,6 +252,57 @@ describe("GameEditDialog", () => {
                 gameMode: "competitive",
             });
             expect(onSaved).toHaveBeenCalledTimes(1);
+            unmount();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("picker: выбор кандидата оставляет псевдоним без изменений", async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.suggestGamesPromise.mockResolvedValue({
+                games: [
+                    {
+                        bgg_ref: 822,
+                        tesera_ref: 62490,
+                        name_en: "Carcassonne",
+                        name_ru: "Каркассон",
+                        title: "Carcassonne",
+                        is_addition: false,
+                    },
+                ],
+                teseraUnavailable: false,
+                bggUnavailable: false,
+                failed: false,
+            });
+            const withAlias = { ...game, alias: "Бутылочка" };
+            const { unmount } = renderDialog(
+                <GameEditDialog game={withAlias} onClose={vi.fn()} onSaved={vi.fn()} />,
+            );
+
+            act(() => {
+                setInputValue(findInput("Название для поиска"), "Каркассон");
+            });
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(350);
+            });
+            act(() => {
+                findButtonContaining("Carcassonne").click();
+            });
+
+            // The pick fills the canonical fields but never rewrites the alias.
+            expect(findInput("например, Бутылочка").value).toBe("Бутылочка");
+            act(() => {
+                findButton("Сохранить").click();
+            });
+            await act(async () => {
+                await Promise.resolve();
+            });
+            expect(mocks.patchGamePromise).toHaveBeenCalledWith(
+                withAlias.id,
+                expect.objectContaining({ alias: "Бутылочка", name_en: "Carcassonne", name_ru: "Каркассон" }),
+            );
             unmount();
         } finally {
             vi.useRealTimers();

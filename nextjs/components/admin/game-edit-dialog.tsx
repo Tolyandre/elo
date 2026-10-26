@@ -44,17 +44,17 @@ type GameRow = GameListItem;
 
 /**
  * Game metadata editor doubling as the create form. `game = null` creates a
- * new game: a required name plus the same metadata, queued through the
- * offline store (addPendingGame — the typed name becomes the alias
- * server-side when it differs from the canonical names), so creation works
- * offline exactly like the old inline form did. With a game, the full
- * metadata state is PATCHed. Both modes share the canonical names, BGG/Tesera
- * ids, game mode, and a catalogue picker (BGG first, Tesera second) that fills
- * the canonical fields from a picked candidate. Editing also carries the
- * box-art row: a preview plus an explicit refresh that overwrites stored art
- * (the automatic enrichment only fills empty images). The server recomputes
- * the display name (alias/name → ru → English)
- * and rejects a save that leaves no name at all.
+ * new game: the same fields as the editor, queued through the offline store
+ * (addPendingGame — the queued name is the display fallback alias → ru → en,
+ * and AddGame re-derives the alias server-side when it differs from the
+ * canonical names), so creation works offline exactly like the old inline
+ * form did. With a game, the full metadata state is PATCHed. Both modes share
+ * the alias, canonical names, BGG/Tesera ids, game mode, and a catalogue
+ * picker (BGG first, Tesera second) that fills the canonical fields from a
+ * picked candidate — never the alias. Editing also carries the box-art row: a
+ * preview plus an explicit refresh that overwrites stored art (the automatic
+ * enrichment only fills empty images). The server recomputes the display name
+ * (alias/name → ru → English) and rejects a save that leaves no name at all.
  */
 export function GameEditDialog({
     game,
@@ -67,7 +67,6 @@ export function GameEditDialog({
 }) {
     const { addPendingGame } = useOffline();
     const { invalidate: invalidateGames } = useGames();
-    const [name, setName] = useState("");
     const [alias, setAlias] = useState(game?.alias ?? "");
     const [nameEn, setNameEn] = useState(game?.name_en ?? "");
     const [nameRu, setNameRu] = useState(game?.name_ru ?? "");
@@ -84,8 +83,8 @@ export function GameEditDialog({
 
     const { suggestions, loading: searching, failed: searchFailed, teseraUnavailable, bggUnavailable } = useGameSuggestions(pickerQuery, pickerQuery.trim().length >= 2);
 
-    const preview = [game ? alias.trim() : name.trim(), nameRu.trim(), nameEn.trim()].find((n) => n !== "") ?? "";
-    const canSave = game ? preview !== "" : name.trim() !== "";
+    const preview = [alias.trim(), nameRu.trim(), nameEn.trim()].find((n) => n !== "") ?? "";
+    const canSave = preview !== "";
 
     /** The full-state metadata payload both save and the art refresh persist. */
     function metadata(): GameMetadata {
@@ -104,8 +103,11 @@ export function GameEditDialog({
         if (!game) {
             const meta = metadata();
             // Creates always queue (the clientId is the final server id); the
-            // sync flushes it within a round trip while online.
-            addPendingGame(name.trim(), [], {
+            // sync flushes it within a round trip while online. The queue's
+            // name is the display fallback (alias → ru → en): AddGame turns it
+            // into an alias server-side when it differs from the canonical
+            // names, and keeps it as the only canonical name otherwise.
+            addPendingGame(preview, [], {
                 nameEn: meta.name_en ?? null,
                 nameRu: meta.name_ru ?? null,
                 bggRef: meta.bgg_ref ?? null,
@@ -155,9 +157,12 @@ export function GameEditDialog({
         }
     }
 
-    /** Accepting a candidate fills the canonical names and links, keeping the alias. */
+    /**
+     * Accepting a candidate fills the canonical names and links only — the
+     * alias stays the user's own convenient name (empty means "display under
+     * the canonical name").
+     */
     function accept(s: GameSuggestion) {
-        if (!game && !name.trim()) setName(s.title);
         setNameEn(s.name_en ?? "");
         setNameRu(s.name_ru ?? "");
         setBggRef(s.bgg_ref != null ? String(s.bgg_ref) : "");
@@ -172,45 +177,31 @@ export function GameEditDialog({
                         {game ? <>Изменить игру «{accentName(game)}»</> : "Новая игра"}
                     </DialogTitle>
                     <DialogDescription>
-                        {game
-                            ? "Отображаемое название: псевдоним, иначе русское, иначе английское."
-                            : "Отображаемое название: название, иначе русское, иначе английское."}
+                        Отображаемое название: псевдоним, иначе русское, иначе английское.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="flex flex-col gap-3">
-                    {!game && (
-                        <label className="flex flex-col gap-1 text-sm">
-                            Название
+                    <label className="flex flex-col gap-1 text-sm">
+                        Псевдоним (удобное название на русском)
+                        <div className="flex gap-2">
                             <Input
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                placeholder="например, Скелет Кинг"
+                                value={alias}
+                                onChange={(e) => setAlias(e.target.value)}
+                                placeholder="например, Бутылочка"
                             />
-                        </label>
-                    )}
-                    {game && (
-                        <label className="flex flex-col gap-1 text-sm">
-                            Псевдоним (удобное название на русском)
-                            <div className="flex gap-2">
-                                <Input
-                                    value={alias}
-                                    onChange={(e) => setAlias(e.target.value)}
-                                    placeholder="например, Бутылочка"
-                                />
-                                {game.alias && (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setAlias("")}
-                                        title="Убрать псевдоним — игра будет отображаться под каноническим названием"
-                                    >
-                                        Убрать
-                                    </Button>
-                                )}
-                            </div>
-                        </label>
-                    )}
+                            {game?.alias && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setAlias("")}
+                                    title="Убрать псевдоним — игра будет отображаться под каноническим названием"
+                                >
+                                    Убрать
+                                </Button>
+                            )}
+                        </div>
+                    </label>
                     <label className="flex flex-col gap-1 text-sm">
                         Название на английском (если игра издавалась официально)
                         <Input
