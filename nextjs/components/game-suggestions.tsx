@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, X } from "lucide-react"
+import { X } from "lucide-react"
 
 import { suggestGamesPromise, type GameSuggestion } from "@/app/api"
 import { cn } from "@/lib/utils"
@@ -95,6 +95,76 @@ export function suggestionLabel(s: GameSuggestion): string {
 }
 
 /**
+ * One clickable catalogue match — the shared chip style for every BGG/Tesera
+ * picker. Additions are dimmed in addition to their «дополнение» label: the
+ * flag is unreliable, so the user decides, but the hint steers the eye.
+ */
+export function GameSuggestionChip({
+    suggestion,
+    onPick,
+}: {
+    suggestion: GameSuggestion
+    onPick: (s: GameSuggestion) => void
+}) {
+    return (
+        <button
+            type="button"
+            onClick={() => onPick(suggestion)}
+            className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors hover:bg-accent text-left",
+                suggestion.is_addition && "opacity-70",
+            )}
+        >
+            {suggestionLabel(suggestion)}
+        </button>
+    )
+}
+
+/**
+ * The catalogue-status hints: a search in progress, a failed search, and the
+ * per-catalogue degradation. Shared by every BGG/Tesera picker so the
+ * wording stays identical; a degraded catalogue is not an error, and a
+ * search in progress is not "no results".
+ */
+export function GameSuggestionsStatus({
+    loading,
+    failed,
+    teseraUnavailable,
+    bggUnavailable,
+}: {
+    loading?: boolean
+    failed?: boolean
+    teseraUnavailable?: boolean
+    bggUnavailable?: boolean
+}) {
+    return (
+        <>
+            {loading && (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+                    <Spinner className="size-3" />
+                    Ищем в каталогах…
+                </p>
+            )}
+            {failed && !loading && (
+                <p className="text-xs text-warning">
+                    Каталоги недоступны — не удалось выполнить поиск.
+                </p>
+            )}
+            {teseraUnavailable && (
+                <p className="text-xs text-warning">
+                    Каталог Tesera недоступен — показаны результаты BoardGameGeek.
+                </p>
+            )}
+            {bggUnavailable && (
+                <p className="text-xs text-warning">
+                    BoardGameGeek недоступен — показаны результаты Tesera.
+                </p>
+            )}
+        </>
+    )
+}
+
+/**
  * Clickable catalogue matches: one is "accepted" (highlighted, removable);
  * accepting fills the canonical names and external links. The loading,
  * failed, and unavailable flags render as hints — a degraded catalogue is
@@ -122,29 +192,14 @@ export function GameSuggestionChips({
     if (suggestions.length === 0 && !accepted && !loading && !failed && !teseraUnavailable && !bggUnavailable) return null
     return (
         <div className="flex flex-col gap-1">
-            {loading && (
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
-                    <Spinner className="size-3" />
-                    Ищем в каталогах…
-                </p>
-            )}
+            <GameSuggestionsStatus
+                loading={loading}
+                failed={failed}
+                teseraUnavailable={teseraUnavailable}
+                bggUnavailable={bggUnavailable}
+            />
             {!accepted && !loading && suggestions.length > 0 && (
                 <p className="text-xs text-muted-foreground">Нашли в каталогах:</p>
-            )}
-            {failed && !loading && (
-                <p className="text-xs text-warning">
-                    Каталоги недоступны — не удалось выполнить поиск.
-                </p>
-            )}
-            {teseraUnavailable && (
-                <p className="text-xs text-warning">
-                    Каталог Tesera недоступен — показаны результаты BoardGameGeek.
-                </p>
-            )}
-            {bggUnavailable && (
-                <p className="text-xs text-warning">
-                    BoardGameGeek недоступен — показаны результаты Tesera.
-                </p>
             )}
             <div className="flex flex-wrap gap-1 items-center">
                 {accepted ? (
@@ -158,16 +213,8 @@ export function GameSuggestionChips({
                         <X className="size-3" />
                     </button>
                 ) : (
-                    suggestions.slice(0, 5).map((s) => (
-                        <button
-                            key={suggestionKey(s)}
-                            type="button"
-                            onClick={() => onAccept(s)}
-                            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors hover:bg-accent text-left"
-                        >
-                            <Check className="size-3 shrink-0 opacity-40" />
-                            {suggestionLabel(s)}
-                        </button>
+                    suggestions.map((s) => (
+                        <GameSuggestionChip key={suggestionKey(s)} suggestion={s} onPick={onAccept} />
                     ))
                 )}
             </div>

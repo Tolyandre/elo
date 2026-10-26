@@ -32,8 +32,12 @@ import {
 } from "@/components/ui/select";
 import { GAME_MODES, GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes";
 import { accentName } from "@/lib/game-names";
-import { cn } from "@/lib/utils";
-import { suggestionKey, suggestionLabel, useGameSuggestions } from "@/components/game-suggestions";
+import {
+    GameSuggestionChip,
+    GameSuggestionsStatus,
+    suggestionKey,
+    useGameSuggestions,
+} from "@/components/game-suggestions";
 import { GameImage } from "@/components/game-image";
 
 type GameRow = GameListItem;
@@ -299,46 +303,25 @@ export function GameEditDialog({
                             value={pickerQuery}
                             onChange={(e) => setPickerQuery(e.target.value)}
                         />
-                        {searching && (
-                            <p className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
-                                <Spinner className="size-3" />
-                                Ищем в каталогах…
-                            </p>
-                        )}
-                        {searchFailed && !searching && (
-                            <p className="text-xs text-warning">
-                                Каталоги недоступны — не удалось выполнить поиск.
-                            </p>
-                        )}
-                        {teseraUnavailable && (
-                            <p className="text-xs text-warning">
-                                Каталог Tesera недоступен — показаны результаты BoardGameGeek.
-                            </p>
-                        )}
-                        {bggUnavailable && (
-                            <p className="text-xs text-warning">
-                                BoardGameGeek недоступен — показаны результаты Tesera.
-                            </p>
-                        )}
+                        <GameSuggestionsStatus
+                            loading={searching}
+                            failed={searchFailed}
+                            teseraUnavailable={teseraUnavailable}
+                            bggUnavailable={bggUnavailable}
+                        />
                         {pickerQuery.trim().length >= 2 && !searching && !searchFailed && suggestions.length === 0 && !teseraUnavailable && !bggUnavailable && (
                             <p className="text-xs text-muted-foreground">Ничего не найдено</p>
                         )}
                         <div className="flex flex-wrap gap-1">
                             {suggestions.map((s) => (
-                                <button
+                                <GameSuggestionChip
                                     key={suggestionKey(s)}
-                                    type="button"
-                                    onClick={() => {
-                                        accept(s);
+                                    suggestion={s}
+                                    onPick={(picked) => {
+                                        accept(picked);
                                         setPickerQuery("");
                                     }}
-                                    className={cn(
-                                        "rounded-full border px-2 py-0.5 text-xs transition-colors hover:bg-accent text-left",
-                                        s.is_addition && "opacity-70",
-                                    )}
-                                >
-                                    {suggestionLabel(s)}
-                                </button>
+                                />
                             ))}
                         </div>
                     </div>

@@ -13,6 +13,7 @@ import { GameSuggestionChips } from "@/components/game-suggestions";
 import type { GameSuggestion } from "@/app/api";
 
 function render(ui: React.ReactElement): void {
+    document.body.innerHTML = "";
     const container = document.createElement("div");
     document.body.appendChild(container);
     act(() => {
@@ -83,6 +84,46 @@ describe("GameSuggestionChips", () => {
         const chips = Array.from(document.body.querySelectorAll("button")).map((b) => b.textContent);
         expect(chips).toContain("Carcassonne (2000)");
         expect(chips).toContain("Carcassonne: The River (2000) · дополнение");
+    });
+
+    it("renders every suggestion — the server already caps the list, no local slice", () => {
+        const six = Array.from({ length: 6 }, (_, i): GameSuggestion => ({
+            ...carcassonne,
+            bgg_ref: carcassonne.bgg_ref! + i + 1,
+            title: `Carcassonne ${i + 2}`,
+            name_en: `Carcassonne ${i + 2}`,
+        }));
+        render(
+            <GameSuggestionChips
+                suggestions={six}
+                accepted={null}
+                onAccept={() => {}}
+                onClear={() => {}}
+            />,
+        );
+        const chips = Array.from(document.body.querySelectorAll("button"));
+        expect(chips).toHaveLength(6);
+        expect(chips.map((b) => b.textContent)).toContain("Carcassonne 7 (2000)");
+    });
+
+    it("dims addition chips the way the admin picker does", () => {
+        const addition: GameSuggestion = {
+            ...carcassonne,
+            title: "Carcassonne: The River",
+            name_en: "Carcassonne: The River",
+            is_addition: true,
+        };
+        render(
+            <GameSuggestionChips
+                suggestions={[carcassonne, addition]}
+                accepted={null}
+                onAccept={() => {}}
+                onClear={() => {}}
+            />,
+        );
+        const chips = Array.from(document.body.querySelectorAll("button"));
+        expect(chips[0].className).not.toContain("opacity-70");
+        expect(chips[1].className).toContain("opacity-70");
     });
 
     it("renders the per-catalogue degradation hints", () => {
