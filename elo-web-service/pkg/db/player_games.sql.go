@@ -12,10 +12,11 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-const addPlayerGame = `-- name: AddPlayerGame :exec
+const addPlayerGame = `-- name: AddPlayerGame :one
 INSERT INTO player_games (player_id, game_id)
 VALUES ($1, $2)
 ON CONFLICT DO NOTHING
+RETURNING game_id
 `
 
 type AddPlayerGameParams struct {
@@ -23,9 +24,13 @@ type AddPlayerGameParams struct {
 	GameID   id.ID `json:"game_id"`
 }
 
-func (q *Queries) AddPlayerGame(ctx context.Context, arg AddPlayerGameParams) error {
-	_, err := q.db.Exec(ctx, addPlayerGame, arg.PlayerID, arg.GameID)
-	return err
+// The returning row exists only on a real insert: a duplicate add (the
+// idempotent replay) inserts nothing and reads as ErrNoRows.
+func (q *Queries) AddPlayerGame(ctx context.Context, arg AddPlayerGameParams) (id.ID, error) {
+	row := q.db.QueryRow(ctx, addPlayerGame, arg.PlayerID, arg.GameID)
+	var game_id id.ID
+	err := row.Scan(&game_id)
+	return game_id, err
 }
 
 const countPlayerGames = `-- name: CountPlayerGames :one
@@ -92,9 +97,10 @@ func (q *Queries) GetPlayerGameCollection(ctx context.Context, playerID id.ID) (
 	return items, nil
 }
 
-const removePlayerGame = `-- name: RemovePlayerGame :exec
+const removePlayerGame = `-- name: RemovePlayerGame :one
 DELETE FROM player_games
 WHERE player_id = $1 AND game_id = $2
+RETURNING game_id
 `
 
 type RemovePlayerGameParams struct {
@@ -102,7 +108,11 @@ type RemovePlayerGameParams struct {
 	GameID   id.ID `json:"game_id"`
 }
 
-func (q *Queries) RemovePlayerGame(ctx context.Context, arg RemovePlayerGameParams) error {
-	_, err := q.db.Exec(ctx, removePlayerGame, arg.PlayerID, arg.GameID)
-	return err
+// The returning row exists only when a membership row was actually deleted:
+// removing a non-member reads as ErrNoRows.
+func (q *Queries) RemovePlayerGame(ctx context.Context, arg RemovePlayerGameParams) (id.ID, error) {
+	row := q.db.QueryRow(ctx, removePlayerGame, arg.PlayerID, arg.GameID)
+	var game_id id.ID
+	err := row.Scan(&game_id)
+	return game_id, err
 }

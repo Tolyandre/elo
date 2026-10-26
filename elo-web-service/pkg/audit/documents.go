@@ -20,6 +20,7 @@ func init() {
 	reg.Register(KindClubUpdate, 1, "club_update.v1.json")
 	reg.Register(KindGameUpdate, 1, "game_update.v1.json")
 	reg.Register(KindPlayerUpdate, 1, "player_update.v1.json")
+	reg.Register(KindPlayerCollection, 1, "player_collection.v1.json")
 	reg.Register(KindTagUpdate, 1, "tag_update.v1.json")
 	reg.Register(KindArenaCampConf, 1, "arena_camp_config.v1.json")
 	reg.Register(KindArenaUpdate, 1, "arena_update.v1.json")
@@ -250,6 +251,38 @@ type PlayerUpdateDetails struct {
 // NewPlayerUpdateDetails builds v1 player-update details.
 func NewPlayerUpdateDetails(from, to string) PlayerUpdateDetails {
 	return PlayerUpdateDetails{SchemaVersion: 1, Name: valueChange(&from, &to)}
+}
+
+// ---------------------------------------------------------------------------
+// Player game collection: one add/remove per event (the UI manages the shelf
+// game-by-game). The entity_id of the row is the player.
+// ---------------------------------------------------------------------------
+
+// Player collection operations (PlayerCollectionDetails.Op).
+const (
+	CollectionAdd    = "add"
+	CollectionRemove = "remove"
+)
+
+// PlayerCollectionDetails records one collection modification: the game by id
+// and by its display title at modification time (a later rename must not
+// rewrite history). An idempotent replay (the game was already in / not in the
+// collection) produces no row.
+type PlayerCollectionDetails struct {
+	SchemaVersion int    `json:"schema_version"`
+	Op            string `json:"op"`
+	GameID        string `json:"game_id"`
+	GameTitle     string `json:"game_title"`
+}
+
+// NewPlayerCollectionAdd builds v1 add details.
+func NewPlayerCollectionAdd(gameID, title string) PlayerCollectionDetails {
+	return PlayerCollectionDetails{SchemaVersion: 1, Op: CollectionAdd, GameID: gameID, GameTitle: title}
+}
+
+// NewPlayerCollectionRemove builds v1 remove details.
+func NewPlayerCollectionRemove(gameID, title string) PlayerCollectionDetails {
+	return PlayerCollectionDetails{SchemaVersion: 1, Op: CollectionRemove, GameID: gameID, GameTitle: title}
 }
 
 // TagUpdateDetails records what changed in one tag update — the name. A

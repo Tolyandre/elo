@@ -89,7 +89,9 @@ AuditEntry:
         name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle)
         or AuditClubUpdateDetails (club name/icon/membership, ADR-36)
         or AuditGameUpdateDetails (game meta, rename included)
-        or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name);
+        or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name)
+        or AuditPlayerCollectionDetails (a game added to / removed from a
+        player's collection);
         arena → AuditArenaCampConfigDetails
         (camp config) or AuditArenaUpdateDetails (user-managed arena
         name/filter/settings, ADR-24) or AuditCampLinkDetails (match attach/detach);
@@ -105,6 +107,7 @@ AuditEntry:
         - $ref: '#/AuditGameUpdateDetails'
         - $ref: '#/AuditPlayerUpdateDetails'
         - $ref: '#/AuditTagUpdateDetails'
+        - $ref: '#/AuditPlayerCollectionDetails'
         - $ref: '#/AuditArenaCampConfigDetails'
         - $ref: '#/AuditArenaUpdateDetails'
         - $ref: '#/AuditCampLinkDetails'
@@ -480,6 +483,27 @@ AuditTagUpdateDetails:
         to:
           type: string
           nullable: true
+
+AuditPlayerCollectionDetails:
+  type: object
+  description: >-
+    One game collection modification on the player the audit row points at: a
+    single game added to or removed from the shelf, named by its display title
+    at modification time (a later rename must not rewrite history). One game
+    per event — the UI manages the collection game-by-game. An idempotent
+    replay (the game was already in / not in the collection) produces no row.
+  required: [schema_version, op, game_id, game_title]
+  properties:
+    schema_version:
+      type: integer
+    op:
+      type: string
+      enum: [add, remove]
+    game_id:
+      $ref: './common.yaml#/Base58ID'
+    game_title:
+      type: string
+      description: The game's display name at modification time.
 
 AuditArenaCampConfigDetails:
   type: object

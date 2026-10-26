@@ -44,6 +44,29 @@ export function AuditEntryDetailsView({ entry }: { entry: AuditEntry }) {
             </dl>
         );
     }
+    if (entry.details?.kind === "player-collection") {
+        const change = entry.details.changes;
+        return (
+            <dl className="space-y-1.5 text-sm">
+                <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-muted-foreground">Игра:</dt>
+                    <dd>
+                        {change.op === "add" ? (
+                            <>
+                                <span className="font-medium">{change.game_title}</span>{" "}
+                                <span className="text-muted-foreground">(добавлена)</span>
+                            </>
+                        ) : (
+                            <>
+                                <span className="line-through text-muted-foreground">{change.game_title}</span>{" "}
+                                <span className="text-muted-foreground">(убрана)</span>
+                            </>
+                        )}
+                    </dd>
+                </div>
+            </dl>
+        );
+    }
     return null;
 }
 

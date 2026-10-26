@@ -2,10 +2,12 @@
 
 package integration_test
 
-// The player game collection ("Коллекция игр"): public read; writes only for
-// the user linked to the player (users.player_id). Add/remove are idempotent
-// (ON CONFLICT DO NOTHING / missing-row DELETE); unknown player or game is a
-// foreign-key violation the handler maps to 400.
+// The player game collection ("Коллекция игр"): public read; writes are
+// editor-gated like every other write — any user with the edit permission may
+// manage any shelf (each real change lands one player-collection audit event).
+// Add/remove are idempotent (ON CONFLICT DO NOTHING / missing-row DELETE, and
+// a replay records no audit event); unknown player or game is a foreign-key
+// violation the handler maps to 400.
 
 import (
 	"context"
@@ -61,18 +63,20 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 	g2 := createTestGame(t, pool, "Библиотечная игра")
 	g3 := createTestGame(t, pool, "Вечерняя игра")
 
-	// The linked user: their users.player_id points at the profile's player.
+	// The linked user without the edit permission: users.player_id points at
+	// the profile's player, but the shelf is no longer theirs alone — managing
+	// it needs the edit permission, which they lack.
 	myToken, myUserID := createTestUserWithID(t, pool, false)
 	if err := q.UpdateUserPlayerID(ctx, db.UpdateUserPlayerIDParams{ID: idpkg.ID(myUserID), PlayerID: &player}); err != nil {
 		t.Fatalf("link my player: %v", err)
 	}
-	// Another authenticated user linked to a different player, plus a bare
-	// editor: neither may manage this shelf.
+	// Another authenticated non-editor linked to a different player.
 	otherToken, otherUserID := createTestUserWithID(t, pool, false)
 	other := createTestPlayer(t, pool, "Посторонний")
 	if err := q.UpdateUserPlayerID(ctx, db.UpdateUserPlayerIDParams{ID: idpkg.ID(otherUserID), PlayerID: &other}); err != nil {
 		t.Fatalf("link other player: %v", err)
 	}
+	// An editor linked to nobody — the one who may manage any shelf.
 	editorToken, _ := createTestUserWithID(t, pool, true)
 
 	// Anonymous GET reads the (empty) collection — no 401 on reads.
@@ -80,11 +84,12 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 		t.Fatalf("anonymous GET = %d, %+v; want 200 with empty collection", code, data)
 	}
 
-	// Writes are closed to the anonymous, the foreign, and the editor user.
+	// Writes are closed to the anonymous and the non-editors — the linked user
+	// included: the gate is the edit permission, not the player link.
 	for _, tc := range []struct{ name, token string }{
 		{"anonymous", ""},
-		{"foreign user", otherToken},
-		{"editor", editorToken},
+		{"linked non-editor", myToken},
+		{"foreign non-editor", otherToken},
 	} {
 		want := http.StatusForbidden
 		if tc.token == "" {
@@ -100,11 +105,12 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 		}
 	}
 
-	// The linked user adds two games; a duplicate add is an idempotent no-op.
+	// The editor (a stranger to this player) adds two games; a duplicate add is
+	// an idempotent no-op.
 	for _, game := range []idpkg.ID{g2, g1, g1} {
-		w := doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", myToken, `{"game_id":"`+game.String()+`"}`)
+		w := doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", editorToken, `{"game_id":"`+game.String()+`"}`)
 		if w.Code != http.StatusOK {
-			t.Fatalf("linked POST %s = %d: %s", game, w.Code, w.Body.String())
+			t.Fatalf("editor POST %s = %d: %s", game, w.Code, w.Body.String())
 		}
 	}
 	code, data := getCollection(t, router, "/players/"+player.String()+"/collection", "")
@@ -122,7 +128,7 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 	guest := createBareTestPlayer(t, pool, "Гость-коллекционера")
 	addMatchDaysAgo(t, ctx, pool, g3, 1, map[idpkg.ID]float64{player: 10, guest: 5})
 	addMatchDaysAgo(t, ctx, pool, g3, 2, map[idpkg.ID]float64{player: 8, guest: 6})
-	w := doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", myToken, `{"game_id":"`+g3.String()+`"}`)
+	w := doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", editorToken, `{"game_id":"`+g3.String()+`"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("linked POST %s = %d: %s", g3, w.Code, w.Body.String())
 	}
@@ -141,7 +147,7 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 	// zero scores): a single coop play of «Гостевая игра» puts it second.
 	g4 := createCoopTestGame(t, pool, "Гостевая игра")
 	addCoopMatchDaysAgo(t, ctx, pool, g4, 1, []idpkg.ID{player, guest})
-	w = doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", myToken, `{"game_id":"`+g4.String()+`"}`)
+	w = doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", editorToken, `{"game_id":"`+g4.String()+`"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("linked POST %s = %d: %s", g4, w.Code, w.Body.String())
 	}
@@ -156,11 +162,12 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 		t.Fatalf("second = %s (%d plays), want Гостевая игра (1 coop play)", data.Games[1].Name, data.Games[1].MatchesCount)
 	}
 
-	// Remove empties the shelf again; removing a non-member is a no-op.
-	for _, game := range []idpkg.ID{g1, g3} {
-		w := doJSON(t, router, http.MethodDelete, "/players/"+player.String()+"/collection/"+game.String(), myToken, "")
+	// Remove empties the shelf again; removing a non-member is a no-op (and
+	// records no audit event).
+	for _, game := range []idpkg.ID{g1, g3, g3} {
+		w := doJSON(t, router, http.MethodDelete, "/players/"+player.String()+"/collection/"+game.String(), editorToken, "")
 		if w.Code != http.StatusOK {
-			t.Fatalf("linked DELETE %s = %d: %s", game, w.Code, w.Body.String())
+			t.Fatalf("editor DELETE %s = %d: %s", game, w.Code, w.Body.String())
 		}
 	}
 	if code, data := getCollection(t, router, "/players/"+player.String()+"/collection", ""); code != http.StatusOK || data.Total != 2 || len(data.Games) != 2 {
@@ -169,11 +176,11 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 
 	// Unknown references fail: a missing player is a 404 (same as the public
 	// GET), a missing game a foreign-key 400.
-	w = doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", myToken, `{"game_id":"`+newID(t).String()+`"}`)
+	w = doJSON(t, router, http.MethodPost, "/players/"+player.String()+"/collection", editorToken, `{"game_id":"`+newID(t).String()+`"}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("unknown game POST = %d, want 400", w.Code)
 	}
-	w = doJSON(t, router, http.MethodPost, "/players/"+newID(t).String()+"/collection", myToken, `{"game_id":"`+g1.String()+`"}`)
+	w = doJSON(t, router, http.MethodPost, "/players/"+newID(t).String()+"/collection", editorToken, `{"game_id":"`+g1.String()+`"}`)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("unknown player POST = %d, want 404", w.Code)
 	}
@@ -184,6 +191,64 @@ func TestPlayerGameCollection_Lifecycle(t *testing.T) {
 	}
 	if code, _ := getCollection(t, router, "/players/garbage/collection", ""); code != http.StatusNotFound {
 		t.Fatalf("garbage id GET = %d, want 404", code)
+	}
+
+	// The audit trail: every real change appended one player-collection event
+	// naming the game (id + display title at modification time); the denied
+	// writes, the duplicate add, the replayed remove and the unknown-game FK
+	// 400 recorded nothing. Six real changes happened above, latest first:
+	// remove Вечерняя, remove Абстрактная, add Гостевая, add Вечерняя,
+	// add Абстрактная, add Библиотечная.
+	page := listAudit(t, router, "?entity_type=player&entity_id="+shortOf(t, player))
+	var collectionEvents []auditEntryJSON
+	for _, e := range page.Data {
+		if e.Action == "updated" && len(e.Details) > 0 {
+			var probe struct {
+				Op string `json:"op"`
+			}
+			if json.Unmarshal(e.Details, &probe) == nil && probe.Op != "" {
+				collectionEvents = append(collectionEvents, e)
+			}
+		}
+	}
+	if len(collectionEvents) != 6 {
+		t.Fatalf("player-collection audit events = %d, want 6: %+v", len(collectionEvents), page.Data)
+	}
+	type collectionDetails struct {
+		SchemaVersion int    `json:"schema_version"`
+		Op            string `json:"op"`
+		GameID        string `json:"game_id"`
+		GameTitle     string `json:"game_title"`
+	}
+	want := []struct {
+		op    string
+		game  idpkg.ID
+		title string
+	}{
+		{"remove", g3, "Вечерняя игра"},
+		{"remove", g1, "Абстрактная игра"},
+		{"add", g4, "Гостевая игра"},
+		{"add", g3, "Вечерняя игра"},
+		{"add", g1, "Абстрактная игра"},
+		{"add", g2, "Библиотечная игра"},
+	}
+	for i, w := range want {
+		var d collectionDetails
+		if err := json.Unmarshal(collectionEvents[i].Details, &d); err != nil {
+			t.Fatalf("event %d details: %v (%s)", i, err, collectionEvents[i].Details)
+		}
+		if d.Op != w.op || d.GameID != shortOf(t, w.game) || d.GameTitle != w.title {
+			t.Errorf("event %d = op %s game %s title %q, want %s %s %q", i, d.Op, d.GameID, d.GameTitle, w.op, shortOf(t, w.game), w.title)
+		}
+		if d.SchemaVersion != 1 {
+			t.Errorf("event %d schema_version = %d, want 1", i, d.SchemaVersion)
+		}
+		if collectionEvents[i].EntityID != shortOf(t, player) || collectionEvents[i].EntityType != "player" {
+			t.Errorf("event %d points at %s/%s, want player %s", i, collectionEvents[i].EntityType, collectionEvents[i].EntityID, shortOf(t, player))
+		}
+	}
+	if collectionEvents[0].ActorName != "Test User With ID" {
+		t.Errorf("actor = %q, want the editor", collectionEvents[0].ActorName)
 	}
 }
 

@@ -85,13 +85,13 @@ export interface paths {
         };
         /**
          * Get the player's game collection ("коллекция игр")
-         * @description The games the player keeps on their shelf. Public to read, like the stats; managing it is allowed only to the user linked to this player (users.player_id).
+         * @description The games the player keeps on their shelf. Public to read, like the stats; managing it requires the edit permission (the standard editor-gated write).
          */
         get: operations["GetPlayerGameCollection"];
         put?: never;
         /**
          * Add a game to the player's collection
-         * @description Only the user linked to this player (users.player_id) may manage the collection — anyone else authenticated gets a 403. Adding a game that is already in the collection is an idempotent no-op.
+         * @description Editor-gated (the standard editorAuth chain): any authenticated user with the edit permission may manage any player's collection — anyone else gets a 401/403 from the middleware. Adding a game that is already in the collection is an idempotent no-op (and records no audit event); a real add appends one player-collection audit event naming the game.
          */
         post: operations["AddPlayerGame"];
         delete?: never;
@@ -112,7 +112,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a game from the player's collection
-         * @description Only the user linked to this player (users.player_id) may manage the collection — anyone else authenticated gets a 403. Removing a game that is not in the collection is an idempotent no-op.
+         * @description Editor-gated (the standard editorAuth chain): any authenticated user with the edit permission may manage any player's collection — anyone else gets a 401/403 from the middleware. Removing a game that is not in the collection is an idempotent no-op (and records no audit event); a real removal appends one player-collection audit event naming the game.
          */
         delete: operations["RemovePlayerGame"];
         options?: never;
@@ -2113,8 +2113,8 @@ export interface components {
              * @enum {string}
              */
             action: "created" | "updated" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditArenaUpdateDetails (user-managed arena name/filter/settings, ADR-24) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
-            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditTenantUpdateDetails"] | components["schemas"]["AuditUserUpdateDetails"] | components["schemas"]["AuditClubUpdateDetails"] | components["schemas"]["AuditGameUpdateDetails"] | components["schemas"]["AuditPlayerUpdateDetails"] | components["schemas"]["AuditTagUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditArenaUpdateDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name) or AuditPlayerCollectionDetails (a game added to / removed from a player's collection); arena → AuditArenaCampConfigDetails (camp config) or AuditArenaUpdateDetails (user-managed arena name/filter/settings, ADR-24) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
+            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditTenantUpdateDetails"] | components["schemas"]["AuditUserUpdateDetails"] | components["schemas"]["AuditClubUpdateDetails"] | components["schemas"]["AuditGameUpdateDetails"] | components["schemas"]["AuditPlayerUpdateDetails"] | components["schemas"]["AuditTagUpdateDetails"] | components["schemas"]["AuditPlayerCollectionDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditArenaUpdateDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
         };
         AuditEntityDetails: {
             schema_version: number;
@@ -2440,6 +2440,15 @@ export interface components {
                 added_player_ids: components["schemas"]["Base58ID"][];
                 removed_player_ids: components["schemas"]["Base58ID"][];
             } | null;
+        };
+        /** @description One game collection modification on the player the audit row points at: a single game added to or removed from the shelf, named by its display title at modification time (a later rename must not rewrite history). One game per event — the UI manages the collection game-by-game. An idempotent replay (the game was already in / not in the collection) produces no row. */
+        AuditPlayerCollectionDetails: {
+            schema_version: number;
+            /** @enum {string} */
+            op: "add" | "remove";
+            game_id: components["schemas"]["Base58ID"];
+            /** @description The game's display name at modification time. */
+            game_title: string;
         };
         /** @description Name and date window of a camp arena (ADR-27) as before → after pairs. Create fills the 'to' side, update both sides (changed fields only), delete the 'from' side. Untouched fields stay null. */
         AuditArenaCampConfigDetails: {
@@ -2892,7 +2901,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Not the player's linked user */
+            /** @description Not an editor */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2945,7 +2954,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Not the player's linked user */
+            /** @description Not an editor */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -35,6 +35,16 @@ describe("auditSummary", () => {
         expect(auditIsExpandable(entry({ entity_type: "user", action: "updated", details: { kind: "user-update", changes: { schema_version: 1, allow_editing: { from: false, to: true } } } }))).toBe(true);
     });
 
+    it("collection edits read 'изменил коллекцию игрока', not 'изменил игрока'", () => {
+        const e = entry({
+            entity_type: "player",
+            action: "updated",
+            details: { kind: "player-collection", changes: { schema_version: 1, op: "add", game_id: "g1" as Base58ID, game_title: "Каркассон" } },
+        });
+        expect(auditSummary(e, () => "Аня")).toBe("изменил коллекцию игрока «Аня»");
+        expect(auditIsExpandable(e)).toBe(true);
+    });
+
     it("updates (renames included) expand into the field diff and show the current name", () => {
         const e = entry({ action: "updated", details: { kind: "game-update", changes: { schema_version: 1, name: { from: "Было", to: "Стало" } } } });
         expect(auditIsExpandable(e)).toBe(true);

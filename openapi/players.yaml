@@ -305,8 +305,8 @@ PlayerCollectionPath:
     summary: Get the player's game collection ("коллекция игр")
     description: >-
       The games the player keeps on their shelf. Public to read, like the
-      stats; managing it is allowed only to the user linked to this player
-      (users.player_id).
+      stats; managing it requires the edit permission (the standard
+      editor-gated write).
     parameters:
       - name: id
         in: path
@@ -343,9 +343,11 @@ PlayerCollectionPath:
     tags: [players]
     summary: Add a game to the player's collection
     description: >-
-      Only the user linked to this player (users.player_id) may manage the
-      collection — anyone else authenticated gets a 403. Adding a game that is
-      already in the collection is an idempotent no-op.
+      Editor-gated (the standard editorAuth chain): any authenticated user with
+      the edit permission may manage any player's collection — anyone else gets
+      a 401/403 from the middleware. Adding a game that is already in the
+      collection is an idempotent no-op (and records no audit event); a real
+      add appends one player-collection audit event naming the game.
     security:
       - cookieAuth: []
     parameters:
@@ -390,7 +392,7 @@ PlayerCollectionPath:
             schema:
               $ref: './common.yaml#/ApiError'
       "403":
-        description: Not the player's linked user
+        description: Not an editor
         content:
           application/json:
             schema:
@@ -408,9 +410,11 @@ PlayerCollectionItemPath:
     tags: [players]
     summary: Remove a game from the player's collection
     description: >-
-      Only the user linked to this player (users.player_id) may manage the
-      collection — anyone else authenticated gets a 403. Removing a game that
-      is not in the collection is an idempotent no-op.
+      Editor-gated (the standard editorAuth chain): any authenticated user with
+      the edit permission may manage any player's collection — anyone else gets
+      a 401/403 from the middleware. Removing a game that is not in the
+      collection is an idempotent no-op (and records no audit event); a real
+      removal appends one player-collection audit event naming the game.
     security:
       - cookieAuth: []
     parameters:
@@ -444,7 +448,7 @@ PlayerCollectionItemPath:
             schema:
               $ref: './common.yaml#/ApiError'
       "403":
-        description: Not the player's linked user
+        description: Not an editor
         content:
           application/json:
             schema:

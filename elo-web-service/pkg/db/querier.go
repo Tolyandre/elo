@@ -28,7 +28,9 @@ type Querier interface {
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayerParams) (GameTable, error)
 	AddGameTag(ctx context.Context, arg AddGameTagParams) error
-	AddPlayerGame(ctx context.Context, arg AddPlayerGameParams) error
+	// The returning row exists only on a real insert: a duplicate add (the
+	// idempotent replay) inserts nothing and reads as ErrNoRows.
+	AddPlayerGame(ctx context.Context, arg AddPlayerGameParams) (id.ID, error)
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
 	AddSlotAdvance(ctx context.Context, arg AddSlotAdvanceParams) error
 	AddSlotMatch(ctx context.Context, arg AddSlotMatchParams) error
@@ -613,7 +615,9 @@ type Querier interface {
 	// stint → empty RETURNING → the service skips the audit row.
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) (id.ID, error)
 	RemoveGameTag(ctx context.Context, arg RemoveGameTagParams) error
-	RemovePlayerGame(ctx context.Context, arg RemovePlayerGameParams) error
+	// The returning row exists only when a membership row was actually deleted:
+	// removing a non-member reads as ErrNoRows.
+	RemovePlayerGame(ctx context.Context, arg RemovePlayerGameParams) (id.ID, error)
 	RemoveTournamentParticipant(ctx context.Context, arg RemoveTournamentParticipantParams) error
 	// resolution_outcome is the winning outcome id; NULL for cancelled markets
 	// (cancellation is carried by the status column).

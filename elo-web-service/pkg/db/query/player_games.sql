@@ -21,11 +21,17 @@ ORDER BY matches_count DESC, g.name, g.id;
 -- name: CountPlayerGames :one
 SELECT COUNT(*)::int FROM player_games WHERE player_id = $1;
 
--- name: AddPlayerGame :exec
+-- name: AddPlayerGame :one
+-- The returning row exists only on a real insert: a duplicate add (the
+-- idempotent replay) inserts nothing and reads as ErrNoRows.
 INSERT INTO player_games (player_id, game_id)
 VALUES ($1, $2)
-ON CONFLICT DO NOTHING;
+ON CONFLICT DO NOTHING
+RETURNING game_id;
 
--- name: RemovePlayerGame :exec
+-- name: RemovePlayerGame :one
+-- The returning row exists only when a membership row was actually deleted:
+-- removing a non-member reads as ErrNoRows.
 DELETE FROM player_games
-WHERE player_id = $1 AND game_id = $2;
+WHERE player_id = $1 AND game_id = $2
+RETURNING game_id;

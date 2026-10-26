@@ -54,12 +54,14 @@ type IPlayerService interface {
 	// ListPlayerGameCollection reads the profile's "Коллекция игр" section:
 	// the collected games (alphabetical by display name) with the total count.
 	ListPlayerGameCollection(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameCollectionRow, int, error)
-	// AddPlayerGame/RemovePlayerGame manage the collection. The linked-user
+	// AddPlayerGame/RemovePlayerGame manage the collection. The editor
 	// authorization lives in the API layer (it needs the request's path player
 	// id); both are idempotent — a duplicate add and removing a non-member are
-	// no-ops, and an unknown player/game surfaces as a foreign-key violation.
-	AddPlayerGame(ctx context.Context, playerID, gameID id.ID) error
-	RemovePlayerGame(ctx context.Context, playerID, gameID id.ID) error
+	// no-ops that record no audit row, and an unknown player/game surfaces as
+	// a foreign-key violation. Each real change appends one player-collection
+	// audit event naming the game (ADR-14).
+	AddPlayerGame(ctx context.Context, playerID, gameID, actor id.ID) error
+	RemovePlayerGame(ctx context.Context, playerID, gameID, actor id.ID) error
 }
 
 type PlayerService struct {
@@ -345,10 +347,41 @@ func (s *PlayerService) ListPlayerGameCollection(ctx context.Context, playerID i
 	return games, int(total), nil
 }
 
-func (s *PlayerService) AddPlayerGame(ctx context.Context, playerID, gameID id.ID) error {
-	return s.Queries.AddPlayerGame(ctx, db.AddPlayerGameParams{PlayerID: playerID, GameID: gameID})
+func (s *PlayerService) AddPlayerGame(ctx context.Context, playerID, gameID, actor id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		// A duplicate add returns no row: the game is already on the shelf and
+		// the idempotent replay records no audit event.
+		_, err := q.AddPlayerGame(ctx, db.AddPlayerGameParams{PlayerID: playerID, GameID: gameID})
+		if db.IsNoRows(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		game, err := q.GetGameByID(ctx, gameID)
+		if err != nil {
+			return err
+		}
+		return recordAuditEvent(ctx, q, actor, audit.EntityPlayer, audit.ActionUpdated, playerID,
+			audit.KindPlayerCollection, audit.NewPlayerCollectionAdd(string(gameID), game.Name))
+	})
 }
 
-func (s *PlayerService) RemovePlayerGame(ctx context.Context, playerID, gameID id.ID) error {
-	return s.Queries.RemovePlayerGame(ctx, db.RemovePlayerGameParams{PlayerID: playerID, GameID: gameID})
+func (s *PlayerService) RemovePlayerGame(ctx context.Context, playerID, gameID, actor id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		// A non-member delete deletes no row and records no audit event.
+		_, err := q.RemovePlayerGame(ctx, db.RemovePlayerGameParams{PlayerID: playerID, GameID: gameID})
+		if db.IsNoRows(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		game, err := q.GetGameByID(ctx, gameID)
+		if err != nil {
+			return err
+		}
+		return recordAuditEvent(ctx, q, actor, audit.EntityPlayer, audit.ActionUpdated, playerID,
+			audit.KindPlayerCollection, audit.NewPlayerCollectionRemove(string(gameID), game.Name))
+	})
 }

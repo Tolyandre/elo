@@ -160,15 +160,16 @@ func decodePlainDetails[T any](load func(*AuditEntry_Details, T) error) func(*Au
 // config, tournament config/start/state, slot links/rulings) live in the
 // switch in auditDetailsFromStored.
 var auditDetailDecoders = map[string]func(*AuditEntry_Details, json.RawMessage) error{
-	audit.KindEntity:       decodePlainDetails((*AuditEntry_Details).FromAuditEntityDetails),
-	audit.KindMatchUpdate:  decodePlainDetails((*AuditEntry_Details).FromAuditMatchUpdateDetails),
-	audit.KindTenantUpdate: decodePlainDetails((*AuditEntry_Details).FromAuditTenantUpdateDetails),
-	audit.KindUserUpdate:   decodePlainDetails((*AuditEntry_Details).FromAuditAuditUserUpdateDetails),
-	audit.KindClubUpdate:   decodePlainDetails((*AuditEntry_Details).FromAuditAuditClubUpdateDetails),
-	audit.KindGameUpdate:   decodePlainDetails((*AuditEntry_Details).FromAuditGameUpdateDetails),
-	audit.KindPlayerUpdate: decodePlainDetails((*AuditEntry_Details).FromAuditPlayerUpdateDetails),
-	audit.KindTagUpdate:    decodePlainDetails((*AuditEntry_Details).FromAuditTagUpdateDetails),
-	audit.KindArenaUpdate:  decodePlainDetails((*AuditEntry_Details).FromAuditAuditArenaUpdateDetails),
+	audit.KindEntity:           decodePlainDetails((*AuditEntry_Details).FromAuditEntityDetails),
+	audit.KindMatchUpdate:      decodePlainDetails((*AuditEntry_Details).FromAuditMatchUpdateDetails),
+	audit.KindTenantUpdate:     decodePlainDetails((*AuditEntry_Details).FromAuditTenantUpdateDetails),
+	audit.KindUserUpdate:       decodePlainDetails((*AuditEntry_Details).FromAuditAuditUserUpdateDetails),
+	audit.KindClubUpdate:       decodePlainDetails((*AuditEntry_Details).FromAuditAuditClubUpdateDetails),
+	audit.KindGameUpdate:       decodePlainDetails((*AuditEntry_Details).FromAuditGameUpdateDetails),
+	audit.KindPlayerUpdate:     decodePlainDetails((*AuditEntry_Details).FromAuditPlayerUpdateDetails),
+	audit.KindTagUpdate:        decodePlainDetails((*AuditEntry_Details).FromAuditTagUpdateDetails),
+	audit.KindPlayerCollection: decodePlainDetails((*AuditEntry_Details).FromAuditAuditPlayerCollectionDetails),
+	audit.KindArenaUpdate:      decodePlainDetails((*AuditEntry_Details).FromAuditAuditArenaUpdateDetails),
 }
 
 // auditDetailsFromStored shortens the canonical ids of a stored details

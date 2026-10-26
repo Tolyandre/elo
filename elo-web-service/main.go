@@ -121,11 +121,11 @@ func main() {
 	router.GET("/players/recent", oauth2Handler.DeserializeUser(), strictWrapper.ListRecentPlayers)
 	router.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
 	// The game collection ("Коллекция игр") is public to read; its writes are
-	// session-gated here and player-linked in the handler (only the user whose
-	// users.player_id is this player may manage the shelf).
+	// editor-gated like every other write — any user with the edit permission
+	// may manage any player's shelf (changes land in the audit log).
 	router.GET("/players/:id/collection", strictWrapper.GetPlayerGameCollection)
-	router.POST("/players/:id/collection", oauth2Handler.DeserializeUser(), strictWrapper.AddPlayerGame)
-	router.DELETE("/players/:id/collection/:gameId", oauth2Handler.DeserializeUser(), strictWrapper.RemovePlayerGame)
+	router.POST("/players/:id/collection", append(editorAuth(), strictWrapper.AddPlayerGame)...)
+	router.DELETE("/players/:id/collection/:gameId", append(editorAuth(), strictWrapper.RemovePlayerGame)...)
 	router.POST("/players", append(editorAuth(), strictWrapper.CreatePlayer)...)
 	router.PATCH("/players/:id", append(editorAuth(), strictWrapper.PatchPlayer)...)
 	router.DELETE("/players/:id", append(editorAuth(), strictWrapper.DeletePlayer)...)

@@ -17,6 +17,7 @@ export type AuditEntryDetails =
     | { kind: "game-update"; changes: components["schemas"]["AuditGameUpdateDetails"] }
     | { kind: "player-update"; changes: components["schemas"]["AuditPlayerUpdateDetails"] }
     | { kind: "tag-update"; changes: components["schemas"]["AuditTagUpdateDetails"] }
+    | { kind: "player-collection"; changes: components["schemas"]["AuditPlayerCollectionDetails"] }
     | { kind: "arena-camp-config"; changes: components["schemas"]["AuditArenaCampConfigDetails"] }
     | { kind: "camp-link"; op: string; matchId: string }
     | { kind: "tournament-config"; changes: components["schemas"]["AuditTournamentConfigDetails"] }
@@ -58,6 +59,10 @@ function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
                    // name); field diffs carry the name as an object.
                    !("name" in e.details && typeof e.details.name === "string")) {
             details = { kind: "game-update", changes: e.details as components["schemas"]["AuditGameUpdateDetails"] };
+        } else if (e.action === "updated" && "game_title" in e.details) {
+            // A game-collection modification on the player — must narrow
+            // before the entity_type === "player" branch below swallows it.
+            details = { kind: "player-collection", changes: e.details as components["schemas"]["AuditPlayerCollectionDetails"] };
         } else if (e.action === "updated" && e.entity_type === "player") {
             details = { kind: "player-update", changes: e.details as components["schemas"]["AuditPlayerUpdateDetails"] };
         } else if (e.action === "updated" && e.entity_type === "tag") {

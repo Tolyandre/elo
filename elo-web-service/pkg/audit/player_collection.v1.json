@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/player-collection.v1.json",
+  "title": "Audit player-collection details (v1)",
+  "description": "One game collection modification on the player the audit row points at: a single game added to or removed from the shelf, named by its display title at modification time (a later rename must not rewrite history). One game per event — the UI adds and removes game-by-game.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "op", "game_id", "game_title"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "op": { "enum": ["add", "remove"] },
+    "game_id": { "type": "string", "minLength": 1, "x-entity-id": true },
+    "game_title": { "type": "string", "minLength": 1 }
+  }
+}

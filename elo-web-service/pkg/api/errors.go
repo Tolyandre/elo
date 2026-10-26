@@ -73,10 +73,8 @@ func domainStatusCode(err error) int {
 
 	// --- 403 Forbidden: authenticated but not allowed -----------------------
 	// A members_only tenant's tournament/market refuses non-members (ADR-36);
-	// ErrPlayerHasNoLinkedPlayer covers the unlinked-user gates, and
-	// ErrPlayerCollectionForbidden the user linked to a different player.
+	// ErrPlayerHasNoLinkedPlayer covers the unlinked-user gates.
 	case errors.Is(err, elo.ErrPlayerHasNoLinkedPlayer),
-		errors.Is(err, elo.ErrPlayerCollectionForbidden),
 		errors.Is(err, elo.ErrTournamentMembersOnly),
 		errors.Is(err, elo.ErrMarketMembersOnly):
 		return http.StatusForbidden

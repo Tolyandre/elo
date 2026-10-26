@@ -33,6 +33,7 @@ const (
 	KindClubUpdate       = "club-update"       // club name / icon / membership change (ADR-36)
 	KindGameUpdate       = "game-update"       // game meta update, rename included
 	KindPlayerUpdate     = "player-update"     // player name change
+	KindPlayerCollection = "player-collection" // game collection add/remove on a player
 	KindTagUpdate        = "tag-update"        // tag name change
 	KindArenaCampConf    = "arena-camp-config" // camp arena create/update/delete (ADR-27)
 	KindArenaUpdate      = "arena-update"      // user-managed arena name/filter/settings update (ADR-24)

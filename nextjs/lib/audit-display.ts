@@ -53,6 +53,9 @@ export function auditSummary(entry: AuditEntry, resolveName?: AuditNameResolver)
             if (entry.entity_type === "match") return "добавил партию";
             return `создал ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
         case "updated":
+            // A collection edit on a player reads as its own thing — "изменил
+            // игрока" would suggest a rename (the details tell which games).
+            if (entry.details?.kind === "player-collection") return `изменил коллекцию игрока${suffix}`;
             return `изменил ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
         case "deleted":
             return `удалил ${ENTITY_NOUN[entry.entity_type]}${suffix}`;
