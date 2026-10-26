@@ -226,10 +226,11 @@ func TestGameSuggestionsEndpoint(t *testing.T) {
 	if g.NameEn == nil || *g.NameEn != "Carcassonne" || g.Title != "Carcassonne" {
 		t.Errorf("names = %+v, want Carcassonne", g)
 	}
-	// BGG's alternates («Каркасон», «Каркассон») are a scoring tie, so the
-	// Russian name comes from the attached Tesera row.
+	// The Russian name comes from the attached Tesera row — its curated
+	// localization wins (BGG's alternates «Каркасон»/«Каркассон» are a
+	// scoring tie anyway).
 	if g.NameRu == nil || *g.NameRu != "Каркассон" {
-		t.Errorf("name_ru = %+v, want the Tesera fallback Каркассон", g.NameRu)
+		t.Errorf("name_ru = %+v, want the Tesera title Каркассон", g.NameRu)
 	}
 	river := resp.Data.Games[1]
 	if river.TeseraRef == nil || *river.TeseraRef != 26664 || river.BggRef == nil || *river.BggRef != 4101 || !river.IsAddition {

@@ -386,16 +386,16 @@ GameSuggestionsPath:
     tags: [games]
     summary: Suggest catalogue matches for a name being typed
     description: >-
-      BoardGameGeek is the primary source (search plus the localized Russian
-      titles of the matches, picked from their alternate names); Tesera
-      enriches the matches with its ids and adds its own rows. Both sources
-      are queried in parallel under an overall deadline. Ranking is tiered
-      against the query: exact (normalized) name matches first, then
-      word-prefix matches, then contains; base games sort before additions
-      within a tier. A failing catalogue degrades the result instead of
-      failing the request — the corresponding *_unavailable flag is set.
-      Callers must treat an empty list as "no suggestions" and never block
-      on it.
+      BoardGameGeek is the primary source (search plus the canonical English
+      titles of the matches); Tesera enriches the matches with its ids and
+      its curated localized Russian titles, and adds its own rows for games
+      BGG lacks. Both sources are queried in parallel under an overall
+      deadline. Ranking is tiered against the query: exact (normalized)
+      name matches first, then word-prefix matches, then contains; base
+      games sort before additions within a tier. A failing catalogue
+      degrades the result instead of failing the request — the corresponding
+      *_unavailable flag is set. Callers must treat an empty list as "no
+      suggestions" and never block on it.
     security:
       - cookieAuth: []
     parameters:
@@ -754,7 +754,9 @@ GameSuggestion:
     name_ru:
       type: string
       nullable: true
-      description: Localized Russian title, absent when neither source knows one
+      description: >-
+        Localized Russian title — Tesera's when the match has one, otherwise
+        BGG's alternate-name heuristic; absent when neither source knows one
     name_en:
       type: string
       nullable: true

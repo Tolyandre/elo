@@ -113,7 +113,7 @@ func titlesOf(games []GameSuggestion) []string {
 }
 
 // The merge attaches Tesera rows to BGG matches by the BGG id first; the
-// localized title fills only an empty Russian name.
+// localized title is the primary Russian name.
 func TestMergeSuggestionsAttachesTeseraByBggID(t *testing.T) {
 	bgg := []GameSuggestion{
 		{BggRef: 822, Title: "Carcassonne", NameEn: "Carcassonne"},
@@ -130,5 +130,42 @@ func TestMergeSuggestionsAttachesTeseraByBggID(t *testing.T) {
 	}
 	if got[0].NameRu != "Каркассон" {
 		t.Errorf("NameRu = %q, want the Tesera localization", got[0].NameRu)
+	}
+}
+
+// The Russian name prefers Tesera's curated localization (it keeps the full
+// form, e.g. «Eclipse. Второй рассвет галактики»); BGG's script heuristic —
+// which strips Latin brand words from mixed-script alternates — fills in
+// only when the Tesera row carries no localization.
+func TestMergeSuggestionsTeseraRussianNameWins(t *testing.T) {
+	bgg := []GameSuggestion{
+		{BggRef: 246900, Title: "Eclipse: Second Dawn for the Galaxy", NameEn: "Eclipse: Second Dawn for the Galaxy", NameRu: "Второй рассвет галактики"},
+		{BggRef: 822, Title: "Carcassonne", NameEn: "Carcassonne", NameRu: "Каркассон"},
+	}
+	candidates := []*tesera.Candidate{
+		{TeseraRef: 1, BggRef: 246900, NameRu: "Eclipse. Второй рассвет галактики", Title: "Eclipse. Второй рассвет галактики"},
+		{TeseraRef: 707, BggRef: 822, NameRu: "", NameEn: "Carcassonne", Title: "Carcassonne"},
+	}
+	got := mergeSuggestions(bgg, candidates, "eclipse second dawn")
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(got), got)
+	}
+	var secondDawn, carcassonne *GameSuggestion
+	for i := range got {
+		switch got[i].BggRef {
+		case 246900:
+			secondDawn = &got[i]
+		case 822:
+			carcassonne = &got[i]
+		}
+	}
+	if secondDawn == nil || carcassonne == nil {
+		t.Fatalf("rows = %+v, want both games", got)
+	}
+	if secondDawn.NameRu != "Eclipse. Второй рассвет галактики" {
+		t.Errorf("NameRu = %q, want the full Tesera localization to override the heuristic", secondDawn.NameRu)
+	}
+	if carcassonne.NameRu != "Каркассон" {
+		t.Errorf("NameRu = %q, want the BGG heuristic kept when Tesera has no localization", carcassonne.NameRu)
 	}
 }

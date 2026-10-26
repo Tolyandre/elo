@@ -1788,7 +1788,7 @@ type GameSuggestion struct {
 	IsAddition bool    `json:"is_addition"`
 	NameEn     *string `json:"name_en,omitempty"`
 
-	// NameRu Localized Russian title, absent when neither source knows one
+	// NameRu Localized Russian title — Tesera's when the match has one, otherwise BGG's alternate-name heuristic; absent when neither source knows one
 	NameRu   *string `json:"name_ru,omitempty"`
 	PhotoUrl *string `json:"photo_url,omitempty"`
 

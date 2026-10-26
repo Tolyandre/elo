@@ -185,7 +185,7 @@ export interface paths {
         };
         /**
          * Suggest catalogue matches for a name being typed
-         * @description BoardGameGeek is the primary source (search plus the localized Russian titles of the matches, picked from their alternate names); Tesera enriches the matches with its ids and adds its own rows. Both sources are queried in parallel under an overall deadline. Ranking is tiered against the query: exact (normalized) name matches first, then word-prefix matches, then contains; base games sort before additions within a tier. A failing catalogue degrades the result instead of failing the request — the corresponding *_unavailable flag is set. Callers must treat an empty list as "no suggestions" and never block on it.
+         * @description BoardGameGeek is the primary source (search plus the canonical English titles of the matches); Tesera enriches the matches with its ids and its curated localized Russian titles, and adds its own rows for games BGG lacks. Both sources are queried in parallel under an overall deadline. Ranking is tiered against the query: exact (normalized) name matches first, then word-prefix matches, then contains; base games sort before additions within a tier. A failing catalogue degrades the result instead of failing the request — the corresponding *_unavailable flag is set. Callers must treat an empty list as "no suggestions" and never block on it.
          */
         get: operations["SuggestGames"];
         put?: never;
@@ -1486,7 +1486,7 @@ export interface components {
             tesera_ref?: number | null;
             /** @description Absent when the candidate comes from Tesera without a BGG link */
             bgg_ref?: number | null;
-            /** @description Localized Russian title, absent when neither source knows one */
+            /** @description Localized Russian title — Tesera's when the match has one, otherwise BGG's alternate-name heuristic; absent when neither source knows one */
             name_ru?: string | null;
             name_en?: string | null;
             /** @description The candidate's display title, for pickers */

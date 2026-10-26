@@ -493,12 +493,12 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 }
 
 // SuggestGames merges the two catalogues for a name being typed. BoardGameGeek
-// is the primary source: /xmlapi2/search finds the candidates, their things
-// carry the canonical English title and the localized Russian title as
-// alternate names, picked by script heuristics (pkg/bgg). Tesera enriches the
-// BGG matches with its ids and adds its own rows for anything BGG lacks; its
-// localized titles fill the Russian name where BGG's alternates stay
-// ambiguous. Both sources are queried in parallel under one deadline —
+// is the primary source: /xmlapi2/search finds the candidates and their things
+// carry the canonical English title. Tesera enriches the BGG matches with its
+// ids and adds its own rows for anything BGG lacks; its curated localized
+// titles are the primary Russian names, with BGG's alternate-name script
+// heuristics (pkg/bgg) filling in when the Tesera row has no localization.
+// Both sources are queried in parallel under one deadline —
 // Tesera's DDoS-Guard retries alone can stretch a sequential run into
 // minutes while the picker waits. A source failing alone degrades the result
 // (reported in the flags) — typically Tesera behind its bot guard — and only
@@ -639,8 +639,11 @@ func mergeSuggestions(bggSuggestions []GameSuggestion, candidates []*tesera.Cand
 			}
 			used[cand.TeseraRef] = true
 			sugg.TeseraRef = cand.TeseraRef
-			// BGG's expansion flag is precise; Tesera's addition flag is not.
-			if sugg.NameRu == "" {
+			// Tesera's localized title is the curated Russian name and wins
+			// over BGG's script heuristic (which also strips Latin brand
+			// words from mixed-script alternates); the heuristic fills in
+			// only when the Tesera row carries no localization.
+			if cand.NameRu != "" {
 				sugg.NameRu = cand.NameRu
 			}
 			break
