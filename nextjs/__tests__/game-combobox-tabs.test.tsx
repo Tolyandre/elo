@@ -55,7 +55,6 @@ vi.mock("@/components/game-suggestions", () => ({
         bggUnavailable: false,
     }),
     GameSuggestionChips: () => null,
-    AcceptedMetaLine: () => null,
     suggestionMeta: (s: unknown) => s,
 }));
 vi.mock("@/hooks/use-is-mobile", () => ({

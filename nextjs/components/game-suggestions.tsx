@@ -9,6 +9,8 @@ import { Spinner } from "@/components/ui/spinner"
 
 /** Metadata carried into game creation from an accepted suggestion. */
 export type AcceptedGameSuggestion = {
+    /** The chip label as rendered when picked — the accepted pill shows it verbatim. */
+    label: string
     nameEn: string | null
     nameRu: string | null
     bggRef: number | null
@@ -17,6 +19,7 @@ export type AcceptedGameSuggestion = {
 
 export function suggestionMeta(s: GameSuggestion): AcceptedGameSuggestion {
     return {
+        label: suggestionLabel(s),
         nameEn: s.name_en ?? null,
         nameRu: s.name_ru ?? null,
         bggRef: s.bgg_ref ?? null,
@@ -87,6 +90,9 @@ export function suggestionKey(s: GameSuggestion): string {
 export function suggestionLabel(s: GameSuggestion): string {
     const parts = [s.title]
     if (s.name_en && s.name_en !== s.title) parts.push(s.name_en)
+    // Both canonical names ride in the chip itself — the picker decides by
+    // them — so there is no separate accepted-state meta line.
+    if (s.name_ru && !parts.includes(s.name_ru)) parts.push(s.name_ru)
     let label = parts.filter(Boolean).join(" · ")
     if (s.year) label += ` (${s.year})`
     // Tesera's addition flag is unreliable, so additions are marked rather
@@ -198,8 +204,10 @@ export function GameSuggestionChips({
                 teseraUnavailable={teseraUnavailable}
                 bggUnavailable={bggUnavailable}
             />
-            {!accepted && !loading && suggestions.length > 0 && (
-                <p className="text-xs text-muted-foreground">Нашли в каталогах:</p>
+            {/* The header names the linking action, so it stays with the
+                accepted pill too — not just over the candidate list. */}
+            {!loading && (suggestions.length > 0 || accepted) && (
+                <p className="text-xs text-muted-foreground">Привязать к BGG / Tesera</p>
             )}
             <div className="flex flex-wrap gap-1 items-center">
                 {accepted ? (
@@ -209,7 +217,7 @@ export function GameSuggestionChips({
                         className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary text-primary-foreground px-2 py-0.5 text-xs"
                         title="Убрать подобранную игру"
                     >
-                        {accepted.nameRu || accepted.nameEn || "Подобрано"}
+                        {accepted.label || accepted.nameRu || accepted.nameEn || "Подобрано"}
                         <X className="size-3" />
                     </button>
                 ) : (
@@ -220,15 +228,4 @@ export function GameSuggestionChips({
             </div>
         </div>
     )
-}
-
-/** Compact preview of the metadata an accepted suggestion will store. */
-export function AcceptedMetaLine({ accepted }: { accepted: AcceptedGameSuggestion }) {
-    const bits: string[] = []
-    if (accepted.nameEn) bits.push(accepted.nameEn)
-    if (accepted.nameRu && accepted.nameRu !== accepted.nameEn) bits.push(accepted.nameRu)
-    if (accepted.bggRef) bits.push("BGG")
-    if (accepted.teseraRef) bits.push("Тесера")
-    if (bits.length === 0) return null
-    return <p className={cn("text-xs text-muted-foreground")}>Ссылки и названия: {bits.join(" · ")}</p>
 }

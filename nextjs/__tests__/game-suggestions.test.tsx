@@ -9,7 +9,7 @@ vi.mock("@/app/api", () => ({
     suggestGamesPromise: vi.fn(),
 }));
 
-import { GameSuggestionChips } from "@/components/game-suggestions";
+import { GameSuggestionChips, suggestionMeta } from "@/components/game-suggestions";
 import type { GameSuggestion } from "@/app/api";
 
 function render(ui: React.ReactElement): void {
@@ -49,8 +49,8 @@ describe("GameSuggestionChips", () => {
             />,
         );
         expect(document.body.textContent).toContain("Ищем в каталогах…");
-        // Loading is not "no results": the found-list header stays hidden.
-        expect(document.body.textContent).not.toContain("Нашли в каталогах:");
+        // Loading is not "no results": the linking header stays hidden.
+        expect(document.body.textContent).not.toContain("Привязать к BGG / Tesera");
     });
 
     it("distinguishes a failed search from an empty result", () => {
@@ -104,6 +104,51 @@ describe("GameSuggestionChips", () => {
         const chips = Array.from(document.body.querySelectorAll("button"));
         expect(chips).toHaveLength(6);
         expect(chips.map((b) => b.textContent)).toContain("Carcassonne 7 (2000)");
+    });
+
+    it("shows both canonical names in one chip, without duplicates", () => {
+        const stayCool: GameSuggestion = {
+            ...carcassonne,
+            bgg_ref: 395766,
+            title: "Stay Cool",
+            name_en: "Stay Cool",
+            name_ru: "Не бомбани!",
+            year: 2023,
+        };
+        render(
+            <GameSuggestionChips
+                suggestions={[stayCool]}
+                accepted={null}
+                onAccept={() => {}}
+                onClear={() => {}}
+            />,
+        );
+        expect(document.body.textContent).toContain("Stay Cool · Не бомбани! (2023)");
+    });
+
+    it("keeps the clicked chip's label verbatim in the accepted state", () => {
+        const stayCool: GameSuggestion = {
+            ...carcassonne,
+            bgg_ref: 395766,
+            title: "Stay Cool",
+            name_en: "Stay Cool",
+            name_ru: "Не бомбани!",
+            year: 2023,
+        };
+        render(
+            <GameSuggestionChips
+                suggestions={[]}
+                accepted={suggestionMeta(stayCool)}
+                onAccept={() => {}}
+                onClear={() => {}}
+            />,
+        );
+        // Accepting highlights the same pill — it must not collapse to the
+        // Russian-only name, and the linking header stays above it.
+        expect(document.body.querySelector("button")!.textContent).toBe(
+            "Stay Cool · Не бомбани! (2023)",
+        );
+        expect(document.body.textContent).toContain("Привязать к BGG / Tesera");
     });
 
     it("dims addition chips the way the admin picker does", () => {

@@ -25,7 +25,6 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import {
   AcceptedGameSuggestion,
-  AcceptedMetaLine,
   GameSuggestionChips,
   suggestionMeta,
   useGameSuggestions,
@@ -167,7 +166,6 @@ function GameCreateForm({
         teseraUnavailable={suggestions.teseraUnavailable}
         bggUnavailable={suggestions.bggUnavailable}
       />
-      {accepted && <AcceptedMetaLine accepted={accepted} />}
       {sortedTags.length > 0 && (
         <div className="flex flex-wrap gap-1 items-center">
           {sortedTags.map((tag) => {
