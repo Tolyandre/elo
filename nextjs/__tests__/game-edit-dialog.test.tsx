@@ -15,13 +15,15 @@ const mocks = vi.hoisted(() => ({
     toastSuccess: vi.fn(),
     toastInfo: vi.fn(),
     toastError: vi.fn(),
+    games: [] as GameListItem[],
+    pendingGames: [] as PendingGame[],
 }));
 
 vi.mock("@/app/offline/OfflineContext", () => ({
-    useOffline: () => ({ addPendingGame: mocks.addPendingGame }),
+    useOffline: () => ({ addPendingGame: mocks.addPendingGame, pendingGames: mocks.pendingGames }),
 }));
 vi.mock("@/app/gamesContext", () => ({
-    useGames: () => ({ games: [], invalidate: mocks.invalidateGames }),
+    useGames: () => ({ games: mocks.games, invalidate: mocks.invalidateGames }),
 }));
 vi.mock("sonner", () => ({
     toast: { success: mocks.toastSuccess, info: mocks.toastInfo, error: mocks.toastError },
@@ -35,6 +37,7 @@ vi.mock("@/app/api", () => ({
 import { GameEditDialog } from "@/components/admin/game-edit-dialog";
 import { toBase58ID } from "@/lib/id";
 import type { GameListItem } from "@/app/api";
+import type { PendingGame } from "@/lib/offline/types";
 
 function renderDialog(ui: React.ReactElement): { unmount: () => void } {
     const container = document.createElement("div");
@@ -110,6 +113,8 @@ describe("GameEditDialog", () => {
         mocks.toastSuccess.mockClear();
         mocks.toastInfo.mockClear();
         mocks.toastError.mockClear();
+        mocks.games = [];
+        mocks.pendingGames = [];
         mocks.suggestGamesPromise.mockImplementation(
             async () => ({ games: [], teseraUnavailable: false, bggUnavailable: false, failed: false }),
         );
@@ -145,6 +150,32 @@ describe("GameEditDialog", () => {
         });
         expect(onSaved).toHaveBeenCalledTimes(1);
         expect(mocks.patchGamePromise).not.toHaveBeenCalled();
+        unmount();
+    });
+
+    it("create mode: имя существующей игры блокирует добавление", () => {
+        mocks.games = [{ ...game }];
+        const onSaved = vi.fn();
+        const { unmount } = renderDialog(
+            <GameEditDialog game={null} onClose={vi.fn()} onSaved={onSaved} />,
+        );
+
+        act(() => {
+            setInputValue(findInput("например, Бутылочка"), "скелет кинг");
+        });
+        expect(document.body.textContent).toContain("уже существует");
+        expect(findButton("Добавить").disabled).toBe(true);
+        act(() => {
+            findButton("Добавить").click();
+        });
+        expect(mocks.addPendingGame).not.toHaveBeenCalled();
+        expect(onSaved).not.toHaveBeenCalled();
+
+        // Renaming away from the collision unblocks the save.
+        act(() => {
+            setInputValue(findInput("например, Бутылочка"), "Пандория");
+        });
+        expect(findButton("Добавить").disabled).toBe(false);
         unmount();
     });
 

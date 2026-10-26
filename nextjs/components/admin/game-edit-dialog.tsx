@@ -31,7 +31,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { GAME_MODES, GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes";
-import { accentName } from "@/lib/game-names";
+import { accentName, findDuplicateGame } from "@/lib/game-names";
 import {
     GameSuggestionChip,
     GameSuggestionsStatus,
@@ -65,8 +65,8 @@ export function GameEditDialog({
     onClose: () => void;
     onSaved: () => void;
 }) {
-    const { addPendingGame } = useOffline();
-    const { invalidate: invalidateGames } = useGames();
+    const { addPendingGame, pendingGames } = useOffline();
+    const { games, invalidate: invalidateGames } = useGames();
     const [alias, setAlias] = useState(game?.alias ?? "");
     const [nameEn, setNameEn] = useState(game?.name_en ?? "");
     const [nameRu, setNameRu] = useState(game?.name_ru ?? "");
@@ -84,7 +84,11 @@ export function GameEditDialog({
     const { suggestions, loading: searching, failed: searchFailed, teseraUnavailable, bggUnavailable } = useGameSuggestions(pickerQuery, pickerQuery.trim().length >= 2);
 
     const preview = [alias.trim(), nameRu.trim(), nameEn.trim()].find((n) => n !== "") ?? "";
-    const canSave = preview !== "";
+    // Create mode only: the queued name becomes the server display name, so a
+    // game already claiming it — server list or offline queue — would fail at
+    // sync with the unique-name error. Edits rely on the server's PATCH rejection.
+    const duplicate = game ? undefined : findDuplicateGame([...games, ...pendingGames], preview);
+    const canSave = preview !== "" && duplicate == null;
 
     /** The full-state metadata payload both save and the art refresh persist. */
     function metadata(): GameMetadata {
@@ -284,6 +288,11 @@ export function GameEditDialog({
                     {preview && (
                         <p className="text-xs text-muted-foreground">
                             Отображается как: <span className="font-medium text-foreground">{preview}</span>
+                        </p>
+                    )}
+                    {duplicate && (
+                        <p className="text-destructive text-sm" role="alert">
+                            Игра «{accentName(duplicate)}» уже существует
                         </p>
                     )}
 

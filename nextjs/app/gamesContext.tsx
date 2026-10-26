@@ -2,7 +2,7 @@
 
 import { createContext, useContext, ReactNode } from "react";
 import { GameListItem, getGamesPromise } from "./api";
-import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useCachedAsyncResource } from "@/hooks/useCachedAsyncResource";
 
 type GamesContextType = {
   games: GameListItem[];
@@ -11,8 +11,13 @@ type GamesContextType = {
 
 const GamesContext = createContext<GamesContextType | undefined>(undefined);
 
+// The games list is cached in localStorage: game-creation forms validate the
+// typed name against it, so a truly offline visit (cold service-worker cache)
+// must still resolve the last known list rather than validate against nothing.
+const GAMES_CACHE_KEY = "games-cache-v1";
+
 export const GamesProvider = ({ children }: { children: ReactNode }) => {
-  const { data, invalidate } = useAsyncResource(getGamesPromise);
+  const { data, invalidate } = useCachedAsyncResource(getGamesPromise, GAMES_CACHE_KEY);
 
   const games = data?.games ?? [];
 

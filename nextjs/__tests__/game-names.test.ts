@@ -4,6 +4,7 @@ import {
     accentName,
     allNames,
     bggUrl,
+    findDuplicateGame,
     matchesAnyName,
     secondaryNames,
     teseraUrl,
@@ -49,6 +50,24 @@ describe("allNames / matchesAnyName", () => {
 
     it("allNames is accent plus secondary", () => {
         expect(allNames(bottleImp)).toEqual(["Бутылочка", "Тень в бутылке", "The Bottle Imp"]);
+    });
+});
+
+describe("findDuplicateGame", () => {
+    const carcassonne = { name: "Каркассон", name_en: "Carcassonne" };
+    const games = [bottleImp, carcassonne];
+
+    it("matches any known name, case- and whitespace-insensitively", () => {
+        expect(findDuplicateGame(games, "бутылочка")).toBe(bottleImp);
+        expect(findDuplicateGame(games, "  The Bottle Imp ")).toBe(bottleImp);
+        expect(findDuplicateGame(games, "CARCASSONNE")).toBe(carcassonne);
+    });
+
+    it("ignores substrings, unknown names, and blanks", () => {
+        expect(findDuplicateGame(games, "бутыл")).toBeUndefined();
+        expect(findDuplicateGame(games, "Пандория")).toBeUndefined();
+        expect(findDuplicateGame(games, "")).toBeUndefined();
+        expect(findDuplicateGame(games, "   ")).toBeUndefined();
     });
 });
 

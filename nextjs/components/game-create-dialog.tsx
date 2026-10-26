@@ -31,7 +31,9 @@ import {
 } from "@/components/game-suggestions"
 import { useTags } from "@/app/tagsContext"
 import { useMe } from "@/app/meContext"
+import { useGames } from "@/app/gamesContext"
 import { useOffline } from "@/app/offline/OfflineContext"
+import { accentName, findDuplicateGame } from "@/lib/game-names"
 import { GAME_MODES, GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes"
 
 /**
@@ -86,7 +88,8 @@ function GameCreateForm({
 }) {
   const { tags } = useTags()
   const { canEdit } = useMe()
-  const { addPendingGame } = useOffline()
+  const { games } = useGames()
+  const { addPendingGame, pendingGames } = useOffline()
 
   const [name, setName] = React.useState(initialName)
   const [selectedTagIds, setSelectedTagIds] = React.useState<Set<Base58ID>>(new Set())
@@ -97,6 +100,17 @@ function GameCreateForm({
   // Catalogue suggestions for the typed name; best-effort — a network failure
   // or offline state simply leaves the list empty and creation continues.
   const suggestions = useGameSuggestions(name, true)
+
+  // The queued name becomes the display name on the server (alias → ru → en),
+  // so a game already claiming it — in the server list or the offline queue —
+  // would only fail at sync time with the unique-name error. Both lists come
+  // from local sources (localStorage cache / offline store), so the check
+  // works fully offline; with neither available it simply finds nothing and
+  // the server stays the final gate.
+  const duplicate = React.useMemo(
+    () => findDuplicateGame([...games, ...pendingGames], name),
+    [games, pendingGames, name],
+  )
 
   const sortedTags = React.useMemo(
     () => [...tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
@@ -114,7 +128,7 @@ function GameCreateForm({
 
   async function confirmCreate() {
     const trimmed = name.trim()
-    if (!trimmed || creating) return
+    if (!trimmed || creating || duplicate) return
     setCreating(true)
     try {
       const game = addPendingGame(trimmed, [...selectedTagIds], {
@@ -140,7 +154,13 @@ function GameCreateForm({
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmCreate(); } }}
         autoFocus
         aria-label="Название новой игры"
+        aria-invalid={duplicate != null || undefined}
       />
+      {duplicate && (
+        <p className="text-destructive text-sm" role="alert">
+          Игра «{accentName(duplicate)}» уже существует
+        </p>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor="new-game-mode">Режим игры</Label>
         <Select value={gameMode} onValueChange={(v) => setGameMode(v as GameMode)}>
@@ -195,7 +215,7 @@ function GameCreateForm({
         <Button variant="outline" onClick={onClose} disabled={creating}>
           Отмена
         </Button>
-        <Button onClick={confirmCreate} disabled={creating || !name.trim()} aria-busy={creating}>
+        <Button onClick={confirmCreate} disabled={creating || !name.trim() || duplicate != null} aria-busy={creating}>
           {creating && <Spinner className="size-4" />}
           Сохранить
         </Button>

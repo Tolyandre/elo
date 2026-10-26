@@ -44,6 +44,25 @@ export function matchesAnyName(game: GameWithNames, query: string): boolean {
     return allNames(game).some((n) => n.toLowerCase().includes(q));
 }
 
+/**
+ * The first game claiming `name` as any of its names (trimmed, case- and
+ * whitespace-insensitive), or undefined. Broader than the server's unique
+ * display-name index (alias → ru → en, exact bytes): a typed name matching a
+ * known alias or English title is a duplicate in spirit, so creation forms
+ * block it before it ever reaches the queue.
+ */
+export function findDuplicateGame(
+    games: Iterable<GameWithNames>,
+    name: string,
+): GameWithNames | undefined {
+    const key = name.trim().toLowerCase();
+    if (!key) return undefined;
+    for (const game of games) {
+        if (allNames(game).some((n) => n.trim().toLowerCase() === key)) return game;
+    }
+    return undefined;
+}
+
 export function bggUrl(bggRef: number): string {
     return `https://boardgamegeek.com/boardgame/${bggRef}`;
 }
