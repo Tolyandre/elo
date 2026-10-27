@@ -219,43 +219,6 @@ func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGames
 	return items, nil
 }
 
-const listGamesWithoutTeseraRef = `-- name: ListGamesWithoutTeseraRef :many
-SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode FROM games
-WHERE tesera_id IS NULL
-ORDER BY name
-`
-
-func (q *Queries) ListGamesWithoutTeseraRef(ctx context.Context) ([]Game, error) {
-	rows, err := q.db.Query(ctx, listGamesWithoutTeseraRef)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Game{}
-	for rows.Next() {
-		var i Game
-		if err := rows.Scan(
-			&i.ID,
-			&i.NameEn,
-			&i.NameRu,
-			&i.Alias,
-			&i.BggID,
-			&i.TeseraID,
-			&i.Name,
-			&i.ImageUrl,
-			&i.ImageThumbUrl,
-			&i.GameMode,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listPopularClubGames = `-- name: ListPopularClubGames :many
 SELECT m.game_id AS game_id, COUNT(*) AS match_count, MAX(m.date)::timestamptz AS last_match_at
 FROM matches m

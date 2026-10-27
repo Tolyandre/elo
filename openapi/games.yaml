@@ -478,44 +478,6 @@ GamesFavoritesPath:
             schema:
               $ref: './common.yaml#/ApiError'
 
-GameAutoMatchPath:
-  post:
-    operationId: AutoMatchGames
-    tags: [games]
-    summary: Match every game lacking a Tesera reference against the Tesera catalogue
-    description: >-
-      Applies only exact normalized matches with base games (each in its own
-      transaction, audited). Per-game failures — ambiguous names, Tesera
-      errors — are reported in the response and skipped, never fatal. This
-      is the admin backfill for pre-existing games.
-    security:
-      - cookieAuth: []
-    responses:
-      "200":
-        description: Per-game match results
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                status:
-                  type: string
-                data:
-                  $ref: '#/GameAutoMatchResults'
-              required: [status, data]
-      "401":
-        description: Unauthorized
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-      "403":
-        description: Forbidden
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-
 GameArtRefreshPath:
   post:
     operationId: RefreshGameArt
@@ -789,31 +751,6 @@ GameSuggestionList:
       type: boolean
       nullable: true
       description: Set when the configured BGG integration failed and only Tesera results are included
-  required: [games]
-
-GameAutoMatchResult:
-  type: object
-  properties:
-    id:
-      $ref: './common.yaml#/Base58ID'
-    name:
-      type: string
-      description: The game's display name at the time of matching
-    matched:
-      type: boolean
-    reason:
-      type: string
-      nullable: true
-      description: Why the game was not matched ("no exact match", "tesera unavailable", "name conflict")
-  required: [id, name, matched]
-
-GameAutoMatchResults:
-  type: object
-  properties:
-    games:
-      type: array
-      items:
-        $ref: '#/GameAutoMatchResult'
   required: [games]
 
 GameArtRefreshResult:

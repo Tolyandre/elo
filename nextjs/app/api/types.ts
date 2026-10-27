@@ -20,7 +20,6 @@ export type GameTag = components["schemas"]["GameTag"];
 export type Tag = components["schemas"]["Tag"];
 export type Game = components["schemas"]["Game"];
 export type GameSuggestion = components["schemas"]["GameSuggestion"];
-export type GameAutoMatchResult = components["schemas"]["GameAutoMatchResult"];
 export type GameArtRefreshResult = components["schemas"]["GameArtRefreshResult"];
 export type EloSettingEntry = components["schemas"]["EloSettingEntry"];
 export type Market = components["schemas"]["Market"];

@@ -24,8 +24,7 @@ type Candidate struct {
 	PhotoURL string
 	// IsAddition carries Tesera's "addition" flag. It is UNRELIABLE as a
 	// filter — some base games (Каркассон itself) carry it — so it is used
-	// only to rank suggestions and to prefer base games in auto-match,
-	// never to reject a candidate.
+	// only to rank suggestions, never to reject a candidate.
 	IsAddition bool
 }
 
@@ -85,15 +84,6 @@ func hasCyrillic(s string) bool {
 
 func isAllDigits(s string) bool {
 	return s != "" && strings.TrimFunc(s, unicode.IsDigit) == ""
-}
-
-// MatchesName reports whether name equals the candidate's localized or
-// English title under NormalizeName. This is the auto-match threshold:
-// only exact matches are applied without a human confirming them.
-func (c *Candidate) MatchesName(name string) bool {
-	n := NormalizeName(name)
-	return n != "" &&
-		(n == NormalizeName(c.Title) || n == NormalizeName(c.NameEn))
 }
 
 // NormalizeName folds a title for comparison: case-insensitive, ё→е,

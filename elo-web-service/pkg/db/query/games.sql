@@ -106,11 +106,6 @@ WHERE id = ANY(sqlc.arg('game_ids')::uuid[]) AND game_mode = 'coop';
 SELECT * FROM games
 WHERE id = $1;
 
--- name: ListGamesWithoutTeseraRef :many
-SELECT * FROM games
-WHERE tesera_id IS NULL
-ORDER BY name;
-
 -- name: UpdateGameBggImages :one
 UPDATE games
 SET	image_url = $2,

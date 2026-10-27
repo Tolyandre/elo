@@ -61,10 +61,6 @@ components:
       $ref: './games.yaml#/GameSuggestion'
     GameSuggestionList:
       $ref: './games.yaml#/GameSuggestionList'
-    GameAutoMatchResult:
-      $ref: './games.yaml#/GameAutoMatchResult'
-    GameAutoMatchResults:
-      $ref: './games.yaml#/GameAutoMatchResults'
     FavoriteGames:
       $ref: './games.yaml#/FavoriteGames'
     RecentGame:
@@ -259,8 +255,6 @@ paths:
     $ref: './games.yaml#/GamesFavoritesPath'
   /games/suggestions:
     $ref: './games.yaml#/GameSuggestionsPath'
-  /games/auto-match:
-    $ref: './games.yaml#/GameAutoMatchPath'
   /games/{id}/bgg-refresh-art:
     $ref: './games.yaml#/GameArtRefreshPath'
   /games/{id}:

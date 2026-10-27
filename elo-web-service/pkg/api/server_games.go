@@ -227,24 +227,6 @@ func (s *StrictServer) SuggestGames(ctx context.Context, request SuggestGamesReq
 	return SuggestGames200JSONResponse{Status: StatusSuccess, Data: list}, nil
 }
 
-func (s *StrictServer) AutoMatchGames(ctx context.Context, _ AutoMatchGamesRequestObject) (AutoMatchGamesResponseObject, error) {
-	results, err := s.api.GameService.AutoMatchGames(ctx, currentActorID(ctx))
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]GameAutoMatchResult, 0, len(results))
-	for _, r := range results {
-		items = append(items, GameAutoMatchResult{
-			Id:      r.GameID,
-			Name:    r.Name,
-			Matched: r.Matched,
-			Reason:  strPtrOrNil(r.Reason),
-		})
-	}
-	return AutoMatchGames200JSONResponse{Status: StatusSuccess, Data: GameAutoMatchResults{Games: items}}, nil
-}
-
 // RefreshGameArt re-fetches and stores one game's box art from BGG,
 // overwriting stale URLs; a reason rides along when nothing was refreshed.
 func (s *StrictServer) RefreshGameArt(ctx context.Context, request RefreshGameArtRequestObject) (RefreshGameArtResponseObject, error) {

@@ -1710,24 +1710,6 @@ type Game struct {
 	TotalMatches int  `json:"total_matches"`
 }
 
-// GameAutoMatchResult defines model for GameAutoMatchResult.
-type GameAutoMatchResult struct {
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id      Base58ID `json:"id"`
-	Matched bool     `json:"matched"`
-
-	// Name The game's display name at the time of matching
-	Name string `json:"name"`
-
-	// Reason Why the game was not matched ("no exact match", "tesera unavailable", "name conflict")
-	Reason *string `json:"reason,omitempty"`
-}
-
-// GameAutoMatchResults defines model for GameAutoMatchResults.
-type GameAutoMatchResults struct {
-	Games []GameAutoMatchResult `json:"games"`
-}
-
 // GameEloStat defines model for GameEloStat.
 type GameEloStat struct {
 	EloEarned float64 `json:"elo_earned"`
@@ -4451,9 +4433,6 @@ type ServerInterface interface {
 	// CreateGame Create a new game
 	// (POST /games)
 	CreateGame(c *gin.Context)
-	// AutoMatchGames Match every game lacking a Tesera reference against the Tesera catalogue
-	// (POST /games/auto-match)
-	AutoMatchGames(c *gin.Context)
 	// ListFavoriteGames Favorite games for the current user's game picker
 	// (GET /games/favorites)
 	ListFavoriteGames(c *gin.Context)
@@ -5315,19 +5294,6 @@ func (siw *ServerInterfaceWrapper) CreateGame(c *gin.Context) {
 	}
 
 	siw.Handler.CreateGame(c)
-}
-
-// AutoMatchGames operation middleware
-func (siw *ServerInterfaceWrapper) AutoMatchGames(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.AutoMatchGames(c)
 }
 
 // ListFavoriteGames operation middleware
@@ -7217,7 +7183,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/feed", wrapper.ListHomeFeed)
 	router.GET(options.BaseURL+"/games", wrapper.ListGames)
 	router.POST(options.BaseURL+"/games", wrapper.CreateGame)
-	router.POST(options.BaseURL+"/games/auto-match", wrapper.AutoMatchGames)
 	router.GET(options.BaseURL+"/games/favorites", wrapper.ListFavoriteGames)
 	router.GET(options.BaseURL+"/games/suggestions", wrapper.SuggestGames)
 	router.DELETE(options.BaseURL+"/games/:id", wrapper.DeleteGame)
@@ -8552,58 +8517,6 @@ func (response CreateGame409JSONResponse) VisitCreateGameResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AutoMatchGamesRequestObject struct {
-}
-
-type AutoMatchGamesResponseObject interface {
-	VisitAutoMatchGamesResponse(w http.ResponseWriter) error
-}
-
-type AutoMatchGames200JSONResponse struct {
-	Data   GameAutoMatchResults `json:"data"`
-	Status string               `json:"status"`
-}
-
-func (response AutoMatchGames200JSONResponse) VisitAutoMatchGamesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AutoMatchGames401JSONResponse ApiError
-
-func (response AutoMatchGames401JSONResponse) VisitAutoMatchGamesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AutoMatchGames403JSONResponse ApiError
-
-func (response AutoMatchGames403JSONResponse) VisitAutoMatchGamesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13436,9 +13349,6 @@ type StrictServerInterface interface {
 	// CreateGame Create a new game
 	// (POST /games)
 	CreateGame(ctx context.Context, request CreateGameRequestObject) (CreateGameResponseObject, error)
-	// AutoMatchGames Match every game lacking a Tesera reference against the Tesera catalogue
-	// (POST /games/auto-match)
-	AutoMatchGames(ctx context.Context, request AutoMatchGamesRequestObject) (AutoMatchGamesResponseObject, error)
 	// ListFavoriteGames Favorite games for the current user's game picker
 	// (GET /games/favorites)
 	ListFavoriteGames(ctx context.Context, request ListFavoriteGamesRequestObject) (ListFavoriteGamesResponseObject, error)
@@ -14379,30 +14289,6 @@ func (sh *strictHandler) CreateGame(ctx *gin.Context) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(CreateGameResponseObject); ok {
 		if err := validResponse.VisitCreateGameResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AutoMatchGames operation middleware
-func (sh *strictHandler) AutoMatchGames(ctx *gin.Context) {
-	var request AutoMatchGamesRequestObject
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.AutoMatchGames(ctx, request.(AutoMatchGamesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AutoMatchGames")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(AutoMatchGamesResponseObject); ok {
-		if err := validResponse.VisitAutoMatchGamesResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

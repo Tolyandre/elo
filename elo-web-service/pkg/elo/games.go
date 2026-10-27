@@ -157,15 +157,6 @@ type SuggestResult struct {
 	BggUnavailable    bool
 }
 
-// AutoMatchResult reports the auto-match outcome for one previously
-// unmatched game.
-type AutoMatchResult struct {
-	GameID  id.ID
-	Name    string
-	Matched bool
-	Reason  string
-}
-
 // ArtRefreshResult reports the outcome of one game's on-demand box-art
 // refresh: either new URLs were stored, or Reason says why not.
 type ArtRefreshResult struct {
@@ -208,7 +199,6 @@ type IGameService interface {
 	// canonical name.
 	AddGame(ctx context.Context, gameID id.ID, name string, actor id.ID, meta ...GameMetaPatch) (*db.Game, error)
 	SuggestGames(ctx context.Context, query string) (SuggestResult, error)
-	AutoMatchGames(ctx context.Context, actor id.ID) ([]AutoMatchResult, error)
 	// RefreshGameArt re-fetches and stores one game's box art from the BGG
 	// XML API, overwriting whatever URLs are stored — the manual remedy for
 	// wrong or stale art (the automatic paths only fill empty images).
@@ -245,10 +235,6 @@ const (
 	suggestDetailFetchLimit = 8
 	suggestResultLimit      = 6
 	suggestTimeout          = 12 * time.Second
-	// autoMatchThrottle spaces out requests to the undocumented Tesera API
-	// while bulk-matching the catalogue; the client adds retries with backoff
-	// for DDos-Guard's bursty 403s on top.
-	autoMatchThrottle = 500 * time.Millisecond
 )
 
 func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error) {
@@ -748,105 +734,6 @@ func candidateMatches(cand *tesera.Candidate, sugg GameSuggestion) bool {
 func sameName(a, b string) bool {
 	na, nb := tesera.NormalizeName(a), tesera.NormalizeName(b)
 	return na != "" && na == nb
-}
-
-// AutoMatchGames matches every game lacking a Tesera reference against the
-// Tesera catalogue. Only exact normalized matches are applied (base games
-// preferred over Tesera-flagged additions; each applied in its own
-// transaction with an audit row); everything else — ambiguous names, Tesera
-// errors — is reported and left for manual matching in the admin UI.
-// Per-game failures never abort the run.
-func (s *GameService) AutoMatchGames(ctx context.Context, actor id.ID) ([]AutoMatchResult, error) {
-	if s.Tesera == nil {
-		return nil, ErrTeseraUnavailable
-	}
-	rows, err := s.Queries.ListGamesWithoutTeseraRef(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list unmatched games: %w", err)
-	}
-
-	results := make([]AutoMatchResult, 0, len(rows))
-	for _, g := range rows {
-		res := AutoMatchResult{GameID: g.ID, Name: g.Name}
-		cand, cerr := s.findExactMatch(ctx, g.Name)
-		switch {
-		case cerr != nil:
-			res.Reason = "tesera unavailable"
-		case cand == nil:
-			res.Reason = "no exact match"
-		default:
-			_, alias := canonicalizeNames(g.Name, cand.NameRu, cand.NameEn)
-			nameRu, nameEn := cand.NameRu, cand.NameEn
-			// The patch is full-state: carry the game's own mode through so
-			// an auto-match never resets it (ADR-33), and its BGG reference
-			// when the Tesera match knows no BGG link — a NULL would erase a
-			// good reference along with its box art.
-			mode := g.GameMode
-			bgg := int64Of(g.BggID)
-			if cand.BggRef != 0 {
-				bgg = cand.BggRef
-			}
-			teseraRef := cand.TeseraRef
-			patch := GameMetaPatch{
-				Alias:     strPtr(alias),
-				NameEn:    strPtr(nameEn),
-				NameRu:    strPtr(nameRu),
-				BggRef:    &bgg,
-				TeseraRef: &teseraRef,
-				GameMode:  &mode,
-			}
-			if _, uerr := s.UpdateGame(ctx, g.ID, patch, actor); uerr != nil {
-				res.Reason = "name conflict"
-			} else {
-				res.Matched = true
-			}
-		}
-		results = append(results, res)
-		if cerr == nil {
-			time.Sleep(autoMatchThrottle)
-		}
-	}
-	return results, nil
-}
-
-// findExactMatch returns the candidate whose localized or English title
-// equals name (normalized), preferring a base game when Tesera flags several
-// matches as additions (the flag is unreliable in both directions). Nil when
-// nothing matches exactly.
-func (s *GameService) findExactMatch(ctx context.Context, name string) (*tesera.Candidate, error) {
-	items, err := s.Tesera.SearchGames(ctx, name)
-	if err != nil {
-		return nil, err
-	}
-	var flaggedExact *tesera.Candidate
-	detailAttempts, detailFailures := 0, 0
-	for i, item := range items {
-		if i >= suggestDetailFetchLimit {
-			break
-		}
-		detailAttempts++
-		detail, derr := s.Tesera.GetGame(ctx, item.Alias)
-		if derr != nil {
-			detailFailures++
-			continue
-		}
-		cand := tesera.CandidateFromDetail(detail)
-		if cand == nil || !cand.MatchesName(name) {
-			continue
-		}
-		if !cand.IsAddition {
-			return cand, nil
-		}
-		if flaggedExact == nil {
-			flaggedExact = cand
-		}
-	}
-	// The search worked but every detail fetch failed — rate limiting, not a
-	// genuinely unmatched game; report it so the run can be resumed.
-	if detailAttempts > 0 && detailFailures == detailAttempts {
-		return nil, fmt.Errorf("tesera detail fetches failed for %q", name)
-	}
-	return flaggedExact, nil
 }
 
 // RefreshGameArt re-fetches and stores one game's box art by its stored BGG

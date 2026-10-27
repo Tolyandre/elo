@@ -2,7 +2,6 @@
 import type { Base58ID } from "@/lib/id";
 import React from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import { Dices, Pencil, Plus, Trash2 } from "lucide-react";
 import { SiBoardgamegeek } from "@icons-pack/react-simple-icons";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -11,7 +10,6 @@ import {
     deleteGamePromise,
     addGameTagPromise,
     removeGameTagPromise,
-    autoMatchGamesPromise,
     Tag,
     GameListItem,
 } from "@/app/api";
@@ -26,7 +24,6 @@ import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { GameEditDialog } from "@/components/admin/game-edit-dialog";
 import { TagManagement } from "@/components/admin/tag-management";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { PageContainer } from "@/components/page-container";
 import { EmptyState } from "@/components/empty-state";
@@ -47,7 +44,6 @@ export default function GamesAdminPage() {
     const [tab, setTab] = useState("main");
     const [createOpen, setCreateOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<GameRow | null>(null);
-    const [matching, setMatching] = useState(false);
 
     const del = useConfirmAction(async (g: GameRow) => {
         await deleteGamePromise(g.id);
@@ -75,27 +71,6 @@ export default function GamesAdminPage() {
         });
     }
 
-    /** Bulk exact-name matching against Tesera for games without a Tesera link. */
-    async function runAutoMatch() {
-        setMatching(true);
-        try {
-            const results = await autoMatchGamesPromise();
-            const matched = results.filter((r) => r.matched).length;
-            if (results.length === 0) {
-                toast.success("Все игры уже сопоставлены");
-            } else {
-                toast.success(`Сопоставлено ${matched} из ${results.length}`);
-            }
-            invalidateGames();
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setMatching(false);
-        }
-    }
-
-    const unmatchedCount = gamesFromContext.filter((g) => !g.tesera_ref).length;
-
     return (
         <PageContainer width="full">
                 <PageHeader
@@ -118,24 +93,6 @@ export default function GamesAdminPage() {
             )}
             {!meLoading && isAuthenticated && !canEdit && <p>У вас нет прав для редактирования игр.</p>}
             <p>Удаление возможно для игр без партий. Нажмите на тег под игрой, чтобы присвоить или убрать его.</p>
-
-            <section className="mb-4 mt-4 rounded border p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-medium">Сопоставление с каталогами</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Автоматически проставить ссылки на BoardGameGeek и Тесеру.
-                    </p>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2 shrink-0">
-                    <Button
-                        onClick={runAutoMatch}
-                        disabled={!canEdit || matching}
-                    >
-                        {matching && <Spinner className="size-4" />}
-                        Подобрать ссылки{unmatchedCount > 0 ? ` (${unmatchedCount})` : ""}
-                    </Button>
-                </div>
-            </section>
 
             <Input
                 className="mb-4"

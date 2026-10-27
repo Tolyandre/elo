@@ -196,26 +196,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/games/auto-match": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Match every game lacking a Tesera reference against the Tesera catalogue
-         * @description Applies only exact normalized matches with base games (each in its own transaction, audited). Per-game failures — ambiguous names, Tesera errors — are reported in the response and skipped, never fatal. This is the admin backfill for pre-existing games.
-         */
-        post: operations["AutoMatchGames"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/games/{id}/bgg-refresh-art": {
         parameters: {
             query?: never;
@@ -1502,17 +1482,6 @@ export interface components {
             tesera_unavailable?: boolean | null;
             /** @description Set when the configured BGG integration failed and only Tesera results are included */
             bgg_unavailable?: boolean | null;
-        };
-        GameAutoMatchResult: {
-            id: components["schemas"]["Base58ID"];
-            /** @description The game's display name at the time of matching */
-            name: string;
-            matched: boolean;
-            /** @description Why the game was not matched ("no exact match", "tesera unavailable", "name conflict") */
-            reason?: string | null;
-        };
-        GameAutoMatchResults: {
-            games: components["schemas"]["GameAutoMatchResult"][];
         };
         FavoriteGames: {
             /** @description «Недавние» — most recently played first */
@@ -3292,47 +3261,6 @@ export interface operations {
             };
             /** @description No catalogue integration is configured on the server */
             503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    AutoMatchGames: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Per-game match results */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["GameAutoMatchResults"];
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };

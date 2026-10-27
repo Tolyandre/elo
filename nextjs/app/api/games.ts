@@ -1,6 +1,6 @@
 // Games, their catalogue metadata, tags, and the Tesera suggestion matching.
 import { client, unwrap, newId } from "./client";
-import type { Game, GameAutoMatchResult, GameArtRefreshResult, GameList, GameSuggestion, FavoriteGames, Tag } from "./types";
+import type { Game, GameArtRefreshResult, GameList, GameSuggestion, FavoriteGames, Tag } from "./types";
 import type { Base58ID } from "@/lib/id";
 import type { GameMode } from "@/lib/game-modes";
 
@@ -58,11 +58,6 @@ export async function suggestGamesPromise(query: string): Promise<GameSuggestion
     } catch {
         return { games: [], teseraUnavailable: false, bggUnavailable: false, failed: true };
     }
-}
-
-/** Bulk exact-name matching against Tesera for games lacking a Tesera link. */
-export async function autoMatchGamesPromise(): Promise<GameAutoMatchResult[]> {
-    return (await unwrap(client.POST("/games/auto-match"))).data.games;
 }
 
 /**

@@ -153,7 +153,6 @@ func main() {
 	// The game picker's «Избранные» tab for the signed-in user — before /games/:id.
 	router.GET("/games/favorites", oauth2Handler.DeserializeUser(), strictWrapper.ListFavoriteGames)
 	router.GET("/games/suggestions", append(editorAuth(), strictWrapper.SuggestGames)...)
-	router.POST("/games/auto-match", append(editorAuth(), strictWrapper.AutoMatchGames)...)
 	router.POST("/games/:id/bgg-refresh-art", append(editorAuth(), strictWrapper.RefreshGameArt)...)
 	router.GET("/games/:id", strictWrapper.GetGame)
 	router.DELETE("/games/:id", append(editorAuth(), strictWrapper.DeleteGame)...)

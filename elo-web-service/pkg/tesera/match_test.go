@@ -102,19 +102,3 @@ func TestCandidateFromDetail(t *testing.T) {
 		}
 	})
 }
-
-func TestCandidateMatchesName(t *testing.T) {
-	c := CandidateFromDetail(&GameDetail{
-		TeseraID: 1, Title: "Каркассон", Title2: "Carcassonne",
-	})
-	for _, name := range []string{"Каркассон", "КАРКАССОН", "Carcassonne!", "carcassonne"} {
-		if !c.MatchesName(name) {
-			t.Errorf("MatchesName(%q) = false, want true", name)
-		}
-	}
-	for _, name := range []string{"Каркассон. Охотники", "Carcassonne 2", ""} {
-		if c.MatchesName(name) {
-			t.Errorf("MatchesName(%q) = true, want false", name)
-		}
-	}
-}

@@ -247,7 +247,6 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.GET("/games", strictWrapper.ListGames)
 	r.GET("/games/favorites", o.DeserializeUser(), strictWrapper.ListFavoriteGames)
 	r.GET("/games/suggestions", o.DeserializeUser(), a.RequireEditor(), strictWrapper.SuggestGames)
-	r.POST("/games/auto-match", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AutoMatchGames)
 	r.POST("/games/:id/bgg-refresh-art", o.DeserializeUser(), a.RequireEditor(), strictWrapper.RefreshGameArt)
 	r.GET("/games/:id", strictWrapper.GetGame)
 	r.POST("/games", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateGame)

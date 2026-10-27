@@ -449,7 +449,6 @@ type Querier interface {
 	ListGameTables(ctx context.Context, tenantID id.ID) ([]GameTable, error)
 	ListGameTags(ctx context.Context) ([]ListGameTagsRow, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
-	ListGamesWithoutTeseraRef(ctx context.Context) ([]Game, error)
 	// The current state (latest settlement row) of every player in the arena.
 	// Used to diff the state before and after a full recalculation replay.
 	ListLatestArenaStatePerPlayer(ctx context.Context, arenaID id.ID) ([]ListLatestArenaStatePerPlayerRow, error)
