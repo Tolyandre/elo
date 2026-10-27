@@ -616,6 +616,12 @@ WITH events AS (
       AND (
           $9::uuid IS NULL OR m.game_id = $9::uuid
       )
+      -- The market view keeps a match only when it resolved at least one
+      -- market (the same rule as the payload's has_markets).
+      AND (
+          NOT $10::bool
+          OR EXISTS (SELECT 1 FROM markets WHERE resolution_match_id = m.id)
+      )
     UNION ALL
     -- Every market appears once: an active market (open or betting-locked)
     -- sorts at its creation moment, a settled one (resolved or cancelled —
@@ -630,7 +636,7 @@ WITH events AS (
            END AS sort_date,
            'market'::text
     FROM markets om
-    WHERE $10::bool
+    WHERE $11::bool
       AND (
           (om.status IN ('open', 'betting_closed') AND om.created_at IS NOT NULL)
           OR (om.status IN ('resolved', 'cancelled') AND om.resolved_at IS NOT NULL)
@@ -724,6 +730,7 @@ type ListArenaFeedEventsParams struct {
 	PlayerID           *id.ID             `json:"player_id"`
 	ClubID             *id.ID             `json:"club_id"`
 	GameID             *id.ID             `json:"game_id"`
+	MarketsOnly        bool               `json:"markets_only"`
 	IncludeSettlements bool               `json:"include_settlements"`
 }
 
@@ -739,10 +746,11 @@ type ListArenaFeedEventsRow struct {
 // once settled, so a match-triggered resolution sits right after its match.
 // Market events settle only into the global arena (ADR-24), so that branch
 // joins the union only when the caller passes include_settlements. The
-// player/club/game filters apply to both branches. The cursor is the last
-// returned (sort_date, event_type, id)
-// tuple; the token carries the filters, so continuation requests pass only
-// the token.
+// player/club/game filters apply to both branches. markets_only narrows the
+// stream to the market view: market events pass untouched, matches only when
+// they resolved at least one market. The cursor is the last returned
+// (sort_date, event_type, id) tuple; the token carries the filters, so
+// continuation requests pass only the token.
 func (q *Queries) ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEventsParams) ([]ListArenaFeedEventsRow, error) {
 	rows, err := q.db.Query(ctx, listArenaFeedEvents,
 		arg.CursorDate,
@@ -754,6 +762,7 @@ func (q *Queries) ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEven
 		arg.PlayerID,
 		arg.ClubID,
 		arg.GameID,
+		arg.MarketsOnly,
 		arg.IncludeSettlements,
 	)
 	if err != nil {

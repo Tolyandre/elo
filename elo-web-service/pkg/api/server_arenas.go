@@ -344,9 +344,14 @@ type arenaFeedCursor struct {
 	ClubID   *string     `json:"club_id,omitempty"`
 	TenantID *string     `json:"tenant_id,omitempty"`
 	GameID   *string     `json:"game_id,omitempty"`
+	Markets  *bool       `json:"markets,omitempty"`
 }
 
-func encodeArenaFeedCursor(playerID, clubID, tenantID, gameID *string, date time.Time, eventType string, eventID id.ID) string {
+func encodeArenaFeedCursor(playerID, clubID, tenantID, gameID *string, marketsOnly bool, date time.Time, eventType string, eventID id.ID) string {
+	var markets *bool
+	if marketsOnly {
+		markets = &marketsOnly
+	}
 	return encodeCursorToken(arenaFeedCursor{
 		Date:     rfc3339Time(date),
 		Type:     eventType,
@@ -355,6 +360,7 @@ func encodeArenaFeedCursor(playerID, clubID, tenantID, gameID *string, date time
 		ClubID:   clubID,
 		TenantID: tenantID,
 		GameID:   gameID,
+		Markets:  markets,
 	})
 }
 
@@ -385,17 +391,20 @@ type feedRequest struct {
 	tenantFeed               bool
 	feedTenantID             id.ID
 	playerID, clubID, gameID *string
-	cursorDate               pgtype.Timestamptz
-	cursorType               pgtype.Text
-	cursorID                 *id.ID
-	limit                    int32
+	// marketsOnly narrows the stream to market events plus the matches that
+	// resolved at least one market.
+	marketsOnly bool
+	cursorDate  pgtype.Timestamptz
+	cursorType  pgtype.Text
+	cursorID    *id.ID
+	limit       int32
 }
 
 // parseFeedRequest applies the cursor-or-query-params convention shared by the
 // paginated list endpoints: on continuation the cursor token carries the
 // filters (in canonical id form), on page 1 they come from the query (wire
 // form) and are parsed tolerantly.
-func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playerId, clubId, gameId, next *string, limitParam *int) (feedRequest, error) {
+func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playerId, clubId, gameId *string, markets *bool, next *string, limitParam *int) (feedRequest, error) {
 	req := feedRequest{
 		arenaID:            arenaID,
 		includeSettlements: includeSettlements,
@@ -408,6 +417,7 @@ func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playe
 			return req, err
 		}
 		req.playerID, req.clubID, req.gameID = c.PlayerID, c.ClubID, c.GameID
+		req.marketsOnly = c.Markets != nil && *c.Markets
 		req.cursorDate = date
 		req.cursorType = pgtype.Text{String: c.Type, Valid: true}
 		cid := id.ID(c.ID)
@@ -425,6 +435,9 @@ func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playe
 			g := string(parseIDParam(*gameId))
 			req.gameID = &g
 		}
+		if markets != nil {
+			req.marketsOnly = *markets
+		}
 	}
 	req.limit = pageLimit(limitParam, 30)
 	return req, nil
@@ -435,9 +448,9 @@ func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playe
 // from the tenant's main arena, and the cursor token bakes the tenant
 // identity so a token from another tenant's feed is a bad request. The
 // player/club/game filters are the arena feed's.
-func parseTenantFeedRequest(arenaID, tenantID id.ID, playerId, clubId, gameId, next *string, limitParam *int) (feedRequest, error) {
+func parseTenantFeedRequest(arenaID, tenantID id.ID, playerId, clubId, gameId *string, markets *bool, next *string, limitParam *int) (feedRequest, error) {
 	tenant := string(tenantID)
-	req, err := parseFeedRequest(arenaID, true, true, playerId, clubId, gameId, next, limitParam)
+	req, err := parseFeedRequest(arenaID, true, true, playerId, clubId, gameId, markets, next, limitParam)
 	if err != nil {
 		return req, err
 	}
@@ -464,14 +477,15 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 	var keys []feedEventKey
 	if req.tenantFeed {
 		rows, err := s.api.TenantService.ListTenantFeedEvents(ctx, db.ListTenantFeedEventsParams{
-			TenantID:   req.feedTenantID,
-			CursorDate: req.cursorDate,
-			CursorType: req.cursorType,
-			CursorID:   req.cursorID,
-			PlayerID:   idPtr(req.playerID),
-			ClubID:     idPtr(req.clubID),
-			GameID:     idPtr(req.gameID),
-			Limit:      req.limit,
+			TenantID:    req.feedTenantID,
+			MarketsOnly: req.marketsOnly,
+			CursorDate:  req.cursorDate,
+			CursorType:  req.cursorType,
+			CursorID:    req.cursorID,
+			PlayerID:    idPtr(req.playerID),
+			ClubID:      idPtr(req.clubID),
+			GameID:      idPtr(req.gameID),
+			Limit:       req.limit,
 		})
 		if err != nil {
 			return FeedPage{}, err
@@ -484,6 +498,7 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 			ArenaID:            req.arenaID,
 			IncludeSettlements: req.includeSettlements,
 			IncludeCoop:        req.includeCoop,
+			MarketsOnly:        req.marketsOnly,
 			CursorDate:         req.cursorDate,
 			CursorType:         req.cursorType,
 			CursorID:           req.cursorID,
@@ -547,7 +562,7 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 	var next *string
 	if int32(len(keys)) == req.limit {
 		last := keys[len(keys)-1]
-		token := encodeArenaFeedCursor(req.playerID, req.clubID, tenantIDPtr(req), req.gameID, last.SortDate.Time, last.EventType, last.ID)
+		token := encodeArenaFeedCursor(req.playerID, req.clubID, tenantIDPtr(req), req.gameID, req.marketsOnly, last.SortDate.Time, last.EventType, last.ID)
 		next = &token
 	}
 	return FeedPage{Status: StatusSuccess, Data: data, Next: next}, nil
@@ -607,6 +622,7 @@ func (s *StrictServer) ListArenaFeed(ctx context.Context, request ListArenaFeedR
 		arenaID == elo.BlueMenArenaID,
 		false,
 		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
+		request.Params.Markets,
 		request.Params.Next, request.Params.Limit,
 	)
 	if err != nil {
@@ -626,6 +642,7 @@ func (s *StrictServer) ListHomeFeed(ctx context.Context, request ListHomeFeedReq
 	req, err := parseFeedRequest(
 		elo.BlueMenArenaID, true, true,
 		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
+		request.Params.Markets,
 		request.Params.Next, request.Params.Limit,
 	)
 	if err != nil {

@@ -3933,6 +3933,8 @@ export interface operations {
                 club_id?: string;
                 /** @description Filter match and market events by game ID: a market matches when the game is one of its condition games or its resolving match's game */
                 game_id?: string;
+                /** @description Market view: when true, the feed keeps only market events plus the matches that resolved at least one market (the player/club/game filters still apply on top) */
+                markets?: boolean;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
                 /** @description Number of events per page */
@@ -3984,6 +3986,8 @@ export interface operations {
                 club_id?: string;
                 /** @description Filter match and market events by game ID: a market matches when the game is one of its condition games or its resolving match's game */
                 game_id?: string;
+                /** @description Market view: when true, the feed keeps only market events plus the matches that resolved at least one market (the player/club/game filters still apply on top) */
+                markets?: boolean;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
                 /** @description Number of events per page */
@@ -5980,6 +5984,8 @@ export interface operations {
                 club_id?: string;
                 /** @description Filter match and market events by game ID (the arena feed's matching rule) */
                 game_id?: string;
+                /** @description Market view: when true, the feed keeps only market events plus the matches that resolved at least one market (the player/club/game filters still apply on top) */
+                markets?: boolean;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
                 /** @description Number of events per page */

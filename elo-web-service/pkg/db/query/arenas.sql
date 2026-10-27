@@ -441,10 +441,11 @@ ORDER BY p.name;
 -- once settled, so a match-triggered resolution sits right after its match.
 -- Market events settle only into the global arena (ADR-24), so that branch
 -- joins the union only when the caller passes include_settlements. The
--- player/club/game filters apply to both branches. The cursor is the last
--- returned (sort_date, event_type, id)
--- tuple; the token carries the filters, so continuation requests pass only
--- the token.
+-- player/club/game filters apply to both branches. markets_only narrows the
+-- stream to the market view: market events pass untouched, matches only when
+-- they resolved at least one market. The cursor is the last returned
+-- (sort_date, event_type, id) tuple; the token carries the filters, so
+-- continuation requests pass only the token.
 WITH events AS (
     SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
     FROM arenas a
@@ -481,6 +482,12 @@ WITH events AS (
       )
       AND (
           sqlc.narg('game_id')::uuid IS NULL OR m.game_id = sqlc.narg('game_id')::uuid
+      )
+      -- The market view keeps a match only when it resolved at least one
+      -- market (the same rule as the payload's has_markets).
+      AND (
+          NOT sqlc.arg('markets_only')::bool
+          OR EXISTS (SELECT 1 FROM markets WHERE resolution_match_id = m.id)
       )
     UNION ALL
     -- Every market appears once: an active market (open or betting-locked)

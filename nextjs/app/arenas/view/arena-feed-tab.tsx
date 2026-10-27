@@ -13,6 +13,8 @@ import { PendingMatchCard } from "@/components/pending-match-card";
 import { EmptyState } from "@/components/empty-state";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup } from "@/components/ui/field";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "@/app/meContext";
@@ -25,9 +27,11 @@ import type { FeedEvent } from "@/app/api";
  * for the tenant community feed also its market resolutions (ADR-36). Each
  * event kind renders as its own card. The game filter is hidden when the
  * arena's filter pins it to exactly one game; the club filter is hidden on a
- * members-only tenant's main page (arena-view computes that). The offline-sync
- * queue rides on top of the tenant feed, like /matches did. (Live tables
- * moved to the main page, above the tabs.)
+ * members-only tenant's main page (arena-view computes that); the markets
+ * toggle — only markets and the matches that resolved them — exists only on
+ * the tenant feed (the main page). The offline-sync queue rides on top of the
+ * tenant feed, like /matches did. (Live tables moved to the main page, above
+ * the tabs.)
  */
 export function ArenaFeedTab({
     arena,
@@ -77,13 +81,14 @@ export function ArenaFeedTab({
     const showGameFilter = (arena.filter?.game_ids.length ?? 0) !== 1;
 
     // Unsynced matches go on top of the tenant feed. A player filter hides
-    // them (pending score keys may reference offline player ids).
+    // them (pending score keys may reference offline player ids), and so does
+    // the market view — pending matches are plain matches.
     const visiblePending = useMemo(() => {
-        if (!isTenantFeed || filters.playerId) return [];
+        if (!isTenantFeed || filters.playerId || filters.marketsOnly) return [];
         return pendingMatches
             .filter((m) => !pendingGameId || m.gameId === pendingGameId)
             .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
-    }, [isTenantFeed, pendingMatches, pendingGameId, filters.playerId]);
+    }, [isTenantFeed, pendingMatches, pendingGameId, filters.playerId, filters.marketsOnly]);
 
     return (
         <div className="space-y-2">
@@ -122,6 +127,17 @@ export function ArenaFeedTab({
                                     />
                                 </FieldContent>
                             </Field>
+                        )}
+
+                        {isTenantFeed && (
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="feed-markets-view">Только рынки</Label>
+                                <Switch
+                                    id="feed-markets-view"
+                                    checked={!!filters.marketsOnly}
+                                    onCheckedChange={(v) => onFiltersChange({ ...filters, marketsOnly: v })}
+                                />
+                            </div>
                         )}
                     </FieldGroup>
                 </CardContent>

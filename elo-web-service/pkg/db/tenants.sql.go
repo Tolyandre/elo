@@ -174,6 +174,12 @@ WITH events AS (
       AND (
           $8::uuid IS NULL OR m.game_id = $8::uuid
       )
+      -- The market view keeps a match only when it resolved at least one
+      -- market (the same rule as the payload's has_markets).
+      AND (
+          NOT $9::bool
+          OR EXISTS (SELECT 1 FROM markets WHERE resolution_match_id = m.id)
+      )
     UNION ALL
     -- The tenant's markets: an active market (open or betting-locked) sorts
     -- at its creation moment, a settled one (resolved or cancelled) at its
@@ -263,14 +269,15 @@ LIMIT $4::int4
 `
 
 type ListTenantFeedEventsParams struct {
-	CursorDate pgtype.Timestamptz `json:"cursor_date"`
-	CursorType pgtype.Text        `json:"cursor_type"`
-	CursorID   *id.ID             `json:"cursor_id"`
-	Limit      int32              `json:"limit"`
-	TenantID   id.ID              `json:"tenant_id"`
-	PlayerID   *id.ID             `json:"player_id"`
-	ClubID     *id.ID             `json:"club_id"`
-	GameID     *id.ID             `json:"game_id"`
+	CursorDate  pgtype.Timestamptz `json:"cursor_date"`
+	CursorType  pgtype.Text        `json:"cursor_type"`
+	CursorID    *id.ID             `json:"cursor_id"`
+	Limit       int32              `json:"limit"`
+	TenantID    id.ID              `json:"tenant_id"`
+	PlayerID    *id.ID             `json:"player_id"`
+	ClubID      *id.ID             `json:"club_id"`
+	GameID      *id.ID             `json:"game_id"`
+	MarketsOnly bool               `json:"markets_only"`
 }
 
 type ListTenantFeedEventsRow struct {
@@ -294,7 +301,9 @@ type ListTenantFeedEventsRow struct {
 // (coop included: community life, not just rating); market events to the
 // markets the tenant OWNS (a member's bet on another tenant's market is that
 // tenant's news). The player/club/game filters apply to both branches (the
-// arena feed's matching rule). Parameters and cursor are the arena feed's
+// arena feed's matching rule). markets_only narrows the stream to the market
+// view: market events pass untouched, matches only when they resolved at
+// least one market. Parameters and cursor are the arena feed's
 // minus the arena and the include flags; the tenant itself is the feed's
 // identity.
 func (q *Queries) ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEventsParams) ([]ListTenantFeedEventsRow, error) {
@@ -307,6 +316,7 @@ func (q *Queries) ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEv
 		arg.PlayerID,
 		arg.ClubID,
 		arg.GameID,
+		arg.MarketsOnly,
 	)
 	if err != nil {
 		return nil, err

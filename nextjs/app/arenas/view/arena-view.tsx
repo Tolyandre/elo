@@ -95,6 +95,7 @@ export function ArenaView() {
       playerId: toBase58ID(params.get("player") ?? "") ?? undefined,
       clubId: toBase58ID(params.get("club") ?? "") ?? undefined,
       gameId: toBase58ID(params.get("game") ?? "") ?? undefined,
+      marketsOnly: params.get("markets") === "1" || undefined,
     }),
     [params],
   );
@@ -107,9 +108,14 @@ export function ArenaView() {
   // сообщества») the community membership is the boundary already — the
   // players and feed tabs drop the club filter there.
   const showClubFilter = !(tenantFeed && tenant.arena_membership_mode === "members_only");
-  // A ?club= left in the URL from before the mode switched must not keep
-  // filtering the feed invisibly once the select is gone.
-  const effectiveFilters = showClubFilter ? filters : { playerId: filters.playerId, gameId: filters.gameId };
+  // Leftover URL params must not keep filtering the feed invisibly once the
+  // control is gone: ?club= drops on members-only tenants, and the markets
+  // view toggle exists only on the tenant feed (the main page).
+  const effectiveFilters = !tenantFeed
+    ? { playerId: filters.playerId, clubId: filters.clubId, gameId: filters.gameId }
+    : showClubFilter
+      ? filters
+      : { playerId: filters.playerId, gameId: filters.gameId, marketsOnly: filters.marketsOnly };
   const feed = useArenaFeed(
     { arenaId: effectiveId, tenantId: tenantFeed ? tenant.id : null },
     effectiveFilters,
@@ -156,6 +162,8 @@ export function ArenaView() {
       else params.delete("club");
       if (next.gameId) params.set("game", next.gameId);
       else params.delete("game");
+      if (next.marketsOnly) params.set("markets", "1");
+      else params.delete("markets");
     });
   }
 

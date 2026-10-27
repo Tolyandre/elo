@@ -268,6 +268,15 @@ ArenaFeedPath:
         description: >-
           Filter match and market events by game ID: a market matches when the
           game is one of its condition games or its resolving match's game
+      - name: markets
+        in: query
+        schema:
+          type: boolean
+          default: false
+        description: >-
+          Market view: when true, the feed keeps only market events plus the
+          matches that resolved at least one market (the player/club/game
+          filters still apply on top)
       - name: next
         in: query
         schema:
@@ -334,6 +343,15 @@ HomeFeedPath:
         description: >-
           Filter match and market events by game ID: a market matches when the
           game is one of its condition games or its resolving match's game
+      - name: markets
+        in: query
+        schema:
+          type: boolean
+          default: false
+        description: >-
+          Market view: when true, the feed keeps only market events plus the
+          matches that resolved at least one market (the player/club/game
+          filters still apply on top)
       - name: next
         in: query
         schema:

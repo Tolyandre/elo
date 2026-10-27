@@ -2825,6 +2825,9 @@ type ListArenaFeedParams struct {
 	// GameId Filter match and market events by game ID: a market matches when the game is one of its condition games or its resolving match's game
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
 
+	// Markets Market view: when true, the feed keeps only market events plus the matches that resolved at least one market (the player/club/game filters still apply on top)
+	Markets *bool `form:"markets,omitempty" json:"markets,omitempty"`
+
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
 
@@ -2890,6 +2893,9 @@ type ListHomeFeedParams struct {
 
 	// GameId Filter match and market events by game ID: a market matches when the game is one of its condition games or its resolving match's game
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
+
+	// Markets Market view: when true, the feed keeps only market events plus the matches that resolved at least one market (the player/club/game filters still apply on top)
+	Markets *bool `form:"markets,omitempty" json:"markets,omitempty"`
 
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
@@ -3202,6 +3208,9 @@ type ListTenantFeedParams struct {
 
 	// GameId Filter match and market events by game ID (the arena feed's matching rule)
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
+
+	// Markets Market view: when true, the feed keeps only market events plus the matches that resolved at least one market (the player/club/game filters still apply on top)
+	Markets *bool `form:"markets,omitempty" json:"markets,omitempty"`
 
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
@@ -4840,6 +4849,14 @@ func (siw *ServerInterfaceWrapper) ListArenaFeed(c *gin.Context) {
 		return
 	}
 
+	// ------------- Optional query parameter "markets" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "markets", c.Request.URL.Query(), &params.Markets, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter markets: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	// ------------- Optional query parameter "next" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", c.Request.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -5244,6 +5261,14 @@ func (siw *ServerInterfaceWrapper) ListHomeFeed(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "game_id", c.Request.URL.Query(), &params.GameId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter game_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "markets" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "markets", c.Request.URL.Query(), &params.Markets, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter markets: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -6558,6 +6583,14 @@ func (siw *ServerInterfaceWrapper) ListTenantFeed(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "game_id", c.Request.URL.Query(), &params.GameId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter game_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "markets" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "markets", c.Request.URL.Query(), &params.Markets, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter markets: %w", err), http.StatusBadRequest)
 		return
 	}
 

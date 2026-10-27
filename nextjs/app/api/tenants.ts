@@ -67,10 +67,11 @@ export async function getTenantFeedPagePromise(id: Base58ID, query: {
     player_id?: Base58ID;
     club_id?: Base58ID;
     game_id?: Base58ID;
+    markets?: boolean;
     next?: string;
     limit?: number;
 }): Promise<FeedPage> {
-    const q: Record<string, string | number> = {};
+    const q: Record<string, string | number | boolean> = {};
     if (query.next) {
         // Continuation mode: the filters travel inside the cursor token.
         q.next = query.next;
@@ -78,6 +79,7 @@ export async function getTenantFeedPagePromise(id: Base58ID, query: {
         if (query.player_id) q.player_id = query.player_id;
         if (query.club_id) q.club_id = query.club_id;
         if (query.game_id) q.game_id = query.game_id;
+        if (query.markets) q.markets = true;
     }
     if (query.limit) q.limit = query.limit;
     const data = await unwrap(client.GET("/tenants/{id}/feed", {

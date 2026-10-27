@@ -148,6 +148,44 @@ describe("useArenaFeed endpoint selection", () => {
         expect(current.value.events.map((e) => e.data.id)).toEqual(["m1", "m2"]);
         unmount();
     });
+
+    it("passes the market view flag on page 1 and only the cursor on continuation", async () => {
+        vi.mocked(getTenantFeedPagePromise)
+            .mockResolvedValueOnce({ items: [marketEvent("mk1")], next: "tcursor-1" })
+            .mockResolvedValueOnce({ items: [], next: null });
+
+        const { current, unmount } = renderHook(() =>
+            useArenaFeed(tenantScope, { marketsOnly: true }),
+        );
+        await flushFetches();
+        expect(getTenantFeedPagePromise).toHaveBeenCalledWith(TENANT_ID, { markets: true });
+        expect(current.value.events.map((e) => e.data.id)).toEqual(["mk1"]);
+
+        act(() => {
+            current.value.loadMore();
+        });
+        await flushFetches();
+        expect(getTenantFeedPagePromise).toHaveBeenLastCalledWith(TENANT_ID, { next: "tcursor-1" });
+        unmount();
+    });
+
+    it("refetches page 1 when the market view toggles", async () => {
+        const { rerender, unmount } = renderHook(() => useArenaFeed(tenantScope, {}));
+        await flushFetches();
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(1);
+        expect(getTenantFeedPagePromise).toHaveBeenLastCalledWith(TENANT_ID, {});
+
+        rerender(() => useArenaFeed(tenantScope, { marketsOnly: true }));
+        await flushFetches();
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(2);
+        expect(getTenantFeedPagePromise).toHaveBeenLastCalledWith(TENANT_ID, { markets: true });
+
+        rerender(() => useArenaFeed(tenantScope, {}));
+        await flushFetches();
+        expect(getTenantFeedPagePromise).toHaveBeenCalledTimes(3);
+        expect(getTenantFeedPagePromise).toHaveBeenLastCalledWith(TENANT_ID, {});
+        unmount();
+    });
 });
 
 describe("useArenaFeed live invalidation", () => {

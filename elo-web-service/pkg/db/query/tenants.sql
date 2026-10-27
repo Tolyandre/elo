@@ -178,7 +178,9 @@ WHERE t.id = sqlc.arg('tenant_id');
 -- (coop included: community life, not just rating); market events to the
 -- markets the tenant OWNS (a member's bet on another tenant's market is that
 -- tenant's news). The player/club/game filters apply to both branches (the
--- arena feed's matching rule). Parameters and cursor are the arena feed's
+-- arena feed's matching rule). markets_only narrows the stream to the market
+-- view: market events pass untouched, matches only when they resolved at
+-- least one market. Parameters and cursor are the arena feed's
 -- minus the arena and the include flags; the tenant itself is the feed's
 -- identity.
 WITH events AS (
@@ -238,6 +240,12 @@ WITH events AS (
       )
       AND (
           sqlc.narg('game_id')::uuid IS NULL OR m.game_id = sqlc.narg('game_id')::uuid
+      )
+      -- The market view keeps a match only when it resolved at least one
+      -- market (the same rule as the payload's has_markets).
+      AND (
+          NOT sqlc.arg('markets_only')::bool
+          OR EXISTS (SELECT 1 FROM markets WHERE resolution_match_id = m.id)
       )
     UNION ALL
     -- The tenant's markets: an active market (open or betting-locked) sorts

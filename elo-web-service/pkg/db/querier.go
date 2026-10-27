@@ -357,10 +357,11 @@ type Querier interface {
 	// once settled, so a match-triggered resolution sits right after its match.
 	// Market events settle only into the global arena (ADR-24), so that branch
 	// joins the union only when the caller passes include_settlements. The
-	// player/club/game filters apply to both branches. The cursor is the last
-	// returned (sort_date, event_type, id)
-	// tuple; the token carries the filters, so continuation requests pass only
-	// the token.
+	// player/club/game filters apply to both branches. markets_only narrows the
+	// stream to the market view: market events pass untouched, matches only when
+	// they resolved at least one market. The cursor is the last returned
+	// (sort_date, event_type, id) tuple; the token carries the filters, so
+	// continuation requests pass only the token.
 	ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEventsParams) ([]ListArenaFeedEventsRow, error)
 	// ---------------------------------------------------------------------------
 	// Arena page reads
@@ -570,7 +571,9 @@ type Querier interface {
 	// (coop included: community life, not just rating); market events to the
 	// markets the tenant OWNS (a member's bet on another tenant's market is that
 	// tenant's news). The player/club/game filters apply to both branches (the
-	// arena feed's matching rule). Parameters and cursor are the arena feed's
+	// arena feed's matching rule). markets_only narrows the stream to the market
+	// view: market events pass untouched, matches only when they resolved at
+	// least one market. Parameters and cursor are the arena feed's
 	// minus the arena and the include flags; the tenant itself is the feed's
 	// identity.
 	ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEventsParams) ([]ListTenantFeedEventsRow, error)

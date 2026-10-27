@@ -16,6 +16,8 @@ export type ArenaMatchFilters = {
     playerId?: Base58ID;
     clubId?: Base58ID;
     gameId?: Base58ID;
+    /** The market view: only markets and the matches that resolved them. */
+    marketsOnly?: boolean;
 };
 
 export type ArenaFeedScope = {
@@ -83,10 +85,10 @@ export function useArenaFeed(
         });
     }, [invalidate]);
 
-    const { playerId, clubId, gameId } = filters;
+    const { playerId, clubId, gameId, marketsOnly } = filters;
 
     const fetchPage = useCallback(
-        (params: { player_id?: Base58ID; club_id?: Base58ID; game_id?: Base58ID; next?: string; limit?: number }): Promise<FeedPage> => {
+        (params: { player_id?: Base58ID; club_id?: Base58ID; game_id?: Base58ID; markets?: boolean; next?: string; limit?: number }): Promise<FeedPage> => {
             if (tenantId) return getTenantFeedPagePromise(tenantId, params);
             return getArenaFeedPagePromise({ id: arenaId!, ...params });
         },
@@ -102,7 +104,7 @@ export function useArenaFeed(
         setLoading(true);
         cursorRef.current = null;
 
-        fetchPage({ player_id: playerId, club_id: clubId, game_id: gameId })
+        fetchPage({ player_id: playerId, club_id: clubId, game_id: gameId, markets: marketsOnly })
             .then((page) => {
                 if (cancelled) return;
                 cursorRef.current = page.next;
@@ -121,7 +123,7 @@ export function useArenaFeed(
         return () => {
             cancelled = true;
         };
-    }, [arenaId, tenantId, playerId, clubId, gameId, stamp, marketsTick, fetchPage]);
+    }, [arenaId, tenantId, playerId, clubId, gameId, marketsOnly, stamp, marketsTick, fetchPage]);
 
     const loadMore = useCallback(() => {
         if (loadingMore || (!tenantId && !arenaId)) return;

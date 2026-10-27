@@ -343,6 +343,15 @@ TenantFeedPath:
         schema:
           type: string
         description: Filter match and market events by game ID (the arena feed's matching rule)
+      - name: markets
+        in: query
+        schema:
+          type: boolean
+          default: false
+        description: >-
+          Market view: when true, the feed keeps only market events plus the
+          matches that resolved at least one market (the player/club/game
+          filters still apply on top)
       - name: next
         in: query
         schema:

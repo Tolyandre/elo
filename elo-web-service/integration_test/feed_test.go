@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -438,6 +439,160 @@ func TestArena_Feed_MarketFilters(t *testing.T) {
 	check("?game_id="+short(game1), want(mw1.ID))
 	check("?game_id="+short(game2), want(mw2.ID, ws.ID))
 	check("?game_id="+short(game3), nil)
+}
+
+// TestArena_Feed_MarketsOnly covers the feeds' market view (?markets=true):
+// market events pass untouched while matches survive only when they resolved
+// at least one market. The flag rides in the cursor token, so the continuation
+// stays narrowed even though the query carries only ?next=.
+func TestArena_Feed_MarketsOnly(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	router := setupRouter(pool)
+
+	targetA := createTestPlayer(t, pool, "РынкиА")
+	targetB := createTestPlayer(t, pool, "РынкиБ")
+	plain := createTestPlayer(t, pool, "РынкиСторонний")
+	adminID := createTestAdmin(t, pool)
+
+	gameRec, err := newGameService(pool).AddGame(ctx, newID(t), "РынкиИгра", idpkg.ID(""))
+	if err != nil {
+		t.Fatalf("AddGame: %v", err)
+	}
+	gameID := gameRec.ID
+
+	matchSvc := newMatchService(pool)
+	marketSvc := elo.NewMarketService(pool)
+
+	// MW: targets A/B — the trigger match below (A wins) resolves it.
+	mw, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		TenantID:   blueMenTenantID,
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerIDs:   []idpkg.ID{targetA, targetB},
+			AllowOtherPlayers: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket mw: %v", err)
+	}
+	// WS: target A's first win — the same trigger match resolves it.
+	ws, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		TenantID:   blueMenTenantID,
+		ID:         newID(t),
+		MarketType: "win_streak",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
+		WinStreak: &elo.WinStreakCreateParams{
+			TargetPlayerID: targetA,
+			WinsRequired:   1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket ws: %v", err)
+	}
+	// PENDING: target C's second win — C wins exactly one match below, so it
+	// stays open and still enters the market view.
+	pending, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		TenantID:   blueMenTenantID,
+		ID:         newID(t),
+		MarketType: "win_streak",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
+		WinStreak: &elo.WinStreakCreateParams{
+			TargetPlayerID: plain,
+			WinsRequired:   2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket pending: %v", err)
+	}
+
+	// The resolving match settles MW and WS; the plain match (C beats B)
+	// resolves nothing and is the one event the market view must drop.
+	trigger, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{targetA: 10, targetB: 2}, time.Now(), newMatchOpts(t))
+	if err != nil {
+		t.Fatalf("trigger AddMatch: %v", err)
+	}
+	if _, err := matchSvc.AddMatch(ctx, blueMenTenantID, gameID, map[idpkg.ID]float64{plain: 8, targetB: 3}, time.Now().Add(time.Minute), newMatchOpts(t)); err != nil {
+		t.Fatalf("plain AddMatch: %v", err)
+	}
+
+	collect := func(page feedPageJSON) map[string]bool {
+		t.Helper()
+		m := map[string]bool{}
+		for _, e := range page.Data {
+			m[e.Type+":"+e.Data.Id] = true
+		}
+		return m
+	}
+	want := map[string]bool{
+		"market:" + short(mw.ID):      true,
+		"market:" + short(ws.ID):      true,
+		"market:" + short(pending.ID): true,
+		"match:" + short(trigger.ID):  true,
+	}
+
+	// The unfiltered home feed carries everything: three markets, two matches.
+	home := decodeFeedPage(t, router, "/feed")
+	if len(home.Data) != 5 {
+		t.Fatalf("home feed holds %d events, want 5 (3 markets + 2 matches)", len(home.Data))
+	}
+
+	// The market view on every feed flavor: all three markets plus the one
+	// resolving match; the plain match drops out.
+	for _, path := range []string{
+		"/feed?markets=true",
+		"/arenas/" + globalArenaUUID + "/feed?markets=true",
+		"/tenants/" + blueMenTenantUUID + "/feed?markets=true",
+	} {
+		got := collect(decodeFeedPage(t, router, path))
+		if !equalSets(got, want) {
+			t.Fatalf("GET %s events = %v, want %v", path, got, want)
+		}
+	}
+
+	// The flag rides in the cursor: walking ?next= tokens alone stays
+	// narrowed and collects exactly the market view, without repeats.
+	walked := map[string]bool{}
+	path := "/feed?markets=true&limit=1"
+	for {
+		page := decodeFeedPage(t, router, path)
+		for e := range collect(page) {
+			if walked[e] {
+				t.Fatalf("cursor repeated event %s", e)
+			}
+			walked[e] = true
+		}
+		if page.Next == nil {
+			break
+		}
+		path = "/feed?limit=1&next=" + url.QueryEscape(*page.Next)
+	}
+	if !equalSets(walked, want) {
+		t.Fatalf("cursor walk collected %v, want %v", walked, want)
+	}
+}
+
+// equalSets compares two event-key sets order-insensitively.
+func equalSets(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
 }
 
 // TestMarkets_ListClosedCursorPagination covers the markets lobby pagination

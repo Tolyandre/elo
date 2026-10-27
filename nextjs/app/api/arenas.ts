@@ -56,12 +56,13 @@ type FeedQuery = {
     player_id?: Base58ID;
     club_id?: Base58ID;
     game_id?: Base58ID;
+    markets?: boolean;
     next?: string;
     limit?: number;
 };
 
-function feedQueryString(params: FeedQuery): Record<string, string | number> {
-    const query: Record<string, string | number> = {};
+function feedQueryString(params: FeedQuery): Record<string, string | number | boolean> {
+    const query: Record<string, string | number | boolean> = {};
     if (params.next) {
         // Continuation mode: search params are encoded in the cursor.
         query.next = params.next;
@@ -69,6 +70,7 @@ function feedQueryString(params: FeedQuery): Record<string, string | number> {
         if (params.player_id) query.player_id = params.player_id;
         if (params.club_id) query.club_id = params.club_id;
         if (params.game_id) query.game_id = params.game_id;
+        if (params.markets) query.markets = true;
     }
     if (params.limit) query.limit = params.limit;
     return query;
