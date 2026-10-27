@@ -772,8 +772,15 @@ func (s *GameService) RefreshGameArt(ctx context.Context, gameID id.ID, actor id
 		res.Reason = "no image on BGG"
 		return res, nil
 	}
-	if err := s.applyBggImages(ctx, gameID, thing, actor); err != nil {
+	changed, err := s.applyBggImages(ctx, gameID, thing, actor)
+	if err != nil {
 		return ArtRefreshResult{}, fmt.Errorf("store images: %w", err)
+	}
+	if !changed {
+		// BGG serves exactly the art that is already stored — say so instead
+		// of claiming a refresh.
+		res.Reason = "unchanged"
+		return res, nil
 	}
 	res.Refreshed = true
 	res.ImageURL = thing.ImageURL
@@ -785,9 +792,11 @@ func (s *GameService) RefreshGameArt(ctx context.Context, gameID id.ID, actor id
 // auditing whenever a stored URL actually changes (a first fill records the
 // To side only; an overwrite by a manual refresh records From→To). A
 // concurrent apply cannot double-audit: the row is re-read inside the
-// transaction and unchanged URLs record nothing.
-func (s *GameService) applyBggImages(ctx context.Context, gameID id.ID, thing bgg.Thing, actor id.ID) error {
-	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+// transaction and unchanged URLs record nothing. Reports whether any stored
+// URL actually changed.
+func (s *GameService) applyBggImages(ctx context.Context, gameID id.ID, thing bgg.Thing, actor id.ID) (bool, error) {
+	changed := false
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		current, err := q.GetGameByID(ctx, gameID)
 		if err != nil {
 			return err
@@ -808,10 +817,12 @@ func (s *GameService) applyBggImages(ctx context.Context, gameID id.ID, thing bg
 			d.ImageThumbURL = textChange(current.ImageThumbUrl, imageThumbURL)
 		}
 		if !d.IsEmpty() {
+			changed = true
 			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindGameUpdate, d)
 		}
 		return nil
 	})
+	return changed, err
 }
 
 // scheduleBggEnrich enriches one freshly accepted game in the background.
@@ -845,7 +856,10 @@ func (s *GameService) enrichGameByID(ctx context.Context, gameID id.ID) error {
 		return nil
 	}
 	// An empty actor records the audit event as a system event.
-	return s.applyBggImages(ctx, gameID, things[0], id.ID(""))
+	if _, err := s.applyBggImages(ctx, gameID, things[0], id.ID("")); err != nil {
+		return err
+	}
+	return nil
 }
 
 // displayName is the stored games.name: alias if set, else the localized,

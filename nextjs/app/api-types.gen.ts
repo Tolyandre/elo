@@ -2292,13 +2292,13 @@ export interface components {
             id: components["schemas"]["Base58ID"];
             /** @description The game's display name at the time of the refresh */
             name: string;
-            /** @description Whether new image URLs were stored */
+            /** @description Whether new image URLs were stored (false when BGG serves the art that is already stored) */
             refreshed: boolean;
             /** @description The stored full box-art URL, set when refreshed */
             image_url?: string | null;
             /** @description The stored thumbnail URL, set when refreshed */
             image_thumb_url?: string | null;
-            /** @description Why nothing was refreshed ("not found on BGG", "no image on BGG") */
+            /** @description Why nothing was refreshed ("not found on BGG", "no image on BGG", "unchanged") */
             reason?: string | null;
         };
         /**

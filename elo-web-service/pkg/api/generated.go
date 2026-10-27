@@ -2645,10 +2645,10 @@ type GamesGameArtRefreshResult struct {
 	// Name The game's display name at the time of the refresh
 	Name string `json:"name"`
 
-	// Reason Why nothing was refreshed ("not found on BGG", "no image on BGG")
+	// Reason Why nothing was refreshed ("not found on BGG", "no image on BGG", "unchanged")
 	Reason *string `json:"reason,omitempty"`
 
-	// Refreshed Whether new image URLs were stored
+	// Refreshed Whether new image URLs were stored (false when BGG serves the art that is already stored)
 	Refreshed bool `json:"refreshed"`
 }
 

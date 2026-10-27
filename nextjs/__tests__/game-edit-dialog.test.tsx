@@ -458,4 +458,32 @@ describe("GameEditDialog", () => {
         expect(mocks.toastSuccess).not.toHaveBeenCalled();
         unmount();
     });
+
+    it("edit mode: Обновить обложку reports an unchanged picture instead of success", async () => {
+        mocks.patchGamePromise.mockResolvedValue(undefined);
+        mocks.refreshGameArtPromise.mockResolvedValue({
+            id: game.id,
+            name: game.name,
+            refreshed: false,
+            image_url: null,
+            image_thumb_url: null,
+            reason: "unchanged",
+        });
+        const { unmount } = renderDialog(
+            <GameEditDialog game={game} onClose={vi.fn()} onSaved={vi.fn()} />,
+        );
+
+        act(() => {
+            findButtonContaining("Обновить обложку").click();
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(mocks.toastInfo).toHaveBeenCalledWith(
+            "Обложка не изменилась — на BoardGameGeek уже та же картинка",
+        );
+        expect(mocks.toastSuccess).not.toHaveBeenCalled();
+        unmount();
+    });
 });

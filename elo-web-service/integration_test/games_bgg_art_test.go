@@ -178,6 +178,28 @@ func TestRefreshGameArtEndpoint(t *testing.T) {
 		t.Errorf("stored images = %v / %v, want the stub's Bottle Imp art", got.ImageUrl, got.ImageThumbUrl)
 	}
 
+	// Refreshing again serves the same art: nothing changes, the response
+	// reports it instead of claiming a refresh, and no audit row appears.
+	w = doJSON(t, router, http.MethodPost, path(withArt), editorToken, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("second refresh: %d %s", w.Code, w.Body.String())
+	}
+	resp = refreshArtResponse{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Data.Refreshed || resp.Data.Reason == nil || *resp.Data.Reason != "unchanged" {
+		t.Errorf("unchanged result = %+v, want refreshed=false with reason \"unchanged\"", resp.Data)
+	}
+	var audits int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_log WHERE entity_type = 'game' AND entity_id = $1`, withArt).Scan(&audits); err != nil {
+		t.Fatal(err)
+	}
+	if audits != 1 {
+		t.Errorf("audit rows = %d after refresh + unchanged re-refresh, want 1 (the real change only)", audits)
+	}
+
 	// The single-game read carries the URLs for the game page.
 	if w := doJSON(t, router, http.MethodGet, "/games/"+withArt.String(), "", ""); w.Code != http.StatusOK {
 		t.Fatalf("get game: %d %s", w.Code, w.Body.String())

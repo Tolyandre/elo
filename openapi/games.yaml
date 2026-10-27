@@ -767,7 +767,7 @@ GameArtRefreshResult:
       description: The game's display name at the time of the refresh
     refreshed:
       type: boolean
-      description: Whether new image URLs were stored
+      description: Whether new image URLs were stored (false when BGG serves the art that is already stored)
     image_url:
       type: string
       nullable: true
@@ -779,5 +779,5 @@ GameArtRefreshResult:
     reason:
       type: string
       nullable: true
-      description: Why nothing was refreshed ("not found on BGG", "no image on BGG")
+      description: Why nothing was refreshed ("not found on BGG", "no image on BGG", "unchanged")
   required: [id, name, refreshed]

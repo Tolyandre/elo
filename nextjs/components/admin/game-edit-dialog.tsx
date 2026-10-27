@@ -148,6 +148,8 @@ export function GameEditDialog({
             if (res.refreshed) {
                 setArt({ imageUrl: res.image_url ?? null, thumbUrl: res.image_thumb_url ?? null });
                 toast.success("Обложка обновлена");
+            } else if (res.reason === "unchanged") {
+                toast.info("Обложка не изменилась — на BoardGameGeek уже та же картинка");
             } else if (res.reason === "no image on BGG") {
                 toast.info("У этой игры на BoardGameGeek нет обложки");
             } else {
