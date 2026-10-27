@@ -1760,6 +1760,9 @@ type GameListItem struct {
 	// TeseraRef Tesera game id (tesera.ru/game/{tesera_ref})
 	TeseraRef    *int `json:"tesera_ref,omitempty"`
 	TotalMatches int  `json:"total_matches"`
+
+	// UpdatedAt Set at creation and bumped on every game edit that changes the row — the recency key of the admin list's default sort
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // GameMatchStat defines model for GameMatchStat.

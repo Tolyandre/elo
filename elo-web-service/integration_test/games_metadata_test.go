@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
@@ -369,6 +370,88 @@ func TestGameSuggestionsDegradeWhenBggUnavailable(t *testing.T) {
 	}
 	if resp.Data.TeseraUnavailable != nil {
 		t.Errorf("tesera_unavailable must stay unset, got %+v", resp.Data.TeseraUnavailable)
+	}
+}
+
+// The games list carries updated_at — the recency key of the admin list's
+// default sort. Creation stamps it (column default), a real edit bumps it
+// (games_updated_at trigger), and a no-op save must change nothing: the stamp
+// stays put and no audit row appears, so re-saving a game cannot pull it to
+// the top of the list.
+func TestGamesListUpdatedAt(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouterWithTesera(pool, newTeseraStub(t).URL)
+	editorToken, _ := createTestUserWithID(t, pool, true)
+
+	gid := newID(t)
+	body := fmt.Sprintf(`{"id":%q,"name":"Бутылочка"}`, gid.String())
+	if w := doJSON(t, router, http.MethodPost, "/games", editorToken, body); w.Code != http.StatusOK {
+		t.Fatalf("create game: %d %s", w.Code, w.Body.String())
+	}
+
+	updatedAtOf := func(t *testing.T) time.Time {
+		t.Helper()
+		w := doJSON(t, router, http.MethodGet, "/games", "", "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("list games: %d %s", w.Code, w.Body.String())
+		}
+		var list struct {
+			Data struct {
+				Games []struct {
+					Id        string `json:"id"`
+					UpdatedAt string `json:"updated_at"`
+				} `json:"games"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+			t.Fatal(err)
+		}
+		for _, g := range list.Data.Games {
+			if g.Id == shortOf(t, gid) {
+				ts, err := time.Parse(time.RFC3339, g.UpdatedAt)
+				if err != nil {
+					t.Fatalf("updated_at %q: %v", g.UpdatedAt, err)
+				}
+				return ts
+			}
+		}
+		t.Fatal("game missing from list")
+		return time.Time{}
+	}
+
+	auditCount := func(t *testing.T) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(context.Background(),
+			`SELECT COUNT(*) FROM audit_log WHERE entity_type = 'game' AND entity_id = $1`, gid).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	createdAt := updatedAtOf(t)
+
+	if w := doJSON(t, router, http.MethodPatch, "/games/"+gid.String(), editorToken,
+		`{"name_en":"The Bottle Imp","name_ru":"Тень в бутылке","bgg_ref":12345,"tesera_ref":555}`); w.Code != http.StatusOK {
+		t.Fatalf("patch metadata: %d %s", w.Code, w.Body.String())
+	}
+
+	editedAt := updatedAtOf(t)
+	if !editedAt.After(createdAt) {
+		t.Errorf("updated_at = %v after edit, want later than %v", editedAt, createdAt)
+	}
+	auditsAfterEdit := auditCount(t)
+
+	if w := doJSON(t, router, http.MethodPatch, "/games/"+gid.String(), editorToken,
+		`{"name_en":"The Bottle Imp","name_ru":"Тень в бутылке","bgg_ref":12345,"tesera_ref":555}`); w.Code != http.StatusOK {
+		t.Fatalf("no-op patch: %d %s", w.Code, w.Body.String())
+	}
+	if noOpAt := updatedAtOf(t); !noOpAt.Equal(editedAt) {
+		t.Errorf("updated_at = %v after a no-op save, want %v unchanged", noOpAt, editedAt)
+	}
+	if n := auditCount(t); n != auditsAfterEdit {
+		t.Errorf("audit rows = %d after a no-op save, want %d", n, auditsAfterEdit)
 	}
 }
 

@@ -31,7 +31,11 @@ type GameTitles struct {
 	ImageThumbURL string
 	GameMode      string
 	TotalMatches  int
-	Tags          []TagRef
+	// Set at creation, bumped by the games_updated_at trigger on every row
+	// update that actually changes something — the recency key of the admin
+	// games list's default sort.
+	UpdatedAt time.Time
+	Tags      []TagRef
 }
 
 // Game modes of a game (ADR-33). A match's mode is resolved from these plus
@@ -270,6 +274,7 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 			ImageThumbURL: textOf(r.ImageThumbUrl),
 			GameMode:      r.GameMode,
 			TotalMatches:  int(r.TotalMatches),
+			UpdatedAt:     r.UpdatedAt,
 			Tags:          tags,
 		})
 	}

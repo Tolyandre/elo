@@ -25,12 +25,20 @@ import { GameEditDialog } from "@/components/admin/game-edit-dialog";
 import { TagManagement } from "@/components/admin/tag-management";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { PageContainer } from "@/components/page-container";
 import { EmptyState } from "@/components/empty-state";
 import { GameImage } from "@/components/game-image";
 import { ResponsiveTable } from "@/components/responsive-table";
 import { BackButton } from "@/components/back-button";
 import { cn } from "@/lib/utils";
+import { GAME_SORT_LABELS, GAME_SORT_MODES, sortGames, type GameSortMode } from "@/lib/game-sort";
 import { accentName, bggUrl, matchesAnyName, secondaryNames, teseraUrl } from "@/lib/game-names";
 
 type GameRow = GameListItem;
@@ -44,14 +52,14 @@ export default function GamesAdminPage() {
     const [tab, setTab] = useState("main");
     const [createOpen, setCreateOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<GameRow | null>(null);
+    const [sortBy, setSortBy] = useState<GameSortMode>("recent");
 
     const del = useConfirmAction(async (g: GameRow) => {
         await deleteGamePromise(g.id);
         invalidateGames();
     });
 
-    // Sort games alphabetically for admin view
-    const sortedGames = [...gamesFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    const sortedGames = sortGames(gamesFromContext, sortBy);
 
     // Filter games by any of their names and/or by tag selection: selected
     // tags are OR-ed (a game matches when it carries any of them), then
@@ -94,12 +102,26 @@ export default function GamesAdminPage() {
             {!meLoading && isAuthenticated && !canEdit && <p>У вас нет прав для редактирования игр.</p>}
             <p>Удаление возможно для игр без партий. Нажмите на тег под игрой, чтобы присвоить или убрать его.</p>
 
-            <Input
-                className="mb-4"
-                placeholder="Поиск по названию"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-            />
+            <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <Input
+                    className="flex-1"
+                    placeholder="Поиск по названию"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as GameSortMode)}>
+                    <SelectTrigger aria-label="Сортировка" className="w-full sm:w-72 shrink-0">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {GAME_SORT_MODES.map((mode) => (
+                            <SelectItem key={mode} value={mode}>
+                                {GAME_SORT_LABELS[mode]}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
 
             <TagFilterRow selected={filterTagIds} onToggle={toggleFilterTag} />
 

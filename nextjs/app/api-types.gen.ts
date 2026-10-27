@@ -1432,6 +1432,11 @@ export interface components {
             game_mode: components["schemas"]["GameMode"];
             last_played_order: number;
             total_matches: number;
+            /**
+             * Format: date-time
+             * @description Set at creation and bumped on every game edit that changes the row — the recency key of the admin list's default sort
+             */
+            updated_at: string;
             /** @description Tags attached to the game, ordered by tag name */
             tags: components["schemas"]["GameTag"][];
         };

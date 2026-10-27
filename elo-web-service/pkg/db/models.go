@@ -118,6 +118,7 @@ type Game struct {
 	ImageUrl      pgtype.Text `json:"image_url"`
 	ImageThumbUrl pgtype.Text `json:"image_thumb_url"`
 	GameMode      string      `json:"game_mode"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 }
 
 type GameTable struct {

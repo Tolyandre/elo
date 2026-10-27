@@ -623,12 +623,16 @@ GameListItem:
       type: integer
     total_matches:
       type: integer
+    updated_at:
+      type: string
+      format: date-time
+      description: Set at creation and bumped on every game edit that changes the row — the recency key of the admin list's default sort
     tags:
       type: array
       items:
         $ref: '#/GameTag'
       description: Tags attached to the game, ordered by tag name
-  required: [id, name, game_mode, last_played_order, total_matches, tags]
+  required: [id, name, game_mode, last_played_order, total_matches, updated_at, tags]
 
 GameTag:
   type: object

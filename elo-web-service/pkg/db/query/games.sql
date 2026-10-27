@@ -10,10 +10,11 @@ SELECT
 	g.image_url AS image_url,
 	g.image_thumb_url AS image_thumb_url,
 	g.game_mode AS game_mode,
+	g.updated_at AS updated_at,
 	COUNT(m.id) AS total_matches
 FROM games g
 LEFT JOIN matches m ON m.game_id = g.id
-GROUP BY g.id, g.name, g.name_en, g.name_ru, g.alias, g.bgg_id, g.tesera_id, g.image_url, g.image_thumb_url, g.game_mode
+GROUP BY g.id, g.name, g.name_en, g.name_ru, g.alias, g.bgg_id, g.tesera_id, g.image_url, g.image_thumb_url, g.game_mode, g.updated_at
 ORDER BY MAX(m.date) DESC;
 
 -- name: ListRecentGames :many

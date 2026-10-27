@@ -17,7 +17,7 @@ const addGame = `-- name: AddGame :one
 INSERT INTO games (id, name_en, name_ru, alias, bgg_id, tesera_id, game_mode)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
-RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode
+RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode, updated_at
 `
 
 type AddGameParams struct {
@@ -52,6 +52,7 @@ func (q *Queries) AddGame(ctx context.Context, arg AddGameParams) (Game, error) 
 		&i.ImageUrl,
 		&i.ImageThumbUrl,
 		&i.GameMode,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -59,7 +60,7 @@ func (q *Queries) AddGame(ctx context.Context, arg AddGameParams) (Game, error) 
 const deleteGame = `-- name: DeleteGame :one
 DELETE FROM games
 WHERE id = $1
-RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode
+RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode, updated_at
 `
 
 func (q *Queries) DeleteGame(ctx context.Context, argID id.ID) (Game, error) {
@@ -76,6 +77,7 @@ func (q *Queries) DeleteGame(ctx context.Context, argID id.ID) (Game, error) {
 		&i.ImageUrl,
 		&i.ImageThumbUrl,
 		&i.GameMode,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -109,7 +111,7 @@ func (q *Queries) FilterCoopGameIDs(ctx context.Context, gameIds []id.ID) ([]id.
 }
 
 const getGameByID = `-- name: GetGameByID :one
-SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode FROM games
+SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode, updated_at FROM games
 WHERE id = $1
 `
 
@@ -127,12 +129,13 @@ func (q *Queries) GetGameByID(ctx context.Context, argID id.ID) (Game, error) {
 		&i.ImageUrl,
 		&i.ImageThumbUrl,
 		&i.GameMode,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getGameByName = `-- name: GetGameByName :one
-SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode FROM games
+SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode, updated_at FROM games
 WHERE name = $1
 `
 
@@ -150,6 +153,7 @@ func (q *Queries) GetGameByName(ctx context.Context, name string) (Game, error) 
 		&i.ImageUrl,
 		&i.ImageThumbUrl,
 		&i.GameMode,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -166,10 +170,11 @@ SELECT
 	g.image_url AS image_url,
 	g.image_thumb_url AS image_thumb_url,
 	g.game_mode AS game_mode,
+	g.updated_at AS updated_at,
 	COUNT(m.id) AS total_matches
 FROM games g
 LEFT JOIN matches m ON m.game_id = g.id
-GROUP BY g.id, g.name, g.name_en, g.name_ru, g.alias, g.bgg_id, g.tesera_id, g.image_url, g.image_thumb_url, g.game_mode
+GROUP BY g.id, g.name, g.name_en, g.name_ru, g.alias, g.bgg_id, g.tesera_id, g.image_url, g.image_thumb_url, g.game_mode, g.updated_at
 ORDER BY MAX(m.date) DESC
 `
 
@@ -184,6 +189,7 @@ type ListGamesOrderedByLastPlayedRow struct {
 	ImageUrl      pgtype.Text `json:"image_url"`
 	ImageThumbUrl pgtype.Text `json:"image_thumb_url"`
 	GameMode      string      `json:"game_mode"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 	TotalMatches  int64       `json:"total_matches"`
 }
 
@@ -207,6 +213,7 @@ func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGames
 			&i.ImageUrl,
 			&i.ImageThumbUrl,
 			&i.GameMode,
+			&i.UpdatedAt,
 			&i.TotalMatches,
 		); err != nil {
 			return nil, err
@@ -371,7 +378,7 @@ SET	name_en = $2,
 	tesera_id = $6,
 	game_mode = $7
 WHERE id = $1
-RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode
+RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode, updated_at
 `
 
 type UpdateGameParams struct {
@@ -407,6 +414,7 @@ func (q *Queries) UpdateGame(ctx context.Context, arg UpdateGameParams) (Game, e
 		&i.ImageUrl,
 		&i.ImageThumbUrl,
 		&i.GameMode,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -416,7 +424,7 @@ UPDATE games
 SET	image_url = $2,
 	image_thumb_url = $3
 WHERE id = $1
-RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode
+RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url, game_mode, updated_at
 `
 
 type UpdateGameBggImagesParams struct {
@@ -439,6 +447,7 @@ func (q *Queries) UpdateGameBggImages(ctx context.Context, arg UpdateGameBggImag
 		&i.ImageUrl,
 		&i.ImageThumbUrl,
 		&i.GameMode,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

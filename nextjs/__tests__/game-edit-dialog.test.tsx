@@ -100,6 +100,7 @@ const game: GameListItem = {
     game_mode: "competitive",
     last_played_order: 0,
     total_matches: 3,
+    updated_at: "2026-01-01T00:00:00Z",
     tags: [],
 };
 

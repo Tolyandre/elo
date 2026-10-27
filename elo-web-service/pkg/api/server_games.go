@@ -34,6 +34,7 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 			GameMode:        GamesGameMode(g.GameMode),
 			LastPlayedOrder: i,
 			TotalMatches:    g.TotalMatches,
+			UpdatedAt:       g.UpdatedAt.UTC(),
 			Tags:            tags,
 		})
 	}
