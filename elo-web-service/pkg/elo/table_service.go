@@ -311,9 +311,6 @@ func (s *TableService) ListTables(ctx context.Context, tenantID id.ID) ([]TableS
 // joins and submissions are deliberately unguarded — a live game must never
 // break mid-play.
 func validateSeatingTenant(ctx context.Context, q *db.Queries, tenant db.Tenant, playerIDs []id.ID) error {
-	if tenant.ArenaMembershipMode == ArenaMembershipAll {
-		return nil
-	}
 	return checkTenantParticipantRule(ctx, q, tenant, playerIDs, ErrTableOutsideTenant, ErrTableOutsideTenant)
 }
 

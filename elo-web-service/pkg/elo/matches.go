@@ -317,11 +317,12 @@ func (s *MatchService) AddMatch(ctx context.Context, tenantID id.ID, gameID id.I
 
 		// The feed guard at creation (ADR-36 phase 7): the match must relate to
 		// the tenant it is created under, per its openness rule — members_only
-		// admits current members only, any_member and all demand at least one
-		// current member. The same predicate the edit applies and the tenant feed
-		// selects by; without it a match could never appear in the community it
-		// was recorded for. Coop matches are gated the same way (they are
-		// community news even though they settle no rating, ADR-33).
+		// admits current members only, any_member demands at least one current
+		// member, all («Все партии») takes any roster. The same predicate the
+		// edit applies and the tenant feed selects by; without it a match could
+		// never appear in the community it was recorded for. Coop matches are
+		// gated the same way (they are community news even though they settle no
+		// rating, ADR-33).
 		if err := checkTenantParticipantRule(ctx, q, tenant, playerIDsOf(playerScores), ErrMatchMembersOnly, ErrMatchOutsideTenant); err != nil {
 			return db.Match{}, err
 		}
@@ -539,10 +540,11 @@ func (s *MatchService) UpdateMatch(ctx context.Context, tenantID id.ID, matchID 
 
 		// ADR-36 (revised phase 7): the edit keeps the match inside the tenant's
 		// feed and openness rule — the same predicate creation applies:
-		// members_only admits current members only, any_member and all demand at
-		// least one current member among the participants. Checked inside the
-		// write transaction, so a concurrent membership change cannot slip past
-		// it. An unknown tenant is a 404, a failed check a 400.
+		// members_only admits current members only, any_member demands at least
+		// one current member among the participants, all takes any roster.
+		// Checked inside the write transaction, so a concurrent membership
+		// change cannot slip past it. An unknown tenant is a 404, a failed check
+		// a 400.
 		tenant, err := q.GetTenantByID(ctx, tenantID)
 		if err != nil {
 			if db.IsNoRows(err) {

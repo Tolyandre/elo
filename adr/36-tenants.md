@@ -145,8 +145,11 @@ phase 3). The path tenant must exist (404) and the **participant rule of its
 openness mode** applies (400 `ErrMatchOutsideTenant` / `ErrMatchMembersOnly`):
 under `members_only` **every participant must be a current member** of the
 tenant — a guest in the roster is rejected, matching the client form's rule;
-under `any_member` and `all` at least one current member anchors the match to
-the community. Edits apply the same rule (`PUT /matches/{id}?tenant=`), so a
+under `any_member` at least one current member anchors the match to the
+community; under `all` («Все партии») any roster is accepted — the settle
+predicate (`TenantContainsPlayers`) and the tenant feed take every match
+under `all`, so a member-less one neither disappears nor distorts the
+rating. Edits apply the same rule (`PUT /matches/{id}?tenant=`), so a
 members_only tenant never takes a guest-carrying roster at creation or on
 edit. Offline-created matches capture the tenant at submit time
 (`PendingMatch.tenantId`) and the sync engine posts under it; legacy pending
@@ -334,7 +337,7 @@ Staged forward, each phase shippable:
    become tenant-scoped (`POST /tenants/{id}/matches`,
    `POST /tenants/{id}/tables`; the flat creates are gone) with the
    mode-dependent participant guard (members_only: all current members,
-   otherwise ≥1) shared by creation and edits, and the
+   any_member: ≥1, all: no guard) shared by creation and edits, and the
    settlement path resolving the creating tenant's main arena from the path
    tenant (the anchor-arena parameterization described above). Game tables
    gain `tenant_id` (076), the tenant-scoped lobby read, and the create-time
@@ -417,8 +420,8 @@ Staged forward, each phase shippable:
   `all` openness, phase 7).
 - **Phase 7 makes creation and settlement tenant-generic.** A match can no
   longer exist outside a community: creation and edit apply the tenant's
-  participant rule (members_only: all current members; any_member and all:
-  at least one), and the settlement path settles into the creating tenant's
+  participant rule (members_only: all current members; any_member: at least
+  one; all: no restriction), and the settlement path settles into the creating tenant's
   main arena — transactionally when that arena is the sweep anchor, through
   the replay otherwise. The safety valve "recorded but settles nothing" now
   covers only history: under `members_only` nothing but all-member matches

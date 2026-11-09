@@ -256,10 +256,11 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch member+guest: %v", err)
 	}
-	// A guest-only match is unrepresentable under either tenant: the create
-	// guard demands a current member of the creating tenant.
-	if _, err := svc.AddMatch(ctx, blueMenTenantID, otherGame, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Статист-второй"): 30}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
-		t.Fatalf("AddMatch guests under BlueMen: err = %v, want ErrMatchOutsideTenant", err)
+	// A guest-only match cannot be created under the any_member tenant (the
+	// create guard demands a current member); under «Синие люди» (all —
+	// «Все партии») it goes through and settles into its arena.
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, otherGame, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Статист-второй"): 30}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch guests under BlueMen: %v", err)
 	}
 	if _, err := svc.AddMatch(ctx, tenantID, otherGame, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Статист-третий"): 30}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
 		t.Fatalf("AddMatch guests under the tenant: err = %v, want ErrMatchOutsideTenant", err)
@@ -338,12 +339,9 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 		t.Fatalf("member tenant rating history = %d points, want the main-arena settlement", len(tenantStats.Data.RatingHistory))
 	}
 
-	// An outsiders-only match is unrepresentable since the create guard
-	// (ADR-36 phase 7): under either tenant nobody in it is a member.
+	// An outsiders-only match cannot be created under the any_member tenant
+	// (the create guard, ADR-36 phase 7): nobody in it is a member.
 	outsider := createBareTestPlayer(t, pool, "Статист-посторонний")
-	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{outsider: 40, createBareTestPlayer(t, pool, "Статист-пятый"): 10}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
-		t.Fatalf("AddMatch outsiders under BlueMen: err = %v, want ErrMatchOutsideTenant", err)
-	}
 	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{outsider: 40, createBareTestPlayer(t, pool, "Статист-четвёртый"): 10}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchOutsideTenant) {
 		t.Fatalf("AddMatch outsiders under the tenant: err = %v, want ErrMatchOutsideTenant", err)
 	}
@@ -366,6 +364,12 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 	}
 	if len(outsiderTenant.Data.TopGamesByMatches) != 0 {
 		t.Fatalf("outsider frequent games = %+v, want none", outsiderTenant.Data.TopGamesByMatches)
+	}
+	// The same roster under «Синие люди» (all — «Все партии») is accepted:
+	// membership is irrelevant there, so the match settles into the anchor
+	// arena (ADR-36 phase 7).
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{outsider: 40, createBareTestPlayer(t, pool, "Статист-пятый"): 10}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch outsiders under BlueMen: %v", err)
 	}
 
 	// The tenant's main arena is the one the ?tenant= resolves to (sanity

@@ -121,13 +121,16 @@ func validateTenantClubs(ctx context.Context, q *db.Queries, tenantID id.ID, clu
 // checkTenantParticipantRule enforces the openness rule for a participant
 // set (ADR-36 phase 7): under members_only every participant must be a
 // current member of any club of the tenant — a guest in the roster is
-// rejected (errMembersOnly); under any_member and all at least one current
-// member anchors the entity to the community (errNoMember). The caller picks
-// the errors: matches and tables word their rejections differently. Checked
-// inside the caller's write transaction, so a concurrent membership change
-// cannot slip past it.
+// rejected (errMembersOnly); under any_member at least one current member
+// anchors the entity to the community (errNoMember); under all («Все
+// партии») any roster is accepted — the settle predicate
+// (TenantContainsPlayers) and the tenant feed take every match under all,
+// so a member-less one neither disappears nor distorts the rating. The
+// caller picks the errors: matches and tables word their rejections
+// differently. Checked inside the caller's write transaction, so a
+// concurrent membership change cannot slip past it.
 func checkTenantParticipantRule(ctx context.Context, q *db.Queries, tenant db.Tenant, playerIDs []id.ID, errMembersOnly, errNoMember error) error {
-	if len(playerIDs) == 0 {
+	if len(playerIDs) == 0 || tenant.ArenaMembershipMode == ArenaMembershipAll {
 		return nil
 	}
 	if tenant.ArenaMembershipMode == ArenaMembershipMembersOnly {

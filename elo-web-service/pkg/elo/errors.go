@@ -68,8 +68,9 @@ var (
 	ErrTenantClubsInvalid          = errors.New("состав клубов сообщества задан неверно")
 	ErrClubInTenantDeleteForbidden = errors.New("клуб входит в сообщество и не может быть удалён: сначала исключите его из сообщества")
 	ErrClubAlreadyInTenant         = errors.New("клуб уже входит в другое сообщество")
-	// The match-edit feed guard (ADR-36): the edit would drop the match from
-	// the tenant's feed, so it is rejected.
+	// The any_member feed guard (ADR-36): a create or edit with no current
+	// member among the participants would never reach the tenant's feed or
+	// rating, so it is rejected. Under all («Все партии») any roster passes.
 	ErrMatchOutsideTenant = errors.New("нужен хотя бы один участник сообщества")
 	// The members_only strictness (ADR-36 phase 7): a match under such a
 	// tenant admits current members only — a guest in the roster is rejected.
