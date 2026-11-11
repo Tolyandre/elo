@@ -390,7 +390,7 @@ describe("OfflineQueuePage", () => {
         expect(container.textContent).toContain("chess");
         expect(container.textContent).toContain("Шахматы");
         expect(container.textContent).not.toContain("game9");
-        expect(container.textContent).toContain("Алиас");
+        expect(container.textContent).toContain("Псевдоним");
         expect(container.textContent).toContain("не сохранено");
     });
 

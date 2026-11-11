@@ -164,9 +164,6 @@ function OfflineQueuePageWrapped() {
 
             {pendingCount === 0 ? (
                 <EmptyState icon={CloudOff} title="Очередь пуста — все данные сохранены">
-                    <p className="text-sm text-muted-foreground">
-                        Записи появляются здесь, когда партия, игрок или игра созданы без связи с сервером.
-                    </p>
                 </EmptyState>
             ) : (
                 <>
@@ -291,12 +288,15 @@ function OfflineQueuePageWrapped() {
                             <SectionHeader className="mb-3">Партии</SectionHeader>
                             <div className="space-y-3">
                                 {plainMatches.map((m) => (
-                                    <div key={m.clientId}>
-                                        {/* Clickable like the feed: opens the view page,
-                                            where the pending match renders with its actions. */}
-                                        <PendingMatchCard match={m} clickable />
-                                        {canMutate && (
-                                            <div className="flex flex-wrap gap-2 mt-1">
+                                    // Clickable like the feed: opens the view page,
+                                    // where the pending match renders with its actions.
+                                    // The edit/delete buttons live inside the card.
+                                    <PendingMatchCard
+                                        key={m.clientId}
+                                        match={m}
+                                        clickable
+                                        actions={canMutate ? (
+                                            <>
                                                 <Button variant="secondary" size="xs" asChild>
                                                     <Link
                                                         href={`/matches/edit?id=${encodeURIComponent(m.clientId)}`}
@@ -314,9 +314,9 @@ function OfflineQueuePageWrapped() {
                                                     <Trash2 />
                                                     Удалить
                                                 </Button>
-                                            </div>
-                                        )}
-                                    </div>
+                                            </>
+                                        ) : undefined}
+                                    />
                                 ))}
                             </div>
                         </section>
@@ -328,11 +328,12 @@ function OfflineQueuePageWrapped() {
                             <div className="space-y-3">
                                 {plainOps.map((op) =>
                                     op.op === "update" ? (
-                                        // The entity card itself carries the status badge
-                                        // and the field-level change list.
-                                        <div key={op.entityId} className="space-y-1">
-                                            <OpEntityCard op={op} />
-                                            {canMutate && op.status !== "syncing" && (
+                                        // The entity card carries the status badge, the
+                                        // field-level change list and the actions inside.
+                                        <OpEntityCard
+                                            key={op.entityId}
+                                            op={op}
+                                            actions={canMutate && op.status !== "syncing" ? (
                                                 <Button
                                                     variant="destructive"
                                                     size="xs"
@@ -341,8 +342,8 @@ function OfflineQueuePageWrapped() {
                                                 >
                                                     Отказаться
                                                 </Button>
-                                            )}
-                                        </div>
+                                            ) : undefined}
+                                        />
                                     ) : (
                                         <div key={op.entityId} className="border border-dashed rounded p-3">
                                             <div className="flex justify-between items-center gap-2 flex-wrap">

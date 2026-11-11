@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useNameResolver } from "@/hooks/useNameResolver";
 import { useCamps } from "@/app/arenas/campsContext";
 import { useGames } from "@/app/gamesContext";
@@ -77,15 +78,16 @@ export function OpChanges({ op }: { op: PendingOp }) {
 /**
  * The entity an op touches, as a card: a pending match card for match edits,
  * the box-art game card for game edits, a name row for player renames — with
- * the change list inside. Only for update ops (deletes keep the compact row).
+ * the change list and the action buttons inside. Only for update ops (deletes
+ * keep the compact row).
  */
-export function OpEntityCard({ op }: { op: PendingOp }) {
+export function OpEntityCard({ op, actions }: { op: PendingOp; actions?: ReactNode }) {
     const { games } = useGames();
 
     if (op.kind === "match") {
         if (op.op !== "update") return null;
         return (
-            <PendingMatchCard match={pendingMatchFromOp(op)} clickable>
+            <PendingMatchCard match={pendingMatchFromOp(op)} clickable actions={actions}>
                 <OpChanges op={op} />
             </PendingMatchCard>
         );
@@ -112,6 +114,7 @@ export function OpEntityCard({ op }: { op: PendingOp }) {
                     {statusBadge}
                 </div>
                 <OpChanges op={op} />
+                {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
             </div>
         );
     }
@@ -124,6 +127,7 @@ export function OpEntityCard({ op }: { op: PendingOp }) {
                 {statusBadge}
             </div>
             <OpChanges op={op} />
+            {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
         </div>
     );
 }

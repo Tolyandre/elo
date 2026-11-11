@@ -23,7 +23,7 @@ export const MATCH_FIELD_LABELS: Record<string, string> = {
 };
 
 const GAME_FIELD_LABELS: Record<string, string> = {
-    alias: "Алиас",
+    alias: "Псевдоним",
     name_ru: "Название (рус)",
     name_en: "Name (eng)",
     game_mode: "Режим",

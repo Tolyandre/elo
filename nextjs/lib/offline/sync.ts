@@ -717,7 +717,7 @@ export async function syncOffline(
         // Players and games: per-field merges against a fresh server read —
         // the name for players, the metadata for games.
         const fieldLabel = kind === "player" ? "Имя" : "Название";
-        const gameLabels: Record<string, string> = { name: "Название", alias: "Альтернативное название", name_en: "Название (EN)", name_ru: "Название (RU)", bgg_ref: "BGG id", tesera_ref: "Tesera id", game_mode: "Режим игры" };
+        const gameLabels: Record<string, string> = { name: "Название", alias: "Псевдоним", name_en: "Название (EN)", name_ru: "Название (RU)", bgg_ref: "BGG id", tesera_ref: "Tesera id", game_mode: "Режим игры" };
         let server: SyncCallResult<ServerGameFields | { name: string } | null>;
         try {
             server = kind === "player" ? await opsApi.getPlayer(op.entityId) : await opsApi.getGame(op.entityId);

@@ -6,7 +6,7 @@ import React, { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CloudOff } from "lucide-react";
+import { CloudOff, Pencil, Trash2 } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -67,25 +67,29 @@ export function PendingEntityList({
                                     </Badge>
                                 )}
                             </div>
+                            {/* Same look as the offline queue's match actions:
+                                secondary/dangerous, compact, with icons. */}
                             <div className="flex gap-2">
                                 <Button
                                     variant="secondary"
-                                    size="sm"
+                                    size="xs"
                                     disabled={!canEdit}
                                     onClick={() => {
                                         setRenameId(item.clientId);
                                         setRenameValue(item.name);
                                     }}
                                 >
-                                    Rename
+                                    <Pencil />
+                                    Переименовать
                                 </Button>
                                 <Button
                                     variant="destructive"
-                                    size="sm"
+                                    size="xs"
                                     disabled={!canEdit}
                                     onClick={() => setDeleteId(item.clientId)}
                                 >
-                                    Delete
+                                    <Trash2 />
+                                    Удалить
                                 </Button>
                             </div>
                         </div>
@@ -103,7 +107,7 @@ export function PendingEntityList({
                         <Input
                             value={renameValue}
                             onChange={(e) => setRenameValue(e.target.value)}
-                            aria-label="New name"
+                            aria-label="Новое название"
                         />
                     </div>
                     <DialogFooter>

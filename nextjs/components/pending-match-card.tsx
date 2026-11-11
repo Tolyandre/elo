@@ -16,15 +16,19 @@ import { formatDateTime } from "@/lib/datetime";
 // status badge. When `clickable`, it opens the match detail page where edit and
 // delete actions live (delete is the escape hatch when the server rejects the
 // item after reconnecting). `children` renders extra content inside the card —
-// the /offline queue adds the op's field-level change list there.
+// the /offline queue adds the op's field-level change list there; `actions`
+// renders the action buttons in the card's footer (their clicks must not
+// trigger the card's own navigation).
 export function PendingMatchCard({
     match,
     clickable = false,
     children,
+    actions,
 }: {
     match: PendingMatch;
     clickable?: boolean;
     children?: React.ReactNode;
+    actions?: React.ReactNode;
 }) {
     const { resolvePlayer, resolveGame } = useNameResolver();
     const router = useRouter();
@@ -41,6 +45,17 @@ export function PendingMatchCard({
     }, [match.score, match.mode, match.playerIds, resolvePlayer]);
 
     const createdAt = new Date(match.createdAt);
+
+    // The action footer: buttons sit inside the card; their clicks are stopped
+    // from bubbling to the card's own view-page navigation.
+    const actionsFooter = actions && (
+        <div
+            onClick={clickable ? (e) => e.stopPropagation() : undefined}
+            className="mt-3 flex flex-wrap gap-2"
+        >
+            {actions}
+        </div>
+    );
 
     // Sync state of the queued item; the syncing state is transient between
     // sync rounds but shows honestly while it lasts.
@@ -90,6 +105,7 @@ export function PendingMatchCard({
                         ))}
                     </div>
                     {children}
+                    {actionsFooter}
                 </CardContent>
             </Card>
         );
@@ -137,6 +153,7 @@ export function PendingMatchCard({
                     ))}
                 </ul>
                 {children}
+                {actionsFooter}
             </CardContent>
         </Card>
     );

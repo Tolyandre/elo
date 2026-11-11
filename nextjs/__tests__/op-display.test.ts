@@ -142,7 +142,7 @@ describe("opChangeRows", () => {
             helpers,
         );
         expect(rows).toEqual([
-            { kind: "value", label: "Алиас", from: null, to: "sk" },
+            { kind: "value", label: "Псевдоним", from: null, to: "sk" },
             { kind: "value", label: "Название (рус)", from: "Старое рус", to: "Новое рус" },
             { kind: "value", label: "Режим", from: "Только соревновательная", to: "Кооператив или сольная" },
             { kind: "value", label: "BGG", from: "1", to: "2" },

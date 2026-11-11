@@ -128,7 +128,7 @@ function GameUpdateDetails({ changes }: { changes: components["schemas"]["AuditG
     return (
         <dl className="space-y-1.5 text-sm">
             {changes.name && <DiffRow label="Название" from={changes.name.from} to={changes.name.to} />}
-            {changes.alias && <DiffRow label="Алиас" from={changes.alias.from} to={changes.alias.to} />}
+            {changes.alias && <DiffRow label="Псевдоним" from={changes.alias.from} to={changes.alias.to} />}
             {changes.name_ru && <DiffRow label="Название (рус)" from={changes.name_ru.from} to={changes.name_ru.to} />}
             {changes.name_en && <DiffRow label="Name (eng)" from={changes.name_en.from} to={changes.name_en.to} />}
             {changes.game_mode && (
