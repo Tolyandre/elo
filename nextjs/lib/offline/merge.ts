@@ -99,6 +99,6 @@ function stableStringify(value: unknown): string {
     );
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
+export function deepEqual(a: unknown, b: unknown): boolean {
     return stableStringify(a) === stableStringify(b);
 }

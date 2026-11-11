@@ -8,9 +8,9 @@ import { useClubs } from "@/app/clubsContext";
 import { MEMBERSHIP_MODE_LABELS, TOURNAMENTS_OPENNESS_LABELS } from "@/app/admin/tenants/labels";
 import { GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes";
 import { matchUpdateRows, tenantUpdateRows, formatScore } from "@/lib/audit-display";
+import { DiffRow, NameDiff } from "@/components/audit/diff";
 import { TenantIcon } from "@/components/tenant-icon";
 import { clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
-import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/datetime";
 
 /**
@@ -68,18 +68,6 @@ export function AuditEntryDetailsView({ entry }: { entry: AuditEntry }) {
         );
     }
     return null;
-}
-
-/** A name-ish before → after pair: the old value struck through, the new one
- * emphasized. Null sides render as a dash. */
-function NameDiff({ from, to }: { from: string | null; to: string | null }) {
-    return (
-        <>
-            <span className={cn("text-muted-foreground", from && "line-through")}>{from ?? "—"}</span>
-            {" → "}
-            <span className="font-medium">{to ?? "—"}</span>
-        </>
-    );
 }
 
 function ClubUpdateDetails({ changes }: { changes: components["schemas"]["AuditClubUpdateDetails"] }) {
@@ -154,15 +142,6 @@ function GameUpdateDetails({ changes }: { changes: components["schemas"]["AuditG
             {changes.image_url && <DiffRow label="Обложка (URL)" from={changes.image_url.from} to={changes.image_url.to} />}
             {changes.image_thumb_url && <DiffRow label="Превью (URL)" from={changes.image_thumb_url.from} to={changes.image_thumb_url.to} />}
         </dl>
-    );
-}
-
-function DiffRow({ label, from, to }: { label: string; from: string | null; to: string | null }) {
-    return (
-        <div className="flex flex-wrap gap-x-2">
-            <dt className="text-muted-foreground">{label}:</dt>
-            <dd><NameDiff from={from} to={to} /></dd>
-        </div>
     );
 }
 

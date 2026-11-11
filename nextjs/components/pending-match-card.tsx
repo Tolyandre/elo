@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useNameResolver } from "@/hooks/useNameResolver";
-import { PendingMatch } from "@/lib/offline/types";
+import { PendingMatch, SyncStatus } from "@/lib/offline/types";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
@@ -15,8 +15,17 @@ import { formatDateTime } from "@/lib/datetime";
 // Card for a match created offline and not yet synced: no Elo data, with a
 // status badge. When `clickable`, it opens the match detail page where edit and
 // delete actions live (delete is the escape hatch when the server rejects the
-// item after reconnecting).
-export function PendingMatchCard({ match, clickable = false }: { match: PendingMatch; clickable?: boolean }) {
+// item after reconnecting). `children` renders extra content inside the card —
+// the /offline queue adds the op's field-level change list there.
+export function PendingMatchCard({
+    match,
+    clickable = false,
+    children,
+}: {
+    match: PendingMatch;
+    clickable?: boolean;
+    children?: React.ReactNode;
+}) {
     const { resolvePlayer, resolveGame } = useNameResolver();
     const router = useRouter();
 
@@ -32,6 +41,10 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
     }, [match.score, match.mode, match.playerIds, resolvePlayer]);
 
     const createdAt = new Date(match.createdAt);
+
+    // Sync state of the queued item; the syncing state is transient between
+    // sync rounds but shows honestly while it lasts.
+    const statusBadge = <PendingSyncBadge status={match.status} error={match.error} />;
 
     // A coop match (ADR-33) has one shared result: a badge + the game score
     // instead of ranked per-player scores.
@@ -50,22 +63,7 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                         </span>
                     </CardTitle>
                     <div className="flex items-center flex-wrap gap-2">
-                        {match.status === "error" ? (
-                            <Badge variant="destructive">
-                                <CloudOff />
-                                ошибка: {match.error}
-                            </Badge>
-                        ) : match.status === "conflict" ? (
-                            <Badge variant="destructive">
-                                <SplitSquareHorizontal />
-                                конфликт
-                            </Badge>
-                        ) : (
-                            <Badge variant="secondary">
-                                <CloudOff />
-                                не сохранено
-                            </Badge>
-                        )}
+                        {statusBadge}
                         <Badge variant="outline">кооператив</Badge>
                         <Badge variant={won ? "default" : "secondary"} className={won ? "bg-success" : ""}>
                             {won ? "Победа" : "Поражение"}
@@ -91,6 +89,7 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                             </span>
                         ))}
                     </div>
+                    {children}
                 </CardContent>
             </Card>
         );
@@ -111,22 +110,7 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                     </span>
                 </CardTitle>
                 <div className="flex items-center flex-wrap gap-2">
-                    {match.status === "error" ? (
-                        <Badge variant="destructive">
-                            <CloudOff />
-                            ошибка: {match.error}
-                        </Badge>
-                    ) : match.status === "conflict" ? (
-                        <Badge variant="destructive">
-                            <SplitSquareHorizontal />
-                            конфликт
-                        </Badge>
-                    ) : (
-                        <Badge variant="secondary">
-                            <CloudOff />
-                            не сохранено
-                        </Badge>
-                    )}
+                    {statusBadge}
                     {match.calculatorKind && (
                         <Badge variant="outline">
                             калькулятор
@@ -152,7 +136,43 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                         </li>
                     ))}
                 </ul>
+                {children}
             </CardContent>
         </Card>
+    );
+}
+
+/** The queue sync state of any pending item — shared with the /offline page's
+ * game/player op rows so all queued entities badge alike. */
+export function PendingSyncBadge({ status, error }: { status: SyncStatus; error?: string }) {
+    if (status === "error") {
+        return (
+            <Badge variant="destructive">
+                <CloudOff />
+                ошибка: {error}
+            </Badge>
+        );
+    }
+    if (status === "conflict") {
+        return (
+            <Badge variant="destructive">
+                <SplitSquareHorizontal />
+                конфликт
+            </Badge>
+        );
+    }
+    if (status === "syncing") {
+        return (
+            <Badge variant="secondary">
+                <CloudOff />
+                отправляется…
+            </Badge>
+        );
+    }
+    return (
+        <Badge variant="secondary">
+            <CloudOff />
+            не сохранено
+        </Badge>
     );
 }

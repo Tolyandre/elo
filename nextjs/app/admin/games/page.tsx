@@ -1,7 +1,6 @@
 "use client"
 import type { Base58ID } from "@/lib/id";
 import React from "react";
-import Link from "next/link";
 import { Dices, Pencil, Plus, Trash2 } from "lucide-react";
 import { SiBoardgamegeek } from "@icons-pack/react-simple-icons";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -19,6 +18,7 @@ import { useTags } from "@/app/tagsContext";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { PendingEntityList } from "@/components/pending-entity-list";
+import { GameCard } from "@/components/game-card";
 import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { GameEditDialog } from "@/components/admin/game-edit-dialog";
@@ -34,12 +34,11 @@ import {
 } from "@/components/ui/select";
 import { PageContainer } from "@/components/page-container";
 import { EmptyState } from "@/components/empty-state";
-import { GameImage } from "@/components/game-image";
 import { ResponsiveTable } from "@/components/responsive-table";
 import { BackButton } from "@/components/back-button";
 import { cn } from "@/lib/utils";
 import { GAME_SORT_LABELS, GAME_SORT_MODES, sortGames, type GameSortMode } from "@/lib/game-sort";
-import { accentName, bggUrl, matchesAnyName, secondaryNames, teseraUrl } from "@/lib/game-names";
+import { bggUrl, matchesAnyName, teseraUrl } from "@/lib/game-names";
 
 type GameRow = GameListItem;
 
@@ -288,19 +287,7 @@ export default function GamesAdminPage() {
 
 /** Box art, accent name as a link, secondary names muted underneath. */
 function GameNames({ game }: { game: GameRow }) {
-    return (
-        <div className="flex items-center gap-2 min-w-0">
-            {game.image_thumb_url && (
-                <GameImage src={game.image_thumb_url} alt="" className="size-8 shrink-0 rounded" />
-            )}
-            <div className="min-w-0">
-                <Link className="underline font-medium" href={`/games/view?id=${game.id}`}>{accentName(game)}</Link>
-                {secondaryNames(game).length > 0 && (
-                    <div className="text-sm text-muted-foreground">{secondaryNames(game).join(" · ")}</div>
-                )}
-            </div>
-        </div>
-    );
+    return <GameCard game={game} thumbUrl={game.image_thumb_url} href={`/games/view?id=${game.id}`} />;
 }
 
 /** Compact catalog links: BGG and Tesera, only when the ids are set. */

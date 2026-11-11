@@ -78,7 +78,11 @@ export function NavigationBar() {
               ) : (
                 <>
                   {tenant ? <TenantIcon icon={tenant.icon} className="h-4 w-4" /> : <Users className="h-4 w-4 shrink-0" />}
-                  <span className="truncate max-w-[8rem] sm:max-w-[12rem]">{tenant?.name ?? "Выберите сообщество"}</span>
+                  {/* Harder truncation on phones: the one-line nav row must
+                      hold the offline indicator, the table icon and the menu
+                      items too — a long community name would push it past the
+                      viewport and force a horizontal page scroll. */}
+                  <span className="truncate max-w-[5rem] sm:max-w-[8rem] md:max-w-[12rem]">{tenant?.name ?? "Выберите сообщество"}</span>
                 </>
               )}
             </Link>
@@ -119,9 +123,11 @@ export function NavigationBar() {
               dropdown's stacked link content) — without the override the
               icon stacks above the text and the label drops out of the row. */}
           <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "flex-row gap-1 px-1.5 sm:px-2")}>
-            <Link href="/help">
+            {/* Icon-only on phones: the nav row is one line by design, and the
+                label would not fit next to the community name and «Меню». */}
+            <Link href="/help" aria-label="Справка">
               <CircleHelp className="h-4 w-4 shrink-0" />
-              Справка
+              <span className="hidden sm:inline">Справка</span>
             </Link>
           </NavigationMenuLink>
         </NavigationMenuItem>

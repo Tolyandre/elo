@@ -25,6 +25,9 @@ const state = vi.hoisted(() => ({
     pendingPlayers: [] as unknown[],
     pendingGames: [] as unknown[],
     ops: [] as unknown[],
+    routerPush: vi.fn(),
+    deleteOp: vi.fn(),
+    resolveOpConflict: vi.fn(),
     syncNow: vi.fn(),
     resolvePendingConflict: vi.fn(),
     deletePendingMatch: vi.fn(),
@@ -36,7 +39,8 @@ const state = vi.hoisted(() => ({
 
 vi.mock("@/app/offline/OfflineContext", () => ({
     useOffline: () => {
-        const all = [...state.pendingMatches, ...state.pendingPlayers, ...state.pendingGames] as Array<{
+        // The real counts include queued ops alongside the pending creates.
+        const all = [...state.pendingMatches, ...state.pendingPlayers, ...state.pendingGames, ...state.ops] as Array<{
             status: string;
             error?: string;
         }>;
@@ -51,6 +55,8 @@ vi.mock("@/app/offline/OfflineContext", () => ({
             ...state.conn,
             syncNow: state.syncNow,
             resolvePendingConflict: state.resolvePendingConflict,
+            resolveOpConflict: state.resolveOpConflict,
+            deleteOp: state.deleteOp,
             deletePendingMatch: state.deletePendingMatch,
             updatePendingPlayer: state.updatePendingPlayer,
             deletePendingPlayer: state.deletePendingPlayer,
@@ -78,7 +84,11 @@ vi.mock("@/app/clubsContext", () => ({
     useClubs: () => ({ clubsForPlayer: () => [] }),
 }));
 vi.mock("next/navigation", () => ({
-    useRouter: () => ({ push: vi.fn() }),
+    useRouter: () => ({ push: state.routerPush }),
+}));
+// OpChanges resolves camp names on the queue page.
+vi.mock("@/app/arenas/campsContext", () => ({
+    useCamps: () => ({ camps: [], activeCamps: () => [], invalidate: () => {} }),
 }));
 // LoginLink reads the inlined base URL, which throws without the mock.
 vi.mock("@/app/api", () => ({
@@ -101,7 +111,7 @@ vi.mock("@/app/pageHeaderContext", async (importOriginal) => {
 
 import { PageHeaderProvider } from "@/app/pageHeaderContext";
 import OfflineQueuePage from "@/app/offline/page";
-import type { PendingGame, PendingMatch, PendingPlayer } from "@/lib/offline/types";
+import type { PendingGame, PendingMatch, PendingOp, PendingPlayer } from "@/lib/offline/types";
 import type { Base58ID } from "@/lib/id";
 
 let container: HTMLDivElement;
@@ -176,6 +186,18 @@ const game = (over: Partial<PendingGame> = {}): PendingGame =>
         ...over,
     }) as PendingGame;
 
+const op = (over: Partial<PendingOp> = {}): PendingOp =>
+    ({
+        entityId: "sm1" as Base58ID,
+        kind: "match",
+        op: "update",
+        createdAt: "2026-01-01T10:00:00Z",
+        status: "pending",
+        base: { game_id: "game1", date: "2026-01-05T18:00:00Z", score: { p1: 10 } },
+        patch: { date: "2026-01-06T19:00:00Z", score: { p1: 15 } },
+        ...over,
+    }) as PendingOp;
+
 beforeEach(() => {
     state.isAuthenticated = true;
     state.canEdit = true;
@@ -185,6 +207,7 @@ beforeEach(() => {
     state.pendingPlayers = [];
     state.pendingGames = [];
     state.ops = [];
+    state.routerPush = vi.fn();
     vi.clearAllMocks();
 });
 
@@ -214,10 +237,21 @@ describe("OfflineQueuePage", () => {
         expect(container.textContent).toContain("Несохранённые игры");
         expect(container.textContent).toContain("в очереди: 3");
         expect(buttonByText("Сохранить на сервере")).not.toBeNull();
-        // Editor sees per-match navigation to the existing edit/view dispatchers.
+        // Editor sees per-match navigation to the existing edit dispatcher.
         expect(container.querySelector('a[href="/matches/edit?id=m1"]')).not.toBeNull();
-        expect(container.querySelector('a[href="/matches/view?id=m1"]')).not.toBeNull();
         expect(buttonByText("Удалить")).not.toBeNull();
+    });
+
+    it("opens the view page by clicking the pending match card (no separate Просмотр button)", async () => {
+        state.pendingMatches = [match()];
+        mount();
+        await flush();
+
+        expect(buttonByText("Просмотр")).toBeNull();
+        const card = container.querySelector('[data-slot="card"]');
+        expect(card).not.toBeNull();
+        act(() => (card as HTMLElement).click());
+        expect(state.routerPush).toHaveBeenCalledWith("/matches/view?id=m1");
     });
 
     it("deletes a pending match through the confirm dialog", async () => {
@@ -320,5 +354,82 @@ describe("OfflineQueuePage", () => {
         await flush();
 
         expect(container.textContent).toContain("Сессия истекла");
+    });
+
+    it("renders a match edit op as a match card with the field changes", async () => {
+        state.ops = [op()];
+        mount();
+        await flush();
+
+        expect(container.textContent).toContain("Изменения");
+        // The change list speaks in audit labels, not raw field names.
+        expect(container.textContent).toContain("Дата");
+        // The card carries the queue status, not a bare title row.
+        expect(container.textContent).toContain("не сохранено");
+        // Clicking the card opens the saved match's view page.
+        const card = container.querySelector('[data-slot="card"]');
+        expect(card).not.toBeNull();
+        act(() => (card as HTMLElement).click());
+        expect(state.routerPush).toHaveBeenCalledWith("/matches/view?id=sm1");
+    });
+
+    it("renders a game edit op with the derived game name, never the raw id", async () => {
+        state.ops = [
+            op({
+                entityId: "game9" as Base58ID,
+                kind: "game",
+                base: { alias: null, name_ru: "Шахматы", name_en: "Chess", bgg_ref: 1, tesera_ref: null, game_mode: "competitive" },
+                patch: { alias: "chess" },
+            }),
+        ];
+        mount();
+        await flush();
+
+        // Accent name = the new alias, secondary = the stored names; the id
+        // the page used to show is gone.
+        expect(container.textContent).toContain("chess");
+        expect(container.textContent).toContain("Шахматы");
+        expect(container.textContent).not.toContain("game9");
+        expect(container.textContent).toContain("Алиас");
+        expect(container.textContent).toContain("не сохранено");
+    });
+
+    it("titles a delete op by the entity name and discards ops through Отказаться", async () => {
+        state.ops = [
+            op({
+                entityId: "game9" as Base58ID,
+                kind: "game",
+                op: "delete",
+                patch: undefined,
+                base: { alias: null, name_ru: "Шахматы", name_en: null },
+            }),
+        ];
+        mount();
+        await flush();
+
+        expect(container.textContent).toContain("Удаление игры «Шахматы»");
+        const discard = buttonByText("Отказаться")!;
+        expect(discard.className).toContain("bg-destructive");
+        act(() => discard.click());
+        expect(state.deleteOp).toHaveBeenCalledWith("game9");
+    });
+
+    it("shows conflicted update ops as entity cards with the resolution panel", async () => {
+        state.ops = [
+            op({
+                status: "conflict",
+                conflict: [{ field: "date", label: "Дата", ours: "2026-01-06T19:00:00Z", theirs: "2026-02-01T10:00:00Z" }],
+            }),
+        ];
+        mount();
+        await flush();
+
+        expect(container.textContent).toContain("Конфликты");
+        expect(container.textContent).toContain("конфликт");
+        expect(container.textContent).toContain("здесь:");
+        expect(container.textContent).toContain("на сервере:");
+        const keepMine = [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("Оставить моё"));
+        act(() => keepMine!.click());
+        expect(state.resolveOpConflict).toHaveBeenCalledWith("sm1", { date: "2026-01-06T19:00:00Z" });
     });
 });

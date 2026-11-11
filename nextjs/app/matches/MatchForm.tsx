@@ -484,21 +484,12 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             {offline && (editSaved ? (
                 <Alert>
                     <CloudOff />
-                    <AlertTitle>Офлайн — правка сохранённой партии сохранится на устройстве</AlertTitle>
-                    <AlertDescription>
-                        Изменение отправится на сервер автоматически, когда связь восстановится. Если партию
-                        тем временем правили на другом устройстве, конфликтные поля разрешатся на странице
-                        офлайн-очереди.
-                    </AlertDescription>
+                    <AlertTitle>Офлайн — правка сохранится на устройстве</AlertTitle>
                 </Alert>
             ) : (
                 <Alert>
                     <CloudOff />
-                    <AlertTitle>Офлайн — партия будет сохранена на устройстве</AlertTitle>
-                    <AlertDescription>
-                        Партия автоматически отправится на сервер, когда связь
-                        восстановится.
-                    </AlertDescription>
+                    <AlertTitle>Офлайн — партия сохранится на устройстве</AlertTitle>
                 </Alert>
             ))}
             {isEdit && (

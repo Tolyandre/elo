@@ -1,6 +1,7 @@
 import { Base58ID } from "../id";
 import type { GameMode, MatchMode } from "../game-modes";
 import { mergeFields } from "./merge";
+import { MATCH_FIELD_LABELS } from "./op-display";
 import {
     OfflineStore,
     PendingGame,
@@ -763,16 +764,6 @@ export async function syncOffline(
 
     return finish(false, false);
 }
-
-const MATCH_FIELD_LABELS: Record<string, string> = {
-    game_id: "Игра",
-    date: "Дата",
-    camp_arena_ids: "Кэмпы",
-    mode: "Режим",
-    player_ids: "Участники",
-    game_score: "Игровой счёт",
-    game_won: "Результат",
-};
 
 // Match ops merge at score-key granularity (ADR-37): the score map merges per
 // player (each key gets its own conflict entry), the other fields merge whole.

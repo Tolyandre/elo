@@ -8,6 +8,8 @@ import { useMe } from "../meContext";
 import { PendingMatchCard } from "@/components/pending-match-card";
 import { PendingEntityList } from "@/components/pending-entity-list";
 import { ConflictPanel } from "@/components/offline/conflict-panel";
+import { OpEntityCard } from "@/components/offline/op-card";
+import { opEntityName } from "@/lib/offline/op-display";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { PageContainer } from "@/components/page-container";
 import { SectionHeader } from "@/components/section-header";
@@ -30,7 +32,6 @@ import {
     AlertCircle,
     CloudOff,
     Pencil,
-    Eye,
     Trash2,
     SplitSquareHorizontal,
     AlertTriangle,
@@ -102,7 +103,9 @@ function OfflineQueuePageWrapped() {
     const canMutate = isAuthenticated && canEdit;
 
     const opTitle = (op: (typeof ops)[number]): string => {
-        const name = ((op.patch?.name ?? op.base?.name) as string | undefined) ?? op.entityId;
+        // A human name from the queued fields (a game's display name derives
+        // alias → ru → en) — the raw id only as a last resort.
+        const name = opEntityName(op) ?? op.entityId;
         const verb = op.op === "delete" ? "Удаление" : "Изменение";
         if (op.kind === "player") return `${verb} игрока «${name}»`;
         if (op.kind === "game") return `${verb} игры «${name}»`;
@@ -202,7 +205,7 @@ function OfflineQueuePageWrapped() {
                             </Alert>
                             {conflictMatches.map((m) => (
                                 <div key={m.clientId} className="mb-3">
-                                    <PendingMatchCard match={m} />
+                                    <PendingMatchCard match={m} clickable />
                                     <ConflictPanel
                                         fields={m.conflict ?? []}
                                         disabled={isSyncing || !canMutate}
@@ -237,8 +240,8 @@ function OfflineQueuePageWrapped() {
                                 </div>
                             ))}
                             {conflictUpdateOps.map((op) => (
-                                <div key={op.entityId} className="mb-3 border border-dashed rounded p-3">
-                                    <div className="font-medium">{opTitle(op)}</div>
+                                <div key={op.entityId} className="mb-3">
+                                    <OpEntityCard op={op} />
                                     <ConflictPanel
                                         fields={op.conflict ?? []}
                                         disabled={isSyncing || !canMutate}
@@ -289,7 +292,9 @@ function OfflineQueuePageWrapped() {
                             <div className="space-y-3">
                                 {plainMatches.map((m) => (
                                     <div key={m.clientId}>
-                                        <PendingMatchCard match={m} />
+                                        {/* Clickable like the feed: opens the view page,
+                                            where the pending match renders with its actions. */}
+                                        <PendingMatchCard match={m} clickable />
                                         {canMutate && (
                                             <div className="flex flex-wrap gap-2 mt-1">
                                                 <Button variant="secondary" size="xs" asChild>
@@ -298,14 +303,6 @@ function OfflineQueuePageWrapped() {
                                                     >
                                                         <Pencil />
                                                         Редактировать
-                                                    </Link>
-                                                </Button>
-                                                <Button variant="secondary" size="xs" asChild>
-                                                    <Link
-                                                        href={`/matches/view?id=${encodeURIComponent(m.clientId)}`}
-                                                    >
-                                                        <Eye />
-                                                        Просмотр
                                                     </Link>
                                                 </Button>
                                                 <Button
@@ -328,41 +325,59 @@ function OfflineQueuePageWrapped() {
                     {plainOps.length > 0 && (
                         <section className="mb-8">
                             <SectionHeader className="mb-3">Изменения</SectionHeader>
-                            <div className="space-y-2">
-                                {plainOps.map((op) => (
-                                    <div key={op.entityId} className="border border-dashed rounded p-3">
-                                        <div className="flex justify-between items-center gap-2 flex-wrap">
-                                            <div className="min-w-0">
-                                                <div className="font-medium truncate">{opTitle(op)}</div>
-                                                {op.status === "error" ? (
-                                                    <Badge variant="destructive">
-                                                        <CloudOff />
-                                                        ошибка: {op.error}
-                                                    </Badge>
-                                                ) : op.status === "syncing" ? (
-                                                    <Badge variant="secondary">
-                                                        <CloudOff />
-                                                        отправляется…
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="secondary">
-                                                        <CloudOff />
-                                                        не сохранено
-                                                    </Badge>
-                                                )}
-                                            </div>
+                            <div className="space-y-3">
+                                {plainOps.map((op) =>
+                                    op.op === "update" ? (
+                                        // The entity card itself carries the status badge
+                                        // and the field-level change list.
+                                        <div key={op.entityId} className="space-y-1">
+                                            <OpEntityCard op={op} />
                                             {canMutate && op.status !== "syncing" && (
                                                 <Button
-                                                    variant="outline"
-                                                    size="sm"
+                                                    variant="destructive"
+                                                    size="xs"
+                                                    disabled={isSyncing}
                                                     onClick={() => deleteOp(op.entityId)}
                                                 >
                                                     Отказаться
                                                 </Button>
                                             )}
                                         </div>
-                                    </div>
-                                ))}
+                                    ) : (
+                                        <div key={op.entityId} className="border border-dashed rounded p-3">
+                                            <div className="flex justify-between items-center gap-2 flex-wrap">
+                                                <div className="min-w-0">
+                                                    <div className="font-medium truncate">{opTitle(op)}</div>
+                                                    {op.status === "error" ? (
+                                                        <Badge variant="destructive">
+                                                            <CloudOff />
+                                                            ошибка: {op.error}
+                                                        </Badge>
+                                                    ) : op.status === "syncing" ? (
+                                                        <Badge variant="secondary">
+                                                            <CloudOff />
+                                                            отправляется…
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="secondary">
+                                                            <CloudOff />
+                                                            не сохранено
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                {canMutate && op.status !== "syncing" && (
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="xs"
+                                                        onClick={() => deleteOp(op.entityId)}
+                                                    >
+                                                        Отказаться
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ),
+                                )}
                             </div>
                         </section>
                     )}

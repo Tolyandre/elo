@@ -32,19 +32,24 @@ export function SyncStatus() {
             variant="ghost"
             size="sm"
             className="h-9 gap-0.5 px-1.5 shrink-0"
-            aria-label="Статус сохранения"
+            aria-label={pendingCount > 0 ? `Статус сохранения, в очереди: ${pendingCount}` : "Статус сохранения"}
             asChild
         >
             <Link href="/offline">
-                {isSyncing ? <Spinner className="size-4" /> : crossedCloud ? <CloudOff className="size-4" /> : <CloudUpload className="size-4" />}
-                {pendingCount > 0 && (
-                    <Badge
-                        variant={hasProblems ? "destructive" : "secondary"}
-                        className="h-4 min-w-4 justify-center px-1 text-[10px] leading-none"
-                    >
-                        {pendingCount}
-                    </Badge>
-                )}
+                {/* The count rides the icon's corner instead of taking its own
+                    slot: the nav row is flex-nowrap and a side-by-side badge
+                    pushed it past narrow phone viewports. */}
+                <span className="relative inline-flex">
+                    {isSyncing ? <Spinner className="size-4" /> : crossedCloud ? <CloudOff className="size-4" /> : <CloudUpload className="size-4" />}
+                    {pendingCount > 0 && (
+                        <Badge
+                            variant={hasProblems ? "destructive" : "secondary"}
+                            className="absolute -top-1.5 -right-2 h-3.5 min-w-3.5 justify-center px-1 text-[9px] leading-none"
+                        >
+                            {pendingCount}
+                        </Badge>
+                    )}
+                </span>
             </Link>
         </Button>
     );

@@ -86,6 +86,10 @@ describe("SyncStatus", () => {
         const view = renderSyncStatus();
         expect(view.badge()?.textContent).toBe("3");
         expect(view.badge()?.className).toContain("bg-secondary");
+        // The count rides the icon's corner (absolute overlay) — a side-by-side
+        // badge made the one-line nav row overflow narrow phones.
+        expect(view.badge()?.className).toContain("absolute");
+        expect(view.link()?.getAttribute("aria-label")).toContain("в очереди: 3");
         view.unmount();
     });
 
