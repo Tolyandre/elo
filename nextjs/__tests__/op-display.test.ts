@@ -1,5 +1,5 @@
-// Display helpers for offline edit ops (ADR-37): the synthesized pending
-// match card input and the audit-style change rows the /offline queue shows.
+// Display helpers for offline edit ops (ADR-37): the audit-style change rows
+// the /offline queue and the entity view pages show.
 import { describe, expect, it } from "vitest";
 
 import { Base58ID } from "../lib/id";
@@ -7,7 +7,6 @@ import {
     MATCH_FIELD_LABELS,
     opChangeRows,
     opEntityName,
-    pendingMatchFromOp,
 } from "../lib/offline/op-display";
 import { PendingOp } from "../lib/offline/types";
 
@@ -34,42 +33,6 @@ function matchOp(base: Record<string, unknown>, patch: Record<string, unknown>):
         patch,
     };
 }
-
-describe("pendingMatchFromOp", () => {
-    it("overlays the patch on the base", () => {
-        const m = pendingMatchFromOp(
-            matchOp(
-                { game_id: GAME_ID, date: "2026-01-05T18:00:00.000Z", score: { [P1]: 10, [P2]: 20 }, camp_arena_ids: ["c1"] },
-                { score: { [P1]: 15, [P2]: 20 } },
-            ),
-        );
-        expect(m.clientId).toBe(MATCH_ID);
-        expect(m.gameId).toBe(GAME_ID);
-        expect(m.score).toEqual({ [P1]: 15, [P2]: 20 });
-        expect(m.campArenaIds).toEqual(["c1"]);
-        expect(m.status).toBe("pending");
-    });
-
-    it("dates the card by the match's own date, not the queue time", () => {
-        const m = pendingMatchFromOp(
-            matchOp({ game_id: GAME_ID, date: "2026-01-05T18:00:00.000Z", score: {} }, {}),
-        );
-        expect(m.createdAt).toBe("2026-01-05T18:00:00.000Z");
-    });
-
-    it("carries the coop fields through", () => {
-        const m = pendingMatchFromOp(
-            matchOp(
-                { game_id: GAME_ID, date: "d", score: {}, mode: "coop", player_ids: [P1], game_score: 42, game_won: false, camp_arena_ids: [] },
-                { game_won: true },
-            ),
-        );
-        expect(m.mode).toBe("coop");
-        expect(m.playerIds).toEqual([P1]);
-        expect(m.gameScore).toBe(42);
-        expect(m.gameWon).toBe(true);
-    });
-});
 
 describe("opChangeRows", () => {
     it("lists only the fields the patch actually changes", () => {

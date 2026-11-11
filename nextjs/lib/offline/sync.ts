@@ -91,6 +91,14 @@ export type ServerMatchFields = {
     player_ids?: Base58ID[];
     game_score?: number;
     game_won?: boolean;
+    // Calculator state (ADR-09) — a whole-field merge (lib/offline/merge.ts);
+    // the fresh GET must carry it or a calculator edit op would flag a
+    // phantom conflict on a field the server "doesn't have".
+    calculator_kind?: string | null;
+    calculator_data?: Record<string, unknown> | null;
+    // Write-only toggle (ADR-26): the server never returns it, so it merges
+    // as "unchanged" and the patch's desired state applies.
+    skip_tournament_link?: boolean;
 };
 
 /**
@@ -116,26 +124,8 @@ export type OpsApi = {
     getGame(id: Base58ID): Promise<SyncCallResult<ServerGameFields | null>>;
     patchGame(id: Base58ID, body: Record<string, unknown>): Promise<SyncCallResult<null>>;
     deleteGame(id: Base58ID): Promise<SyncCallResult<null>>;
-    getMatch(id: Base58ID): Promise<SyncCallResult<{
-        game_id: Base58ID;
-        date: string;
-        score: Record<string, number>;
-        camp_arena_ids: Base58ID[];
-        mode?: MatchMode;
-        player_ids?: Base58ID[];
-        game_score?: number;
-        game_won?: boolean;
-    } | null>>;
-    putMatch(id: Base58ID, tenant: Base58ID | null, body: {
-        game_id: Base58ID;
-        date: string;
-        score: Record<string, number>;
-        camp_arena_ids: Base58ID[];
-        mode?: MatchMode;
-        player_ids?: Base58ID[];
-        game_score?: number;
-        game_won?: boolean;
-    }): Promise<SyncCallResult<null>>;
+    getMatch(id: Base58ID): Promise<SyncCallResult<ServerMatchFields | null>>;
+    putMatch(id: Base58ID, tenant: Base58ID | null, body: ServerMatchFields): Promise<SyncCallResult<null>>;
 };
 
 type PendingItem = PendingGame | PendingPlayer | PendingMatch;
@@ -699,6 +689,9 @@ export async function syncOffline(
                     ...(merged.player_ids !== undefined ? { player_ids: merged.player_ids as Base58ID[] } : {}),
                     ...(merged.game_score !== undefined ? { game_score: merged.game_score as number } : {}),
                     ...(merged.game_won !== undefined ? { game_won: merged.game_won as boolean } : {}),
+                    ...(merged.calculator_kind !== undefined ? { calculator_kind: merged.calculator_kind as string | null } : {}),
+                    ...(merged.calculator_data !== undefined ? { calculator_data: merged.calculator_data as Record<string, unknown> | null } : {}),
+                    ...(merged.skip_tournament_link !== undefined ? { skip_tournament_link: merged.skip_tournament_link as boolean } : {}),
                 });
             } catch {
                 return finish(false, true);
@@ -817,6 +810,19 @@ function mergeMatchOp(op: PendingOp, server: {
         { base: scoreBase, patch: scorePatch, server: server.score },
         (key) => `Счёт (${key})`,
     );
+    // The patch carries the complete desired score set: a base key the patch
+    // omits is a player the user removed — it drops from the merged map even
+    // though the per-key merge never saw it. A key the server added since the
+    // base (absent from base and patch) stays — the user has not observed it,
+    // so it is not overridden (the no-silent-override rule). The removal
+    // applies only when the patch carries a score map at all: an op that
+    // edits other fields keeps the observed set.
+    const mergedScore = { ...scoreResult.merged };
+    if ("score" in patch) {
+        for (const key of Object.keys(scoreBase)) {
+            if (!(key in scorePatch)) delete mergedScore[key];
+        }
+    }
     const restPatch = { ...patch };
     delete restPatch.score;
     const restResult = mergeFields(
@@ -824,7 +830,7 @@ function mergeMatchOp(op: PendingOp, server: {
         (field) => MATCH_FIELD_LABELS[field] ?? field,
     );
     return {
-        merged: { ...restResult.merged, score: scoreResult.merged },
+        merged: { ...restResult.merged, score: mergedScore },
         // Score keys get the "score:<playerId>" prefix the resolution path
         // maps back into the patch's score map.
         conflicts: [

@@ -5,13 +5,12 @@ import type { Base58ID } from "@/lib/id";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { useGames } from "../gamesContext";
-import { useMatches } from "./MatchesContext";
 import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
 import { useNameResolver } from "@/hooks/useNameResolver";
 import { useTenantScope, useTenantMembership } from "../tenantScopeContext";
 import { participantsMembershipIssue } from "@/lib/tenant-members";
-import { Match, updateMatchPromise } from "../api";
+import { Match } from "../api";
 import { unchangedEditDateISO } from "./edit-date";
 import { useCampSelection, type CampOverrides } from "@/hooks/useCampSelection";
 import { useTournamentSlotFit } from "@/hooks/useTournamentSlotFit";
@@ -74,7 +73,7 @@ export function MatchFormAuthAlerts() {
 export function MatchForm({ editPending, editSaved }: { editPending?: PendingMatch; editSaved?: Match }) {
     const { loading } = usePlayers();
     const { games } = useGames();
-    const { pendingGames, offline, isSyncing, submitMatch, updatePendingMatch, queueMatchUpdate } = useOffline();
+    const { pendingGames, offline, isSyncing, submitMatch, updatePendingMatch, queueMatchUpdate, syncNow } = useOffline();
     // The shared resolver (ADR-37): pending → live list → replica → Unknown.
     const { resolvePlayer } = useNameResolver();
     const isEdit = !!editPending || !!editSaved;
@@ -122,8 +121,8 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     const [submitting, setSubmitting] = useState(false);
     const router = useRouter();
 
-    const { invalidate: invalidateMatches } = useMatches();
-    const { invalidate: invalidatePlayers } = usePlayers();
+    // After a queued edit lands, the sync invalidates the contexts itself —
+    // nothing to refresh here at submit time.
 
     // The community the match belongs to (ADR-36): the roster must satisfy
     // the tenant's openness rule — any_member wants at least one member,
@@ -367,61 +366,51 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     setBottomErrorMessage("Выберите сообщество");
                     return;
                 }
-                // Offline (ADR-37 phase 7): queue an edit op — the base is the
-                // match as the form prefilled it, the patch what the user
-                // changed; the sync three-way-merges against the server before
-                // sending. The tournament association is not edited offline
-                // (slot associations lock server-side); omitting it keeps the
-                // stored state.
-                if (offline) {
-                    const baseScore = Object.fromEntries(
-                        Object.entries(editSaved.score).map(([pid, data]) => [pid, data.score ?? 0]),
-                    );
-                    queueMatchUpdate(editSaved.id, tenant.id, {
-                        game_id: editSaved.game_id,
-                        date: editSaved.dateISO ?? (editSaved.date ? new Date(editSaved.date).toISOString() : ""),
-                        score: baseScore,
-                        camp_arena_ids: editSaved.camps.map((c) => c.id),
-                        ...(editSaved.mode
-                            ? {
-                                  mode: editSaved.mode,
-                                  player_ids: Object.keys(baseScore),
-                                  ...(editSaved.game_score != null ? { game_score: editSaved.game_score } : {}),
-                                  ...(editSaved.game_won != null ? { game_won: editSaved.game_won } : {}),
-                              }
-                            : {}),
-                    }, {
-                        game_id: selectedGameId,
-                        date: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
-                        ...(coopMode
-                            ? { ...coopFields, camp_arena_ids: [] as Base58ID[] }
-                            : { score, camp_arena_ids: campIdsToSubmit() }),
-                    });
-                    clearDraft();
-                    toast.success("Изменение сохранено на устройстве — отправится, когда появится связь");
-                    router.push(`/matches/view?id=${editSaved.id}&tenant=${tenant.id}`);
-                    return;
-                }
-                await updateMatchPromise(editSaved.id, tenant.id, {
+                // One path for online and offline alike (ADR-37 revised): the
+                // edit queues as an op — the base is the match as the form
+                // prefilled it, the patch what the user changed — and the
+                // sync three-way-merges it against a fresh server read before
+                // sending. Online the sync runs right away; offline it waits
+                // for the connection. A server-side change since the form
+                // opened turns into a conflict either way, and the view page
+                // shows the queued state immediately. The tournament
+                // association travels only when the form offered it (it
+                // needs the server's slot fit); a date change keeps the
+                // server-side slot lock.
+                const baseScore = Object.fromEntries(
+                    Object.entries(editSaved.score).map(([pid, data]) => [pid, data.score ?? 0]),
+                );
+                queueMatchUpdate(editSaved.id, tenant.id, {
+                    game_id: editSaved.game_id,
+                    date: editSaved.dateISO ?? (editSaved.date ? new Date(editSaved.date).toISOString() : ""),
+                    score: baseScore,
+                    camp_arena_ids: editSaved.camps.map((c) => c.id),
+                    ...(editSaved.mode
+                        ? {
+                              mode: editSaved.mode,
+                              player_ids: Object.keys(baseScore),
+                              ...(editSaved.game_score != null ? { game_score: editSaved.game_score } : {}),
+                              ...(editSaved.game_won != null ? { game_won: editSaved.game_won } : {}),
+                          }
+                        : {}),
+                }, {
                     game_id: selectedGameId,
-                    // Untouched date → original full-precision instant (edit-date.ts).
                     date: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
                     ...(coopMode
                         ? { ...coopFields, camp_arena_ids: [] as Base58ID[] }
                         : {
                               score,
-                              // The desired camp set (ADR-27, revised): the server diffs
-                              // it against the stored links (attach/detach, audited).
                               camp_arena_ids: campIdsToSubmit(),
-                              // The desired tournament-link state (ADR-26): omitted when
-                              // the checkbox is not offered at all.
+                              // The desired tournament-link state (ADR-26, revised):
+                              // omitted when the checkbox is not offered at all.
                               ...(tournamentVisible ? { skip_tournament_link: !tournamentChecked } : {}),
                           }),
                 });
+                if (!offline) syncNow();
                 clearDraft();
-                invalidateMatches();
-                invalidatePlayers();
-                toast.success("Партия обновлена");
+                toast.success(offline
+                    ? "Изменение сохранено на устройстве — отправится, когда появится связь"
+                    : "Изменение сохранено — отправляется на сервер");
                 router.push(`/matches/view?id=${editSaved.id}&tenant=${tenant.id}`);
                 return;
             }

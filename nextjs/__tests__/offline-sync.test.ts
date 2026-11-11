@@ -1028,6 +1028,39 @@ describe('op replay (ADR-37 phase 7)', () => {
         expect(outcome.store.ops).toHaveLength(0);
     });
 
+    it('drops base score keys the patch omits (player removed offline)', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        const matchId = '018f6b00-0000-7000-8000-0000000000e2' as Base58ID;
+        ops.getMatch.mockImplementation(async () => ({
+            ok: true,
+            data: {
+                game_id: SERVER_GAME_ID,
+                date: '2026-06-01T11:00:00Z',
+                score: { p1: 10, p2: 25, p3: 7 },
+                camp_arena_ids: [],
+            },
+        }) as SyncCallResult<ServerMatchFields | null>);
+        const store = makeStore({});
+        store.ops = [opFixture({
+            entityId: matchId,
+            kind: 'match',
+            tenant: '018f6b00-0000-7000-8000-000000000101' as Base58ID,
+            base: { game_id: SERVER_GAME_ID, date: '2026-06-01T11:00:00Z', score: { p1: 10, p2: 20 }, camp_arena_ids: [] },
+            // The patch is the complete desired set: p2 removed, p1 changed.
+            patch: { game_id: SERVER_GAME_ID, date: '2026-06-01T11:00:00Z', score: { p1: 15 }, camp_arena_ids: [] },
+        })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        // p2 was in the base but not the patch → user-removed → dropped. p3
+        // was added server-side since the base (never observed) → kept.
+        expect(ops.putMatch).toHaveBeenCalledWith(matchId, '018f6b00-0000-7000-8000-000000000101', expect.objectContaining({
+            score: { p1: 15, p3: 7 },
+        }));
+        expect(outcome.store.ops).toHaveLength(0);
+    });
+
     it('conflicts a match on a per-key score race', async () => {
         const api = okApi();
         const ops = okOpsApi();

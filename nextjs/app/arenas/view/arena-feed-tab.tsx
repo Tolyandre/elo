@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import type { Base58ID } from "@/lib/id";
-import { Arena } from "@/app/api";
+import { Arena, type Match } from "@/app/api";
 import { MatchCard } from "@/components/match-card";
 import { MarketCard } from "@/components/market-card";
 import { PlayerCombobox } from "@/components/player-combobox";
@@ -19,6 +19,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
+import { MatchEntity } from "@/lib/offline/match-entity";
+import type { PendingOp } from "@/lib/offline/types";
+import { useSettlementPreview } from "@/hooks/useSettlementPreview";
+import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import type { ArenaMatchFilters } from "./use-arena-feed";
 import type { FeedEvent } from "@/app/api";
 
@@ -59,7 +63,7 @@ export function ArenaFeedTab({
     pendingGameId?: Base58ID;
 }) {
     const { roundToInteger } = useMe();
-    const { pendingMatches } = useOffline();
+    const { pendingMatches, ops } = useOffline();
     const sentinelRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -89,6 +93,17 @@ export function ArenaFeedTab({
             .filter((m) => !pendingGameId || m.gameId === pendingGameId)
             .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
     }, [isTenantFeed, pendingMatches, pendingGameId, filters.playerId, filters.marketsOnly]);
+
+    // Queued match edits by id (ADR-37): feed events render through the
+    // entity overlay, so an offline edit is visible here the moment it is
+    // made — the same display state the match view page and /offline show.
+    const opsByMatchId = useMemo(() => {
+        const map = new Map<Base58ID, PendingOp>();
+        for (const op of ops ?? []) {
+            if (op.kind === "match" && op.op === "update") map.set(op.entityId, op);
+        }
+        return map;
+    }, [ops]);
 
     return (
         <div className="space-y-2">
@@ -158,8 +173,16 @@ export function ArenaFeedTab({
             ) : (
                 events.map((event) => {
                     switch (event.type) {
-                        case "match":
-                            return (
+                        case "match": {
+                            const op = opsByMatchId.get(event.data.id);
+                            return op ? (
+                                <FeedMatchCard
+                                    key={`m-${event.data.id}`}
+                                    match={event.data}
+                                    op={op}
+                                    roundToInteger={roundToInteger}
+                                />
+                            ) : (
                                 <MatchCard
                                     key={`m-${event.data.id}`}
                                     match={event.data}
@@ -167,6 +190,7 @@ export function ArenaFeedTab({
                                     clickable
                                 />
                             );
+                        }
                         case "market":
                             return (
                                 <Link
@@ -188,5 +212,37 @@ export function ArenaFeedTab({
                 {loadingMore && <Spinner className="size-6" />}
             </div>
         </div>
+    );
+}
+
+/**
+ * A feed match event with a queued offline edit (ADR-37): the entity overlays
+ * the op on the server read — the same display state the match view page and
+ * the /offline queue show — plus the unsynced chip, the dashed border and the
+ * client-side Elo preview. Its own component so the hooks stay unconditional
+ * (plain events render the plain MatchCard).
+ */
+function FeedMatchCard({ match, op, roundToInteger }: { match: Match; op: PendingOp; roundToInteger: boolean }) {
+    const helpers = useOpNameHelpers();
+    const entity = useMemo(() => MatchEntity.resolve(match.id, { saved: match, op }), [match, op]);
+    const view = useMemo(() => entity?.effective(helpers) ?? match, [entity, helpers, match]);
+    const previewScores = useMemo(
+        () =>
+            view.mode === "coop"
+                ? null
+                : Object.fromEntries(Object.entries(view.score).map(([pid, s]) => [pid, s.score])),
+        [view],
+    );
+    const preview = useSettlementPreview(previewScores, view.date);
+    return (
+        <MatchCard
+            match={view}
+            pending
+            syncStatus={op.status}
+            syncError={op.error}
+            preview={preview}
+            roundToInteger={roundToInteger}
+            clickable
+        />
     );
 }

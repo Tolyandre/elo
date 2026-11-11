@@ -11,8 +11,7 @@ import { useTenantScope } from "../../tenantScopeContext";
 import { useTenants } from "@/app/tenantsContext";
 import { useOffline } from "../../offline/OfflineContext";
 import { useMe } from "@/app/meContext";
-import { usePlayers } from "@/app/players/PlayersContext";
-import { Match, getMatchByIdPromise, updateMatchPromise } from "../../api";
+import { Match, getMatchByIdPromise } from "../../api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, AlertCircleIcon, Loader2 } from "lucide-react";
 import { ErrorAlert } from "@/components/error-alert";
@@ -35,9 +34,8 @@ export default function MatchEditPage() {
 
 function MatchEditPageWrapped() {
     const router = useRouter();
-    const { pendingMatches, ready, updatePendingMatch } = useOffline();
-    const { matches, loading: matchesLoading, invalidate: invalidateMatches } = useMatches();
-    const { invalidate: invalidatePlayers } = usePlayers();
+    const { pendingMatches, ready, updatePendingMatch, offline, syncNow, queueMatchUpdate } = useOffline();
+    const { matches, loading: matchesLoading } = useMatches();
     const me = useMe();
     // The edit belongs to a community (ADR-36): reads scope the settlement
     // columns to its main arena and the update validates that the match
@@ -120,7 +118,7 @@ function MatchEditPageWrapped() {
 
     // ── Calculator-backed pending match: dispatch to the calculator editor. ───
     // Saves go through updatePendingMatch (carrying the recomputed
-    // calculator_data) instead of updateMatchPromise.
+    // calculator_data) — a queued create re-syncs whole.
     if (editPending?.calculatorKind) {
         const kind = editPending.calculatorKind;
         return (
@@ -168,19 +166,30 @@ function MatchEditPageWrapped() {
                 storage={(match.calculator_data ?? {}) as Record<string, unknown>}
                 readOnly={!me.canEdit}
                 onSaved={() => router.push(`/matches/view?id=${match.id}&tenant=${tenantId}`)}
-                save={async (state, adapter) => {
-                    await updateMatchPromise(match.id, tenantId, {
+                save={(state, adapter) => {
+                    // One path for online and offline alike (ADR-37 revised):
+                    // the edit queues as an op and the sync three-way-merges
+                    // it against a fresh server read — online it runs right
+                    // away. calculator_data travels as one whole field; the
+                    // score map recomputes from the same calculator state, so
+                    // the two can never drift apart. The calculator editor
+                    // never edits the date: the base keeps the raw server
+                    // string verbatim (µs precision) and the patch omits it.
+                    queueMatchUpdate(match.id, tenantId, {
                         game_id: match.game_id,
-                        score: adapter.scoreFromState(state),
-                        // The calculator editor never edits the date: resubmit the raw
-                        // server string verbatim (µs precision) — a Date round-trip
-                        // would truncate it to milliseconds.
-                        date: match.dateISO ?? (match.date ? match.date.toISOString() : new Date().toISOString()),
+                        date: match.dateISO ?? (match.date ? match.date.toISOString() : ""),
+                        score: Object.fromEntries(
+                            Object.entries(match.score).map(([pid, s]) => [pid, s.score ?? 0]),
+                        ),
+                        camp_arena_ids: match.camps.map((c) => c.id),
+                        calculator_kind: match.calculator_kind,
+                        calculator_data: match.calculator_data ?? null,
+                    }, {
                         calculator_kind: kind,
-                        calculator_data: adapter.toStorage(state) as Record<string, never>,
+                        calculator_data: adapter.toStorage(state),
+                        score: adapter.scoreFromState(state),
                     });
-                    invalidateMatches();
-                    invalidatePlayers();
+                    if (!offline) syncNow();
                 }}
             />
         );

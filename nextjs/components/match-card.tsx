@@ -12,40 +12,74 @@ import { Badge } from "@/components/ui/badge";
 import { GameImage } from "@/components/game-image";
 import { RankIcon } from "@/components/rank-icon";
 import { ClubIcons } from "@/components/player-name";
+import { PendingSyncBadge } from "@/components/pending-sync-badge";
 import { formatDateTime } from "@/lib/datetime";
+import type { SyncStatus } from "@/lib/offline/types";
+import type { SettlementPreview } from "@/lib/offline/elo-preview";
 import { Trophy } from "lucide-react";
 
 type MatchCardProps = {
   match: Match;
   roundToInteger?: boolean;
   clickable?: boolean;
+  /** The match carries unsynced state: dashed border + status chip. */
+  pending?: boolean;
+  syncStatus?: SyncStatus;
+  syncError?: string;
+  /**
+   * Client-side settlement preview for the unsynced state
+   * (lib/offline/elo-preview) — fills the delta column while the match has
+   * no server settlement (or its columns describe the pre-edit state). The
+   * values are marked provisional; the sync replaces them with the server's.
+   */
+  preview?: SettlementPreview | null;
+  /** Extra content inside the card (e.g. the /offline queue's change list). */
+  children?: React.ReactNode;
+  /** Action buttons in the card's footer; their clicks must not trigger the card's own navigation. */
+  actions?: React.ReactNode;
 };
 
-export const MatchCard = React.memo(function MatchCard({ match, roundToInteger = false, clickable = false }: MatchCardProps) {
-  const { resolvePlayer } = useNameResolver();
+export const MatchCard = React.memo(function MatchCard({
+  match,
+  roundToInteger = false,
+  clickable = false,
+  pending = false,
+  syncStatus,
+  syncError,
+  preview,
+  children,
+  actions,
+}: MatchCardProps) {
+  const { resolvePlayer, resolveGame } = useNameResolver();
   const { games } = useGames();
   const { playerId: myPlayerId } = useMe();
   const router = useRouter();
 
   // The match response carries only the game's name; the image comes from
   // the games list (absent offline-before-first-load — the thumb is optional
-  // decoration and simply does not render).
+  // decoration and simply does not render). A queued edit may swap the game
+  // (the overlay blanks game_name) and a queued create has none — the
+  // resolver stands in for both.
   const gameImage = useMemo(
     () => games.find((g) => g.id === match.game_id)?.image_thumb_url ?? null,
     [games, match.game_id],
   );
+  const gameName = match.game_name || resolveGame(match.game_id);
 
   // The settlement columns are scoped to the read's tenant arena and are null
   // when the match did not settle there (ADR-36) — the card hides the rating
-  // widgets instead of showing fake zeros for such a match.
+  // widgets instead of showing fake zeros for such a match. An unsynced
+  // state shows the client-side preview in the same slots instead.
   const settled = matchSettled(match);
+  const showPreview = !settled && !!preview;
 
   const { players, ranks, totalEarn, totalPay } = useMemo(() => {
     const players = Object.entries(match.score)
       .map(([playerId, data]) => {
         const name = resolvePlayer(playerId);
-        const ratingStaked = data.ratingStaked ?? 0;
-        const ratingEarned = data.ratingEarned ?? 0;
+        const row = preview?.[playerId];
+        const ratingStaked = row ? row.ratingStaked : data.ratingStaked ?? 0;
+        const ratingEarned = row ? row.ratingEarned : data.ratingEarned ?? 0;
         return {
           name,
           playerId,
@@ -53,7 +87,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
           ratingEarned,
           score: data.score,
           ratingChange: ratingStaked + ratingEarned,
-          ratingAfter: data.ratingAfter ?? null,
+          ratingAfter: row ? row.ratingAfter : data.ratingAfter ?? null,
         };
       })
       .sort((a, b) => b.score - a.score);
@@ -63,7 +97,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     const totalPay = players.reduce((sum, p) => sum + Math.abs(p.ratingStaked), 0) || 1;
 
     return { players, ranks, totalEarn, totalPay };
-  }, [match.score, resolvePlayer]);
+  }, [match.score, resolvePlayer, preview]);
 
   const handleClick = useCallback(() => {
     if (clickable) {
@@ -71,15 +105,29 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     }
   }, [clickable, match.id, router]);
 
+  // The queue sync state of the unsynced part — the same chip every pending
+  // entity badges with (components/pending-sync-badge.tsx).
+  const statusBadge = pending && <PendingSyncBadge status={syncStatus ?? "pending"} error={syncError} />;
+
+  // The action footer: buttons sit inside the card; their clicks are stopped
+  // from bubbling to the card's own view-page navigation.
+  const actionsFooter = actions && (
+    <div
+      onClick={clickable ? (e) => e.stopPropagation() : undefined}
+      className="mt-3 flex flex-wrap gap-2"
+    >
+      {actions}
+    </div>
+  );
+
+  const cardClassName = `${pending ? "border-dashed" : ""} ${clickable ? "cursor-pointer hover:bg-accent transition-colors" : ""}`;
+
   // A coop match (ADR-33) has one shared result: no ranks, no per-player
   // scores worth showing (all zeros), no rating deltas.
   if (match.mode === "coop") {
     const won = match.game_won === true;
     return (
-      <Card
-        className={clickable ? "cursor-pointer hover:bg-accent transition-colors" : ""}
-        onClick={handleClick}
-      >
+      <Card className={cardClassName} onClick={handleClick}>
         <CardHeader>
           <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
             <span className="flex items-center gap-2 min-w-0">
@@ -89,7 +137,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
                 className="underline"
                 onClick={(e) => clickable && e.stopPropagation()}
               >
-                {match.game_name}
+                {gameName}
               </Link>
             </span>
             {match.date && (
@@ -98,6 +146,10 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
               </span>
             )}
           </CardTitle>
+          <div className="flex items-center flex-wrap gap-2">
+            {statusBadge}
+            {pending && <Badge variant="outline">кооператив</Badge>}
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -131,16 +183,15 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
               );
             })}
           </div>
+          {children}
+          {actionsFooter}
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card
-      className={clickable ? "cursor-pointer hover:bg-accent transition-colors" : ""}
-      onClick={handleClick}
-    >
+    <Card className={cardClassName} onClick={handleClick}>
       <CardHeader>
         <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
           <span className="flex items-center gap-2 min-w-0">
@@ -150,7 +201,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
               className="underline"
               onClick={(e) => clickable && e.stopPropagation()}
             >
-              {match.game_name}
+              {gameName}
             </Link>
           </span>
           {match.date && (
@@ -159,6 +210,14 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
             </span>
           )}
         </CardTitle>
+        <div className="flex items-center flex-wrap gap-2">
+          {statusBadge}
+          {pending && match.calculator_kind && (
+            <Badge variant="outline">
+              калькулятор
+            </Badge>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent>
@@ -174,12 +233,12 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
                   {p.playerId === myPlayerId
                     ? <span className="break-words align-middle bg-info/15 rounded px-1">{p.name}</span>
                     : <span className="break-words align-middle">{p.name}</span>}
-                  {settled && p.ratingAfter != null && (
+                  {(settled || showPreview) && p.ratingAfter != null && (
                     <span className="text-xs text-muted-foreground align-middle ml-1">{Math.round(p.ratingAfter)}</span>
                   )}
                 </div>
 
-                {settled && (
+                {(settled || showPreview) && (
                   <div className="relative h-2 bg-muted rounded overflow-hidden">
                     {/* Earned Elo indicator */}
                     <div
@@ -199,13 +258,15 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
                 {p.score}
               </div>
 
-              {settled && (
+              {(settled || showPreview) && (
                 <div className="text-right w-16 flex-shrink-0">
                   <div
+                    title={showPreview ? "Предварительный расчёт — уточнится после синхронизации" : undefined}
                     className={`font-semibold text-sm ${
                       p.ratingChange > 0 ? "text-success" : p.ratingChange < 0 ? "text-destructive" : "text-muted-foreground"
                     }`}
                   >
+                    {showPreview && "≈"}
                     {p.ratingChange >= 0 ? "+" : ""}
                     {p.ratingChange.toFixed(roundToInteger ? 0 : 1)}
                   </div>
@@ -236,6 +297,9 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
             )}
           </div>
         )}
+
+        {children}
+        {actionsFooter}
       </CardContent>
     </Card>
   );

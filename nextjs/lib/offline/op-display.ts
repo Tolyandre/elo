@@ -2,13 +2,11 @@
 // shows about an op. Pure — names come in through the `helpers` callbacks so
 // the functions stay unit-testable without React contexts.
 
-import type { Base58ID } from "@/lib/id";
-import { formatDateTime } from "@/lib/datetime";
-import { formatScore } from "@/lib/audit-display";
+import { formatDateTime } from "@/lib/datetime";import { formatScore } from "@/lib/audit-display";
 import { GAME_MODE_LABELS, type GameMode, type MatchMode } from "@/lib/game-modes";
 import { accentName } from "@/lib/game-names";
 import { deepEqual } from "./merge";
-import type { PendingMatch, PendingOp, OpEntityKind } from "./types";
+import type { PendingOp, OpEntityKind } from "./types";
 
 /** Field → label map for the match-op merge; shared by the sync conflicts
  * and the /offline change list so both speak the same words. */
@@ -20,6 +18,8 @@ export const MATCH_FIELD_LABELS: Record<string, string> = {
     player_ids: "Участники",
     game_score: "Игровой счёт",
     game_won: "Результат",
+    calculator_kind: "Калькулятор",
+    calculator_data: "Данные калькулятора",
 };
 
 const GAME_FIELD_LABELS: Record<string, string> = {
@@ -49,7 +49,9 @@ export type OpChangeRow =
     /** Set-valued fields (camps, coop participants): who joined / left. */
     | { kind: "collection"; label: string; added: string[]; removed: string[] }
     /** One player's score: appeared, disappeared, or moved. */
-    | { kind: "score"; label: string; change: "added" | "removed" | "changed"; from: string | null; to: string | null };
+    | { kind: "score"; label: string; change: "added" | "removed" | "changed"; from: string | null; to: string | null }
+    /** An opaque blob changed (calculator state) — no meaningful before/after. */
+    | { kind: "opaque"; label: string };
 
 /**
  * A human name for the op's entity, from the queued fields alone: a player's
@@ -75,29 +77,6 @@ export function opEntityName(op: PendingOp): string | undefined {
 }
 
 /**
- * The match as it will look after the op applies — the input for a pending
- * match card on /offline. `createdAt` doubles as the card's date; the match's
- * own date (base/patch) is the truthful one, the queue time only a fallback.
- */
-export function pendingMatchFromOp(op: PendingOp): PendingMatch {
-    const base = op.base ?? {};
-    const patch = op.patch ?? {};
-    const merged = { ...base, ...patch };
-    return {
-        clientId: op.entityId,
-        createdAt: typeof merged.date === "string" && merged.date ? merged.date : op.createdAt,
-        status: op.status,
-        gameId: merged.game_id as Base58ID,
-        score: { ...((base.score ?? {}) as Record<string, number>), ...((patch.score ?? {}) as Record<string, number>) },
-        ...(merged.mode !== undefined ? { mode: merged.mode as MatchMode } : {}),
-        ...(merged.player_ids !== undefined ? { playerIds: merged.player_ids as Base58ID[] } : {}),
-        ...(merged.game_score !== undefined ? { gameScore: merged.game_score as number } : {}),
-        ...(merged.game_won !== undefined ? { gameWon: merged.game_won as boolean } : {}),
-        campArenaIds: (merged.camp_arena_ids ?? []) as Base58ID[],
-    };
-}
-
-/**
  * Changed fields of an update op as display rows, in a stable field order.
  * Only keys present in the patch can differ; a key equal to the base is
  * skipped (the form only lists touched fields, but conflict resolution may
@@ -118,6 +97,12 @@ export function opChangeRows(
             rows.push(...scoreRows((from ?? {}) as Record<string, number>, (to ?? {}) as Record<string, number>, helpers));
             continue;
         }
+        // The calculator state is an opaque per-kind document: «изменены»
+        // beats a JSON dump in the diff.
+        if (kind === "match" && field === "calculator_data") {
+            rows.push({ kind: "opaque", label: label(kind, field) });
+            continue;
+        }
         if (field === "camp_arena_ids" || field === "player_ids") {
             const row = collectionRow(field, from, to, helpers);
             // A reorder-only diff reads as no change — nothing joined or left.
@@ -136,7 +121,7 @@ export function opChangeRows(
 
 function orderedFields(kind: OpEntityKind, fields: string[]): string[] {
     const order = kind === "match"
-        ? ["game_id", "date", "score", "mode", "player_ids", "game_score", "game_won", "camp_arena_ids"]
+        ? ["game_id", "date", "score", "mode", "player_ids", "game_score", "game_won", "camp_arena_ids", "calculator_kind", "calculator_data"]
         : kind === "game"
             ? ["alias", "name_ru", "name_en", "game_mode", "bgg_ref", "tesera_ref"]
             : ["name"];

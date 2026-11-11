@@ -65,7 +65,7 @@ export function GameEditDialog({
     onClose: () => void;
     onSaved: () => void;
 }) {
-    const { addPendingGame, pendingGames, offline, queueGameUpdate } = useOffline();
+    const { addPendingGame, pendingGames, offline, queueGameUpdate, syncNow } = useOffline();
     const { games, invalidate: invalidateGames } = useGames();
     const [alias, setAlias] = useState(game?.alias ?? "");
     const [nameEn, setNameEn] = useState(game?.name_en ?? "");
@@ -73,7 +73,6 @@ export function GameEditDialog({
     const [bggRef, setBggRef] = useState(game?.bgg_ref != null ? String(game.bgg_ref) : "");
     const [teseraRef, setTeseraRef] = useState(game?.tesera_ref != null ? String(game.tesera_ref) : "");
     const [gameMode, setGameMode] = useState<GameMode>(game?.game_mode ?? "competitive");
-    const [saving, setSaving] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [art, setArt] = useState<{ imageUrl: string | null; thumbUrl: string | null }>({
         imageUrl: game?.image_url ?? null,
@@ -102,7 +101,7 @@ export function GameEditDialog({
         };
     }
 
-    async function save() {
+    function save() {
         if (!canSave) return;
         if (!game) {
             const meta = metadata();
@@ -121,35 +120,25 @@ export function GameEditDialog({
             onSaved();
             return;
         }
-        setSaving(true);
-        try {
-            // Offline (ADR-37 phase 7): queue a metadata edit op — the base is
-            // the metadata as the dialog opened, the patch what the user
-            // changed; the sync three-way-merges against the server.
-            if (offline) {
-                const meta = metadata();
-                queueGameUpdate(
-                    game.id,
-                    {
-                        alias: game.alias ?? null,
-                        name_en: game.name_en ?? null,
-                        name_ru: game.name_ru ?? null,
-                        bgg_ref: game.bgg_ref ?? null,
-                        tesera_ref: game.tesera_ref ?? null,
-                        game_mode: game.game_mode,
-                    },
-                    { ...meta },
-                );
-                onSaved();
-                return;
-            }
-            await patchGamePromise(game.id, metadata());
-            onSaved();
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setSaving(false);
-        }
+        // One path for online and offline alike (ADR-37 revised): queue a
+        // metadata edit op — the base is the metadata as the dialog opened,
+        // the patch what the user changed; the sync three-way-merges it
+        // against the server. Online the sync runs right away; offline it
+        // waits for the connection and the game pages show the queued state.
+        queueGameUpdate(
+            game.id,
+            {
+                alias: game.alias ?? null,
+                name_en: game.name_en ?? null,
+                name_ru: game.name_ru ?? null,
+                bgg_ref: game.bgg_ref ?? null,
+                tesera_ref: game.tesera_ref ?? null,
+                game_mode: game.game_mode,
+            },
+            { ...metadata() },
+        );
+        if (!offline) syncNow();
+        onSaved();
     }
 
     /**
@@ -161,6 +150,12 @@ export function GameEditDialog({
      */
     async function refreshArt() {
         if (!game || refreshing || !canSave || !bggRef.trim()) return;
+        // The art refresh fetches BoardGameGeek through the server — an
+        // online-only remedy, unlike the metadata save which queues.
+        if (offline) {
+            toast.info("Обложка обновляется на сервере — нужна связь с интернетом");
+            return;
+        }
         setRefreshing(true);
         try {
             await patchGamePromise(game.id, metadata());
@@ -349,11 +344,10 @@ export function GameEditDialog({
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={onClose} disabled={saving}>
+                    <Button variant="outline" onClick={onClose}>
                         Отмена
                     </Button>
-                    <Button onClick={save} disabled={saving || !canSave} aria-busy={saving}>
-                        {saving && <Spinner className="size-4" />}
+                    <Button onClick={save} disabled={!canSave}>
                         {game ? "Сохранить" : "Добавить"}
                     </Button>
                 </DialogFooter>

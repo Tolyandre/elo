@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import type { Base58ID } from "@/lib/id";
@@ -11,6 +11,10 @@ import { useTenantScope } from "../../tenantScopeContext";
 import { TenantChooser } from "@/components/tenant-chooser";
 import { useOffline } from "../../offline/OfflineContext";
 import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise, matchSettled } from "../../api";
+import { MatchEntity } from "@/lib/offline/match-entity";
+import { useSettlementPreview } from "@/hooks/useSettlementPreview";
+import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
+import { PendingChangesCard } from "@/components/offline/pending-changes-card";
 import { MarketCard } from "@/components/market-card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -108,6 +112,8 @@ function EditAction({ id, tenantId, disabled = false, viaCalculator = false }: {
 function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   const { matches, loading: contextLoading } = useMatches();
   const { roundToInteger, setRoundToInteger } = useMe();
+  const { ops } = useOffline();
+  const helpers = useOpNameHelpers();
   // The rating columns come from the current tenant's main arena (ADR-36);
   // the matches context is tenant-scoped the same way, so both sources agree.
   // The view is keyed on the tenant (MatchViewPageWrapped), so a switch starts
@@ -162,6 +168,31 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   }, [matchId, tenantId]);
 
   const match = matchFromApi ?? matchFromContext;
+
+  // A queued edit of this match (ADR-37): the entity overlays it on the
+  // server read, so the view shows the user's latest intent rather than the
+  // stale server state — here, in the feed and on /offline alike. The
+  // overlay carries no settlement columns, so the card shows the client-side
+  // Elo preview until the sync re-settles the match.
+  const op = useMemo(
+    () => (ops ?? []).find((o) => o.kind === "match" && o.entityId === matchId) ?? null,
+    [ops, matchId],
+  );
+  const entity = useMemo(
+    () => (match ? MatchEntity.resolve(matchId, { saved: match, op }) : null),
+    [match, matchId, op],
+  );
+  const view = useMemo(() => entity?.effective(helpers) ?? null, [entity, helpers]);
+
+  // The Elo preview settles the overlaid state — only while a queued edit
+  // exists (a plain saved match shows the server's own settlement columns)
+  // and only for competitive matches (coop never settles).
+  const previewScores = useMemo(() => {
+    if (!op || !view || view.mode === "coop") return null;
+    return Object.fromEntries(Object.entries(view.score).map(([pid, s]) => [pid, s.score]));
+  }, [op, view]);
+  const preview = useSettlementPreview(previewScores, op ? (view?.date ?? null) : null);
+
   // The context data is only trustworthy once it has settled for the current
   // tenant: mid-refetch it still holds the previous community's settlement
   // columns, so the view waits it out instead of flashing foreign ratings.
@@ -209,7 +240,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
     );
   }
 
-  if (!match) return <NotFound />;
+  if (!match || !view) return <NotFound />;
 
   // A competitive match the current community's main arena does not admit
   // (its openness rule, evaluated at the match date) has no settlement there:
@@ -239,7 +270,16 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
         </CardContent>
       </Card>
 
-      <MatchCard match={match} roundToInteger={roundToInteger} />
+      <MatchCard
+        match={view}
+        roundToInteger={roundToInteger}
+        pending={!!op}
+        syncStatus={op?.status ?? undefined}
+        syncError={op?.error}
+        preview={preview}
+      />
+
+      {op && <PendingChangesCard op={op} />}
 
       <MatchAudit matchId={match.id} />
 
@@ -324,7 +364,7 @@ function PendingMatchView({ clientId }: { clientId: Base58ID }) {
                 leavingRef.current = true;
                 deletePendingMatch(clientId);
                 setDeleteOpen(false);
-                router.push("/matches");
+                router.push("/?tab=feed");
               }}
             >
               Удалить

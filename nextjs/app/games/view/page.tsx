@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
@@ -9,6 +9,8 @@ import { PageHeader } from "@/app/pageHeaderContext";
 import { PageContainer } from "@/components/page-container";
 import { Arena, getArenasPromise, getGamePromise, parseArenaSettings } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useOffline } from "@/app/offline/OfflineContext";
+import { PendingChangesCard } from "@/components/offline/pending-changes-card";
 import { BackButton } from "@/components/back-button";
 import { ErrorAlert } from "@/components/error-alert";
 import { GameImage } from "@/components/game-image";
@@ -40,6 +42,15 @@ function GameContent() {
     return { game, arenas };
   }, [id]);
 
+  // A queued metadata edit (ADR-37): the header shows the user's latest
+  // intent and the page lists what is not on the server yet. Hooks sit
+  // before the early returns.
+  const { ops } = useOffline();
+  const gameOp = useMemo(
+    () => (ops ?? []).find((o) => o.kind === "game" && o.entityId === id && o.op === "update") ?? null,
+    [ops, id],
+  );
+
   if (!id) {
     return (
       <PageContainer width="narrow">
@@ -53,11 +64,21 @@ function GameContent() {
   const arenas = data?.arenas ?? [];
   const imageUrl = game?.image_url ?? game?.image_thumb_url ?? null;
 
+  const gameName = gameOp
+    ? String(gameOp.patch?.name ?? gameOp.base?.name ?? "") ||
+      [gameOp.patch?.alias ?? gameOp.base?.alias, gameOp.patch?.name_ru ?? gameOp.base?.name_ru, gameOp.patch?.name_en ?? gameOp.base?.name_en]
+          .map((v) => (typeof v === "string" && v ? v : null))
+          .find((v) => v !== null) ||
+      game?.name ||
+      ""
+    : game?.name ?? "";
+
   return (
     <PageContainer width="narrow">
       <BackButton href="/games" />
       <div className="space-y-4">
-        <PageHeader title={game?.name ?? ""} />
+        <PageHeader title={gameName} />
+        {gameOp && <PendingChangesCard op={gameOp} />}
         {imageUrl && (
           <GameImage src={imageUrl} alt={game?.name ?? ""} className="max-h-44 w-auto rounded-md border object-contain" />
         )}

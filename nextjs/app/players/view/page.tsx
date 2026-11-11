@@ -13,6 +13,8 @@ import { getPlayerStatsPromise, type PlayerStats, type GameEloStat, type GameMat
 import { useMe } from '@/app/meContext'
 import { useGames } from '@/app/gamesContext'
 import { useTenantScope } from '@/app/tenantScopeContext'
+import { useOffline } from '@/app/offline/OfflineContext'
+import { PendingChangesCard } from '@/components/offline/pending-changes-card'
 import { PageHeader } from '@/app/pageHeaderContext'
 import { PageContainer } from '@/components/page-container'
 import { ErrorAlert } from '@/components/error-alert'
@@ -146,11 +148,20 @@ function PlayerProfileContent({ playerId, stats, tenantName }: { playerId: Base5
     const history = stats.rating_history
     const current = history.length > 0 ? history[history.length - 1] : null
     const extremes = useMemo(() => findExtremes(history), [history])
+    // A queued rename (ADR-37): the header shows the user's latest intent,
+    // and the page lists what is not on the server yet.
+    const { ops } = useOffline()
+    const renameOp = useMemo(
+        () => (ops ?? []).find((o) => o.kind === 'player' && o.entityId === playerId && o.op === 'update') ?? null,
+        [ops, playerId],
+    )
+    const displayName = renameOp ? String(renameOp.patch?.name ?? '') || stats.player_name : stats.player_name
 
     return (
         <PageContainer width="wide">
             <BackButton href="/" />
-            <PageHeader title={stats.player_name} />
+            <PageHeader title={displayName} />
+            {renameOp && <PendingChangesCard op={renameOp} />}
 
             <Card>
                 <CardHeader className="pb-2">

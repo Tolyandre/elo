@@ -2,7 +2,7 @@
 import type { Base58ID } from "@/lib/id";
 import React, { useRef, useState } from "react";
 import Link from "next/link";
-import { patchPlayerPromise, deletePlayerPromise, listUsersPromise } from "@/app/api";
+import { listUsersPromise } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { LoginLink } from "@/components/login-link";
@@ -35,13 +35,12 @@ type DeleteTarget = { id: Base58ID; name: string };
 type RenameTarget = { id: Base58ID; name: string };
 
 export default function PlayersAdminPage() {
-    const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
+    const { players: playersFromContext, playerDisplayName } = usePlayers();
     const { isAuthenticated, canEdit, loading: meLoading } = useMe();
-    const { pendingPlayers, offline, updatePendingPlayer, deletePendingPlayer, queuePlayerUpdate, queuePlayerDelete } = useOffline();
+    const { pendingPlayers, offline, updatePendingPlayer, deletePendingPlayer, queuePlayerUpdate, queuePlayerDelete, syncNow } = useOffline();
     const [nameQuery, setNameQuery] = useState<string>("");
     const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
-    const [actionLoading, setActionLoading] = useState(false);
 
     // The single name field doubles as a search filter over existing players
     // (so the user sees whether a player with that name already exists) and as
@@ -74,14 +73,11 @@ export default function PlayersAdminPage() {
     const userMap = new Map((users ?? []).map(u => [u.id, u.name]));
 
     const del = useConfirmAction(async (p: DeleteTarget) => {
-        // Offline (ADR-37): queue a guarded delete op — the sync re-checks the
-        // entity server-side before removing it.
-        if (offline) {
-            queuePlayerDelete(p.id, { name: p.name });
-            return;
-        }
-        await deletePlayerPromise(p.id);
-        invalidatePlayers();
+        // One path for online and offline alike (ADR-37 revised): queue a
+        // guarded delete op — the sync re-checks the entity server-side
+        // before removing it; online it runs right away.
+        queuePlayerDelete(p.id, { name: p.name });
+        if (!offline) syncNow();
     });
 
     // Sort players alphabetically for admin view
@@ -104,23 +100,12 @@ export default function PlayersAdminPage() {
             setRenameTarget(null);
             return;
         }
-        try {
-            setActionLoading(true);
-            // Offline (ADR-37): queue an edit op with the base the form
-            // observed — the sync three-way-merges it server-side.
-            if (offline) {
-                queuePlayerUpdate(renameTarget.id, { name: renameTarget.name }, { name: next });
-                setRenameTarget(null);
-                return;
-            }
-            await patchPlayerPromise(renameTarget.id, { name: next });
-            invalidatePlayers();
-            setRenameTarget(null);
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setActionLoading(false);
-        }
+        // One path for online and offline alike (ADR-37 revised): queue an
+        // edit op with the base the form observed — the sync three-way-merges
+        // it against a fresh server read; online it runs right away.
+        queuePlayerUpdate(renameTarget.id, { name: renameTarget.name }, { name: next });
+        if (!offline) syncNow();
+        setRenameTarget(null);
     }
 
     return (
@@ -315,7 +300,6 @@ export default function PlayersAdminPage() {
                 title="Переименовать игрока"
                 description="Введите новое имя для игрока."
                 confirmText="Сохранить"
-                loading={actionLoading}
                 onConfirm={confirmRename}
             >
                 <div className="mt-2">

@@ -8,6 +8,8 @@ import { createRoot } from "react-dom/client";
 // so the tests assert on the boundary calls (PATCH vs offline queue).
 const mocks = vi.hoisted(() => ({
     addPendingGame: vi.fn(),
+    queueGameUpdate: vi.fn(),
+    syncNow: vi.fn(),
     patchGamePromise: vi.fn(),
     suggestGamesPromise: vi.fn(),
     refreshGameArtPromise: vi.fn(),
@@ -20,7 +22,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/app/offline/OfflineContext", () => ({
-    useOffline: () => ({ addPendingGame: mocks.addPendingGame, pendingGames: mocks.pendingGames }),
+    useOffline: () => ({
+        addPendingGame: mocks.addPendingGame,
+        pendingGames: mocks.pendingGames,
+        offline: false,
+        queueGameUpdate: mocks.queueGameUpdate,
+        syncNow: mocks.syncNow,
+    }),
 }));
 vi.mock("@/app/gamesContext", () => ({
     useGames: () => ({ games: mocks.games, invalidate: mocks.invalidateGames }),
@@ -107,6 +115,8 @@ const game: GameListItem = {
 describe("GameEditDialog", () => {
     beforeEach(() => {
         mocks.addPendingGame.mockClear();
+        mocks.queueGameUpdate.mockClear();
+        mocks.syncNow.mockClear();
         mocks.patchGamePromise.mockReset();
         mocks.suggestGamesPromise.mockReset();
         mocks.refreshGameArtPromise.mockReset();
@@ -180,8 +190,7 @@ describe("GameEditDialog", () => {
         unmount();
     });
 
-    it("edit mode: сохранение patches the full metadata state", async () => {
-        mocks.patchGamePromise.mockResolvedValue(undefined);
+    it("edit mode: сохранение queues the metadata op and triggers the sync (ADR-37 revised)", () => {
         const onClose = vi.fn();
         const onSaved = vi.fn();
         const { unmount } = renderDialog(
@@ -193,12 +202,18 @@ describe("GameEditDialog", () => {
         act(() => {
             findButton("Сохранить").click();
         });
-        await act(async () => {
-            await Promise.resolve();
-        });
 
-        expect(mocks.patchGamePromise).toHaveBeenCalledTimes(1);
-        expect(mocks.patchGamePromise).toHaveBeenCalledWith(game.id, {
+        // The edit queues as an op (base = the metadata as the dialog opened,
+        // patch = what the user changed); online the sync runs right away.
+        expect(mocks.queueGameUpdate).toHaveBeenCalledTimes(1);
+        expect(mocks.queueGameUpdate).toHaveBeenCalledWith(game.id, {
+            alias: null,
+            name_en: "Skull King",
+            name_ru: "Скелет Кинг",
+            bgg_ref: 12345,
+            tesera_ref: null,
+            game_mode: "competitive",
+        }, {
             alias: null,
             name_en: "Skull King",
             name_ru: "Скелет Кинг",
@@ -206,6 +221,8 @@ describe("GameEditDialog", () => {
             tesera_ref: null,
             game_mode: "competitive",
         });
+        expect(mocks.syncNow).toHaveBeenCalledTimes(1);
+        expect(mocks.patchGamePromise).not.toHaveBeenCalled();
         expect(onSaved).toHaveBeenCalledTimes(1);
         expect(mocks.addPendingGame).not.toHaveBeenCalled();
         unmount();
@@ -328,11 +345,9 @@ describe("GameEditDialog", () => {
             act(() => {
                 findButton("Сохранить").click();
             });
-            await act(async () => {
-                await Promise.resolve();
-            });
-            expect(mocks.patchGamePromise).toHaveBeenCalledWith(
+            expect(mocks.queueGameUpdate).toHaveBeenCalledWith(
                 withAlias.id,
+                expect.objectContaining({ alias: "Бутылочка" }),
                 expect.objectContaining({ alias: "Бутылочка", name_en: "Carcassonne", name_ru: "Каркассон" }),
             );
             unmount();

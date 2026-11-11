@@ -40,4 +40,4 @@ ADRs are numbered sequentially; the highest numbers describe the current behavio
 | [34](34-guarantor-risk-to-depth.md) | Guarantor risk fully converts to liquidity (the L cap removal) |
 | [35](35-tournament-market-born-on-start.md) | A tournament's betting market is born with the tournament — never created by hand |
 | [36](36-tenants.md) | Tenants (communities): a separate entity owning a main arena, openness settings and one or many clubs; clubs stay player grouping with membership stints |
-| [37](37-offline-v2.md) | Offline mode v2: Dexie-backed local replica, edit ops with field-level three-way merge, silent duplicate-name adoption, the /offline queue page |
+| [37](37-offline-v2.md) | Offline mode v2: Dexie-backed local replica, edit ops with field-level three-way merge, silent duplicate-name adoption, the /offline queue page; the match as a client-side entity, edits always queue (online included), advisory client-side Elo preview |

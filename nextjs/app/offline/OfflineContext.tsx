@@ -259,6 +259,11 @@ const opsApi: OpsApi = {
                 ...(match.mode === "coop" ? { player_ids: Object.keys(score) as Base58ID[] } : {}),
                 ...(match.game_score != null ? { game_score: match.game_score } : {}),
                 ...(match.game_won != null ? { game_won: match.game_won } : {}),
+                // Calculator state merges as one whole field: without it a
+                // calculator edit op would see `undefined` on the server side
+                // and flag a phantom conflict.
+                ...(match.calculator_kind ? { calculator_kind: match.calculator_kind } : {}),
+                ...(match.calculator_data ? { calculator_data: match.calculator_data as Record<string, unknown> } : {}),
             },
         };
     },
@@ -270,7 +275,13 @@ const opsApi: OpsApi = {
         }
         const { error, response } = await client.PUT("/matches/{id}", {
             params: { path: { id }, query: { tenant } },
-            body,
+            body: {
+                ...body,
+                // The generated body types calculator_data as a propertyless
+                // object; the op carries the full document — narrowed here at
+                // the boundary (the server validates it per calculator kind).
+                calculator_data: (body.calculator_data ?? null) as Record<string, never> | null,
+            },
         });
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: null };

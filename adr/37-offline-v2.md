@@ -87,10 +87,57 @@ util (the calculators' `merge.ts` precedent):
 - both changed the same field differently → conflict item on `/offline`.
 
 No silent override in either direction. Matches merge at
-participant/score-key granularity; participants merge as a set. Deletes are
-guarded the same way: deleting an entity that changed since it was observed
-becomes a conflict; deleting an already-deleted entity (404) is dropped
-silently. One op per entity id (a later op replaces an earlier one).
+participant/score-key granularity; participants merge as a set. The match
+score patch carries the complete desired set, so a base key the patch omits
+is a player the user removed — it drops from the merged map (guarded on the
+patch carrying a score map at all, so a date-only op keeps the observed
+set); a key the server added since the base stays — the user has not
+observed it. Deletes are guarded the same way: deleting an entity that
+changed since it was observed becomes a conflict; deleting an
+already-deleted entity (404) is dropped silently. One op per entity id (a
+later op replaces an earlier one).
+
+### Every edit queues — online included
+
+Edit writes have one path for online and offline alike (the create path's
+precedent): the form queues an op with the observed base and walks to the
+view page; when online the provider triggers `syncNow` immediately, so the
+op lands within a round trip, and the merge rules above apply identically —
+a server-side change since the form opened becomes a conflict **online
+too**, where the old direct-PUT path silently overwrote it. A failed
+request (network, validation) leaves the op on the device with an error
+badge instead of a lost form. Calculator-backed saved matches queue the
+same way (`calculator_data` merges as one whole field; the fresh match GET
+carries it so the merge sees "theirs").
+
+### The match is a client-side entity
+
+`lib/offline/match-entity.ts` projects one match from its three possible
+sources — the server read, a pending create, a queued edit op — into the
+display state every surface renders (`MatchEntity.effective()`), plus the
+audit-style change rows (`changes()`). The match view page, the feed and
+`/offline` all build their cards through it, so a queued edit is visible
+the moment it is made and disappears when the sync drops the op. The
+display state is exactly what the merge will PUT. The name resolver layers
+the ops in the same spirit (pending → **ops** → live lists → replica →
+fallback), so a renamed player or game resolves to the queued name
+everywhere.
+
+### Client-side Elo preview (advisory)
+
+Unsynced state — an offline-created match, or a saved match with a queued
+edit whose settlement columns describe the pre-edit match — renders a
+client-computed settlement preview in the card's rating slots, marked
+provisional. The math reuses the TS mirrors of the server formulas
+(`app/eloCalculation.ts`); the rating track repeats
+`arena_calc.go:buildArenaResults` (own rating vs opponents' true elos,
+catch-up scaling when the arena's `catch_up` parameters are in scope).
+Prior elo/rating per player comes from the tenant-scoped player stats read
+(SW-cached, so it works offline once seen), taking the latest point
+strictly before the match date; players without history settle from the
+starting values — the server's own rule. The preview is never persisted
+and the sync always replaces it with the server's settlement; markets are
+out of scope by design (offline there is not enough data).
 
 ### Edit-during-sync races
 
@@ -106,9 +153,9 @@ only the item in flight, not the whole queue.
 The `entityPlayers`/`entityGames` tables mirror the two catalogs: written
 through on every successful provider fetch and re-pulled by `syncNow` after
 a successful push. One shared name resolver (`hooks/useNameResolver.ts`) —
-pending → live lists → replica → fallback — replaces the scattered
-per-component resolution, so a just-synced id resolves from the mirror
-immediately and a cold offline start resolves from the last session.
+pending → queued ops → live lists → replica → fallback — replaces the
+scattered per-component resolution, so a just-synced id resolves from the
+mirror immediately and a cold offline start resolves from the last session.
 Providers keep their fetch pipelines (tenant-scoped ranks and list shapes
 are consumed in too many places to swap); feeding provider lists from the
 replica offline is a future refinement.
@@ -118,13 +165,13 @@ column, a tenant-scoped incremental pull
 (`GET /tenants/{id}/matches?updated_since=`), a `matches` table in Dexie,
 and the feed reading it — which also brings offline feed search.
 
-### Deferred: WASM Elo parity and offline Elo preview
+### Deferred: WASM Elo parity
 
 Compiling `pkg/elo`'s pure math to WebAssembly (standard Go
 `GOOS=js GOARCH=wasm`, JSON boundary) was designed to guarantee the TS Elo
-port never drifts and to power an exact offline settlement preview. It is
-deliberately skipped this iteration to keep it small; revisit when offline
-Elo preview is actually wanted.
+port never drifts. The offline Elo preview shipped instead as a TS mirror
+of the same formulas (advisory, server-authoritative — see above), so WASM
+stays deferred until an exact-parity requirement actually appears.
 
 ## Consequences
 

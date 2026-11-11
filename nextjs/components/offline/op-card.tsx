@@ -1,12 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import type { ReactNode } from "react";
-import { useNameResolver } from "@/hooks/useNameResolver";
-import { useCamps } from "@/app/arenas/campsContext";
 import { useGames } from "@/app/gamesContext";
-import { opChangeRows, pendingMatchFromOp, type OpNameHelpers } from "@/lib/offline/op-display";
+import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
+import { useSettlementPreview } from "@/hooks/useSettlementPreview";
+import { opChangeRows } from "@/lib/offline/op-display";
+import { MatchEntity } from "@/lib/offline/match-entity";
 import type { PendingOp } from "@/lib/offline/types";
-import { PendingMatchCard, PendingSyncBadge } from "@/components/pending-match-card";
+import { PendingSyncBadge } from "@/components/pending-sync-badge";
+import { MatchCard } from "@/components/match-card";
 import { GameCard } from "@/components/game-card";
 import { DiffRow } from "@/components/audit/diff";
 
@@ -17,14 +20,7 @@ import { DiffRow } from "@/components/audit/diff";
  * values).
  */
 export function OpChanges({ op }: { op: PendingOp }) {
-    const { resolvePlayer, resolveGame } = useNameResolver();
-    const { camps } = useCamps();
-
-    const helpers: OpNameHelpers = {
-        gameName: resolveGame,
-        playerName: resolvePlayer,
-        campName: (id) => camps.find((c) => c.id === id)?.name ?? "кэмп",
-    };
+    const helpers = useOpNameHelpers();
 
     const rows = opChangeRows(op.kind, op.base ?? {}, op.patch ?? {}, helpers);
     if (rows.length === 0) return null;
@@ -45,6 +41,15 @@ export function OpChanges({ op }: { op: PendingOp }) {
                         <div key={i} className="flex flex-wrap gap-x-2">
                             <dt className="text-muted-foreground">{row.label}:</dt>
                             <dd>{parts}</dd>
+                        </div>
+                    );
+                }
+                if (row.kind === "opaque") {
+                    // The calculator state: no meaningful before/after to show.
+                    return (
+                        <div key={i} className="flex flex-wrap gap-x-2">
+                            <dt className="text-muted-foreground">{row.label}:</dt>
+                            <dd className="font-medium">изменены</dd>
                         </div>
                     );
                 }
@@ -76,9 +81,10 @@ export function OpChanges({ op }: { op: PendingOp }) {
 }
 
 /**
- * The entity an op touches, as a card: a pending match card for match edits,
- * the box-art game card for game edits, a name row for player renames — with
- * the change list and the action buttons inside. Only for update ops (deletes
+ * The entity an op touches, as a card: the unified match card for match edits
+ * (display state = the op's merged fields, Elo preview included), the
+ * box-art game card for game edits, a name row for player renames — with the
+ * change list and the action buttons inside. Only for update ops (deletes
  * keep the compact row).
  */
 export function OpEntityCard({ op, actions }: { op: PendingOp; actions?: ReactNode }) {
@@ -86,11 +92,7 @@ export function OpEntityCard({ op, actions }: { op: PendingOp; actions?: ReactNo
 
     if (op.kind === "match") {
         if (op.op !== "update") return null;
-        return (
-            <PendingMatchCard match={pendingMatchFromOp(op)} clickable actions={actions}>
-                <OpChanges op={op} />
-            </PendingMatchCard>
-        );
+        return <OpMatchCard op={op} actions={actions} />;
     }
 
     const statusBadge = <PendingSyncBadge status={op.status} error={op.error} />;
@@ -129,5 +131,41 @@ export function OpEntityCard({ op, actions }: { op: PendingOp; actions?: ReactNo
             <OpChanges op={op} />
             {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
         </div>
+    );
+}
+
+/**
+ * The match-edit op as a unified match card: the display state is the op's
+ * merged fields (the same `MatchEntity.effective` the match view page and the
+ * feed show), with the client-side Elo preview and the change list inside.
+ * Its own component so the hooks stay unconditional.
+ */
+function OpMatchCard({ op, actions }: { op: PendingOp; actions?: ReactNode }) {
+    const helpers = useOpNameHelpers();
+    const view = useMemo(
+        () => MatchEntity.resolve(op.entityId, { op })?.effective(helpers) ?? null,
+        [op, helpers],
+    );
+    const previewScores = useMemo(
+        () =>
+            view && view.mode !== "coop"
+                ? Object.fromEntries(Object.entries(view.score).map(([pid, s]) => [pid, s.score]))
+                : null,
+        [view],
+    );
+    const preview = useSettlementPreview(previewScores, view?.date ?? null);
+    if (!view) return null;
+    return (
+        <MatchCard
+            match={view}
+            pending
+            syncStatus={op.status}
+            syncError={op.error}
+            preview={preview}
+            clickable
+            actions={actions}
+        >
+            <OpChanges op={op} />
+        </MatchCard>
     );
 }
