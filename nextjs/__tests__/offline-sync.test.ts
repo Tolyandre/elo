@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import { uuidv7 } from 'uuidv7';
-import { hasNewArrivals, ServerMatchFields, SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
+import { hasNewArrivals, ServerGameFields, ServerMatchFields, SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
 import { OfflineStore, PendingGame, PendingMatch, PendingPlayer } from '../lib/offline/types';
+import { applyResolutions } from '../lib/offline/merge';
 import { Base58ID } from '../lib/id';
 
 const noopPersist = () => { };
@@ -815,12 +816,34 @@ describe('op replay (ADR-37 phase 7)', () => {
         ...over,
     });
 
+    // The server game record the merge merges against — every metadata field
+    // present (null where unset), like OfflineContext's getGame builds it.
+    const serverGame = (over: Partial<ServerGameFields> = {}): ServerGameFields => ({
+        name: 'Каркассон',
+        alias: null,
+        name_en: 'Carcassonne',
+        name_ru: 'Каркассон',
+        bgg_ref: 822,
+        tesera_ref: null,
+        game_mode: 'competitive',
+        ...over,
+    });
+
+    const gameOpBase = {
+        alias: null,
+        name_ru: 'Каркассон',
+        name_en: 'Carcassonne',
+        bgg_ref: 822,
+        tesera_ref: null,
+        game_mode: 'competitive' as const,
+    };
+
     function okOpsApi() {
         return {
             getPlayer: vi.fn(async () => ({ ok: true, data: { name: 'Вася' } }) as SyncCallResult<{ name: string } | null>),
             patchPlayer: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
             deletePlayer: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
-            getGame: vi.fn(async () => ({ ok: true, data: { name: 'Каркассон' } }) as SyncCallResult<{ name: string } | null>),
+            getGame: vi.fn(async () => ({ ok: true, data: serverGame() }) as SyncCallResult<ServerGameFields | null>),
             patchGame: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
             deleteGame: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
             getMatch: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<ServerMatchFields | null>),
@@ -870,6 +893,69 @@ describe('op replay (ADR-37 phase 7)', () => {
         // Untouched → the server's value wins; the merged PATCH equals it.
         expect(ops.patchPlayer).toHaveBeenCalledWith(store.ops![0].entityId, { name: 'Вася' });
         expect(outcome.store.ops).toHaveLength(0);
+    });
+
+    it('syncs a game metadata edit cleanly when the server still holds the base', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        const store = makeStore({});
+        store.ops = [opFixture({ kind: 'game', base: gameOpBase, patch: { alias: 'каркассон' } })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        // The merge sees the real server metadata — no phantom conflict with
+        // an empty «на сервере» side (regression: getGame used to return the
+        // display name alone, so every changed key raced `undefined`).
+        expect(ops.patchGame).toHaveBeenCalledTimes(1);
+        const body = (ops.patchGame.mock.calls as unknown as [Base58ID, Record<string, unknown>][])[0][1];
+        expect(body.alias).toBe('каркассон');
+        // The display name derives server-side from alias → ru → en; it must
+        // not travel in the PATCH.
+        expect(body).not.toHaveProperty('name');
+        expect(outcome.store.ops).toHaveLength(0);
+        expect(outcome.syncedCount).toBe(1);
+    });
+
+    it('resolves a same-field game race and applies the user pick on the next sync', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        // Both sides changed name_ru — the sync flags it, /offline resolves.
+        ops.getGame.mockImplementation(async () => ({ ok: true, data: serverGame({ name_ru: 'Каркассон (новое)' }) }));
+        const store = makeStore({});
+        store.ops = [opFixture({ kind: 'game', base: gameOpBase, patch: { name_ru: 'Каркассон (моя правка)' } })];
+
+        const first = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+        expect(ops.patchGame).not.toHaveBeenCalled();
+        expect(first.store.ops![0].status).toBe('conflict');
+        expect(first.store.ops![0].conflict).toEqual([
+            { field: 'name_ru', label: 'Название (RU)', ours: 'Каркассон (моя правка)', theirs: 'Каркассон (новое)' },
+        ]);
+
+        // «Оставить моё» → resolveOpConflict → applyResolutions: the choice
+        // becomes the patch, the server value the base. The next run must
+        // send the user's value — not conflict again (the reported loop).
+        const conflicted = first.store.ops![0];
+        const resolved = applyResolutions(
+            conflicted.base ?? {},
+            conflicted.patch ?? {},
+            conflicted.conflict ?? [],
+            { name_ru: 'Каркассон (моя правка)' },
+        );
+        const second = await syncOffline(
+            { ...store, ops: [{ ...conflicted, status: 'pending' as const, base: resolved.base, patch: resolved.patch }] },
+            api,
+            noopPersist,
+            () => store,
+            () => new Date(),
+            ops,
+        );
+
+        expect(second.store.ops).toHaveLength(0);
+        expect(second.syncedCount).toBe(1);
+        expect(ops.patchGame).toHaveBeenCalledWith(
+            conflicted.entityId,
+            expect.objectContaining({ alias: null, name_ru: 'Каркассон (моя правка)' }),
+        );
     });
 
     it('deletes a player when the server still holds the observed value', async () => {

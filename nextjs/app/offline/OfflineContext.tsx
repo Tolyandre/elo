@@ -205,7 +205,24 @@ const opsApi: OpsApi = {
         try {
             const body = await unwrap(client.GET("/games", {}));
             const found = body.data.games.find((g) => g.id === id);
-            return { ok: true, data: found ? { name: found.name } : null };
+            // Full metadata, not just the display name: the merge three-ways
+            // every field a game op can change — a name-only record would show
+            // `undefined` on the server side of each patch key and flag a
+            // phantom conflict (theirs normalized like the dialog's base).
+            return {
+                ok: true,
+                data: found
+                    ? {
+                          name: found.name,
+                          alias: found.alias ?? null,
+                          name_en: found.name_en ?? null,
+                          name_ru: found.name_ru ?? null,
+                          bgg_ref: found.bgg_ref ?? null,
+                          tesera_ref: found.tesera_ref ?? null,
+                          game_mode: found.game_mode,
+                      }
+                    : null,
+            };
         } catch (err) {
             if (err instanceof ApiError) return { ok: false, status: err.status, message: err.message };
             throw err;

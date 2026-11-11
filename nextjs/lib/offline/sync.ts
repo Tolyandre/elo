@@ -93,11 +93,27 @@ export type ServerMatchFields = {
     game_won?: boolean;
 };
 
+/**
+ * The server game as the merge sees it: the display name (the delete guard
+ * compares it) plus every metadata field a game op merges against. Without
+ * the metadata the three-way merge sees `undefined` on the server side of
+ * every patch key and flags a phantom conflict.
+ */
+export type ServerGameFields = {
+    name: string;
+    alias: string | null;
+    name_en: string | null;
+    name_ru: string | null;
+    bgg_ref: number | null;
+    tesera_ref: number | null;
+    game_mode: GameMode;
+};
+
 export type OpsApi = {
     getPlayer(id: Base58ID): Promise<SyncCallResult<{ name: string } | null>>;
     patchPlayer(id: Base58ID, body: { name: string }): Promise<SyncCallResult<null>>;
     deletePlayer(id: Base58ID): Promise<SyncCallResult<null>>;
-    getGame(id: Base58ID): Promise<SyncCallResult<{ name: string } | null>>;
+    getGame(id: Base58ID): Promise<SyncCallResult<ServerGameFields | null>>;
     patchGame(id: Base58ID, body: Record<string, unknown>): Promise<SyncCallResult<null>>;
     deleteGame(id: Base58ID): Promise<SyncCallResult<null>>;
     getMatch(id: Base58ID): Promise<SyncCallResult<{
@@ -698,10 +714,11 @@ export async function syncOffline(
             continue;
         }
 
-        // Players and games: single-field merges (name).
+        // Players and games: per-field merges against a fresh server read —
+        // the name for players, the metadata for games.
         const fieldLabel = kind === "player" ? "Имя" : "Название";
         const gameLabels: Record<string, string> = { name: "Название", alias: "Альтернативное название", name_en: "Название (EN)", name_ru: "Название (RU)", bgg_ref: "BGG id", tesera_ref: "Tesera id", game_mode: "Режим игры" };
-        let server: SyncCallResult<{ name: string } | null>;
+        let server: SyncCallResult<ServerGameFields | { name: string } | null>;
         try {
             server = kind === "player" ? await opsApi.getPlayer(op.entityId) : await opsApi.getGame(op.entityId);
         } catch {
@@ -725,11 +742,26 @@ export async function syncOffline(
             update({ ...store, ops: store.ops?.filter((o) => o.entityId !== op.entityId) });
             continue;
         }
+        // The record the merge merges against. Games: the metadata fields only —
+        // the display name derives server-side from alias → ru → en and never
+        // travels in the PATCH (the edit dialog does not offer it either).
+        // Players: the name alone.
+        const serverFields: Record<string, unknown> =
+            kind === "game" && "alias" in server.data
+                ? {
+                      alias: server.data.alias,
+                      name_en: server.data.name_en,
+                      name_ru: server.data.name_ru,
+                      bgg_ref: server.data.bgg_ref,
+                      tesera_ref: server.data.tesera_ref,
+                      game_mode: server.data.game_mode,
+                  }
+                : { name: server.data.name };
         const { merged, conflicts } = mergeFields(
             {
                 base: op.base ?? {},
                 patch: op.patch ?? {},
-                server: { name: server.data.name },
+                server: serverFields,
             },
             (field) => (kind === "game" ? (gameLabels[field] ?? field) : fieldLabel),
         );
