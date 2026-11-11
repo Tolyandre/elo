@@ -96,6 +96,27 @@ export class MatchEntity {
     }
 }
 
+/**
+ * Inputs for editing a match that may already carry a queued edit. The form
+ * prefills from the effective (op-overlaid) state — the user's latest intent
+ * — while the three-way merge base stays the originally observed server
+ * state: one op per entity, and the patch is the complete desired set, so a
+ * re-edit accumulates (fields changed by the first edit still apply at sync
+ * even when the second edit leaves them alone). `base` is null for a first
+ * edit — the caller captures it from the server read.
+ */
+export function matchEditInputs(
+    saved: Match,
+    op: PendingOp | null,
+    helpers?: MatchEntityHelpers,
+): { view: Match; base: Record<string, unknown> | null } {
+    const entity = MatchEntity.resolve(saved.id, { saved, op });
+    return {
+        view: entity ? entity.effective(helpers) : saved,
+        base: op?.base ?? null,
+    };
+}
+
 /** Score rows of an unsynced display state: no settlement columns — they do
  * not exist yet (queued create) or describe the pre-edit match (queued edit).
  * matchSettled() reads false, so the card hides the server widgets and the
@@ -153,8 +174,8 @@ export function pendingMatchToMatch(pm: PendingMatch, helpers?: MatchEntityHelpe
  * - keys the server added since the base (absent from base and patch) stay.
  *
  * Settlement columns are nulled: they describe the pre-edit match and would
- * read as rating changes that never happened — the Elo preview replaces
- * them until the sync re-settles.
+ * read as rating changes that never happened — the card shows no rating
+ * values until the sync re-settles.
  */
 export function applyMatchOp(match: Match, op: PendingOp, helpers?: MatchEntityHelpers): Match {
     const base = op.base ?? {};

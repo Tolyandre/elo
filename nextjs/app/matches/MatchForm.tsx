@@ -70,7 +70,18 @@ export function MatchFormAuthAlerts() {
     );
 }
 
-export function MatchForm({ editPending, editSaved }: { editPending?: PendingMatch; editSaved?: Match }) {
+export function MatchForm({
+    editPending,
+    editSaved,
+    editSavedBase,
+}: {
+    editPending?: PendingMatch;
+    editSaved?: Match;
+    /** The queued op's merge base on a re-edit: the originally observed server
+     * state, so the new complete patch accumulates instead of losing the
+     * earlier edit's changes. Null/absent → capture from editSaved. */
+    editSavedBase?: Record<string, unknown> | null;
+}) {
     const { loading } = usePlayers();
     const { games } = useGames();
     const { pendingGames, offline, isSyncing, submitMatch, updatePendingMatch, queueMatchUpdate, syncNow } = useOffline();
@@ -312,6 +323,34 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         setErrors((prev) => ({ ...prev, [id]: !isNumber(value) }));
     };
 
+    // The merge base is frozen for the edit session: the queued op's
+    // originally observed server state, or the server read as the form first
+    // saw it (the form mounts only after the store hydrates and the match
+    // data is in). A sync landing mid-edit — the queued op applying and
+    // dropping — or another user's change must not move it: at submit the
+    // three-way merge then flags exactly the fields altered server-side
+    // since the user last observed the match (ADR-37).
+    const [sessionBase] = useState<Record<string, unknown> | null>(() => {
+        if (!editSaved) return null;
+        const baseScore = Object.fromEntries(
+            Object.entries(editSaved.score).map(([pid, data]) => [pid, data.score ?? 0]),
+        );
+        return editSavedBase ?? {
+            game_id: editSaved.game_id,
+            date: editSaved.dateISO ?? (editSaved.date ? new Date(editSaved.date).toISOString() : ""),
+            score: baseScore,
+            camp_arena_ids: editSaved.camps.map((c) => c.id),
+            ...(editSaved.mode
+                ? {
+                      mode: editSaved.mode,
+                      player_ids: Object.keys(baseScore),
+                      ...(editSaved.game_score != null ? { game_score: editSaved.game_score } : {}),
+                      ...(editSaved.game_won != null ? { game_won: editSaved.game_won } : {}),
+                  }
+                : {}),
+        };
+    });
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (submitting) return;
@@ -366,34 +405,10 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     setBottomErrorMessage("Выберите сообщество");
                     return;
                 }
-                // One path for online and offline alike (ADR-37 revised): the
-                // edit queues as an op — the base is the match as the form
-                // prefilled it, the patch what the user changed — and the
-                // sync three-way-merges it against a fresh server read before
-                // sending. Online the sync runs right away; offline it waits
-                // for the connection. A server-side change since the form
-                // opened turns into a conflict either way, and the view page
-                // shows the queued state immediately. The tournament
-                // association travels only when the form offered it (it
-                // needs the server's slot fit); a date change keeps the
-                // server-side slot lock.
-                const baseScore = Object.fromEntries(
-                    Object.entries(editSaved.score).map(([pid, data]) => [pid, data.score ?? 0]),
-                );
-                queueMatchUpdate(editSaved.id, tenant.id, {
-                    game_id: editSaved.game_id,
-                    date: editSaved.dateISO ?? (editSaved.date ? new Date(editSaved.date).toISOString() : ""),
-                    score: baseScore,
-                    camp_arena_ids: editSaved.camps.map((c) => c.id),
-                    ...(editSaved.mode
-                        ? {
-                              mode: editSaved.mode,
-                              player_ids: Object.keys(baseScore),
-                              ...(editSaved.game_score != null ? { game_score: editSaved.game_score } : {}),
-                              ...(editSaved.game_won != null ? { game_won: editSaved.game_won } : {}),
-                          }
-                        : {}),
-                }, {
+                // The base was frozen when the session opened (see
+                // sessionBase); the patch is the complete desired set from
+                // the form.
+                queueMatchUpdate(editSaved.id, tenant.id, sessionBase ?? {}, {
                     game_id: selectedGameId,
                     date: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
                     ...(coopMode

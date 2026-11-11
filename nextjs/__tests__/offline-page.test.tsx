@@ -90,21 +90,6 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/app/arenas/campsContext", () => ({
     useCamps: () => ({ camps: [], activeCamps: () => [], invalidate: () => {} }),
 }));
-// PendingMatchCard / OpMatchCard compute the client-side Elo preview; with no
-// tenant scope (and the settings defaults) the hook yields null without any
-// fetch — the cards simply hide the preview columns here.
-vi.mock("@/app/tenantScopeContext", () => ({
-    useTenantScope: () => ({ tenantId: null, tenant: null, ready: true }),
-}));
-vi.mock("@/app/settingsContext", () => ({
-    useSettings: () => ({
-        eloConstK: 0,
-        eloConstD: 0,
-        startingElo: 1000,
-        winReward: 1,
-        startingRatingDefault: 0,
-    }),
-}));
 // LoginLink reads the inlined base URL, which throws without the mock.
 vi.mock("@/app/api", () => ({
     EloWebServiceBaseUrl: "http://api.test",

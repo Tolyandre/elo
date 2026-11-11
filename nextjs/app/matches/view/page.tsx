@@ -12,7 +12,6 @@ import { TenantChooser } from "@/components/tenant-chooser";
 import { useOffline } from "../../offline/OfflineContext";
 import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise, matchSettled } from "../../api";
 import { MatchEntity } from "@/lib/offline/match-entity";
-import { useSettlementPreview } from "@/hooks/useSettlementPreview";
 import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import { PendingChangesCard } from "@/components/offline/pending-changes-card";
 import { MarketCard } from "@/components/market-card";
@@ -172,8 +171,8 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   // A queued edit of this match (ADR-37): the entity overlays it on the
   // server read, so the view shows the user's latest intent rather than the
   // stale server state — here, in the feed and on /offline alike. The
-  // overlay carries no settlement columns, so the card shows the client-side
-  // Elo preview until the sync re-settles the match.
+  // overlay carries no settlement columns, so the card shows no rating
+  // values until the sync re-settles the match.
   const op = useMemo(
     () => (ops ?? []).find((o) => o.kind === "match" && o.entityId === matchId) ?? null,
     [ops, matchId],
@@ -183,15 +182,6 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
     [match, matchId, op],
   );
   const view = useMemo(() => entity?.effective(helpers) ?? null, [entity, helpers]);
-
-  // The Elo preview settles the overlaid state — only while a queued edit
-  // exists (a plain saved match shows the server's own settlement columns)
-  // and only for competitive matches (coop never settles).
-  const previewScores = useMemo(() => {
-    if (!op || !view || view.mode === "coop") return null;
-    return Object.fromEntries(Object.entries(view.score).map(([pid, s]) => [pid, s.score]));
-  }, [op, view]);
-  const preview = useSettlementPreview(previewScores, op ? (view?.date ?? null) : null);
 
   // The context data is only trustworthy once it has settled for the current
   // tenant: mid-refetch it still holds the previous community's settlement
@@ -276,7 +266,6 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
         pending={!!op}
         syncStatus={op?.status ?? undefined}
         syncError={op?.error}
-        preview={preview}
       />
 
       {op && <PendingChangesCard op={op} />}

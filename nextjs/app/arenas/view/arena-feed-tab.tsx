@@ -21,7 +21,6 @@ import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { MatchEntity } from "@/lib/offline/match-entity";
 import type { PendingOp } from "@/lib/offline/types";
-import { useSettlementPreview } from "@/hooks/useSettlementPreview";
 import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import type { ArenaMatchFilters } from "./use-arena-feed";
 import type { FeedEvent } from "@/app/api";
@@ -218,29 +217,20 @@ export function ArenaFeedTab({
 /**
  * A feed match event with a queued offline edit (ADR-37): the entity overlays
  * the op on the server read — the same display state the match view page and
- * the /offline queue show — plus the unsynced chip, the dashed border and the
- * client-side Elo preview. Its own component so the hooks stay unconditional
- * (plain events render the plain MatchCard).
+ * the /offline queue show — plus the unsynced chip and the dashed border (no
+ * rating values until the server re-settles). Its own component so the hooks
+ * stay unconditional (plain events render the plain MatchCard).
  */
 function FeedMatchCard({ match, op, roundToInteger }: { match: Match; op: PendingOp; roundToInteger: boolean }) {
     const helpers = useOpNameHelpers();
     const entity = useMemo(() => MatchEntity.resolve(match.id, { saved: match, op }), [match, op]);
     const view = useMemo(() => entity?.effective(helpers) ?? match, [entity, helpers, match]);
-    const previewScores = useMemo(
-        () =>
-            view.mode === "coop"
-                ? null
-                : Object.fromEntries(Object.entries(view.score).map(([pid, s]) => [pid, s.score])),
-        [view],
-    );
-    const preview = useSettlementPreview(previewScores, view.date);
     return (
         <MatchCard
             match={view}
             pending
             syncStatus={op.status}
             syncError={op.error}
-            preview={preview}
             roundToInteger={roundToInteger}
             clickable
         />

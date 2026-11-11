@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { useGames } from "@/app/gamesContext";
 import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
-import { useSettlementPreview } from "@/hooks/useSettlementPreview";
 import { opChangeRows } from "@/lib/offline/op-display";
 import { MatchEntity } from "@/lib/offline/match-entity";
 import type { PendingOp } from "@/lib/offline/types";
@@ -137,8 +136,8 @@ export function OpEntityCard({ op, actions }: { op: PendingOp; actions?: ReactNo
 /**
  * The match-edit op as a unified match card: the display state is the op's
  * merged fields (the same `MatchEntity.effective` the match view page and the
- * feed show), with the client-side Elo preview and the change list inside.
- * Its own component so the hooks stay unconditional.
+ * feed show), with the change list inside and no rating values until the
+ * server re-settles. Its own component so the hooks stay unconditional.
  */
 function OpMatchCard({ op, actions }: { op: PendingOp; actions?: ReactNode }) {
     const helpers = useOpNameHelpers();
@@ -146,14 +145,6 @@ function OpMatchCard({ op, actions }: { op: PendingOp; actions?: ReactNode }) {
         () => MatchEntity.resolve(op.entityId, { op })?.effective(helpers) ?? null,
         [op, helpers],
     );
-    const previewScores = useMemo(
-        () =>
-            view && view.mode !== "coop"
-                ? Object.fromEntries(Object.entries(view.score).map(([pid, s]) => [pid, s.score]))
-                : null,
-        [view],
-    );
-    const preview = useSettlementPreview(previewScores, view?.date ?? null);
     if (!view) return null;
     return (
         <MatchCard
@@ -161,7 +152,6 @@ function OpMatchCard({ op, actions }: { op: PendingOp; actions?: ReactNode }) {
             pending
             syncStatus={op.status}
             syncError={op.error}
-            preview={preview}
             clickable
             actions={actions}
         >

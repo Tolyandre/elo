@@ -110,6 +110,19 @@ badge instead of a lost form. Calculator-backed saved matches queue the
 same way (`calculator_data` merges as one whole field; the fresh match GET
 carries it so the merge sees "theirs").
 
+Two session rules keep the merge honest across re-edits:
+
+- **The form prefills from the op-overlaid state, the merge base stays the
+  op's original base.** One op per entity and a complete patch mean a
+  re-edit accumulates: fields changed by the first edit still apply at sync
+  even when the second edit leaves them alone.
+- **The base freezes when the edit session opens.** The queued op may land
+  mid-edit (the network returns, the sync drops it) and another user may
+  then change the match; re-resolving the base at submit would read the
+  post-landing state and silently let the other user's values win. Frozen,
+  the submit merge flags exactly the fields altered server-side since the
+  user last observed the match — a conflict, online and offline alike.
+
 ### The match is a client-side entity
 
 `lib/offline/match-entity.ts` projects one match from its three possible
@@ -123,21 +136,20 @@ the ops in the same spirit (pending → **ops** → live lists → replica →
 fallback), so a renamed player or game resolves to the queued name
 everywhere.
 
-### Client-side Elo preview (advisory)
+### Deferred: client-side Elo preview and WASM parity
 
-Unsynced state — an offline-created match, or a saved match with a queued
-edit whose settlement columns describe the pre-edit match — renders a
-client-computed settlement preview in the card's rating slots, marked
-provisional. The math reuses the TS mirrors of the server formulas
-(`app/eloCalculation.ts`); the rating track repeats
-`arena_calc.go:buildArenaResults` (own rating vs opponents' true elos,
-catch-up scaling when the arena's `catch_up` parameters are in scope).
-Prior elo/rating per player comes from the tenant-scoped player stats read
-(SW-cached, so it works offline once seen), taking the latest point
-strictly before the match date; players without history settle from the
-starting values — the server's own rule. The preview is never persisted
-and the sync always replaces it with the server's settlement; markets are
-out of scope by design (offline there is not enough data).
+An offline settlement preview was built once as a TS mirror of the server
+formulas fed from per-player rating histories; it was removed again — the
+prior state it needs (each player's latest settlement strictly before the
+match in `(date, match_id)` order, market settlements included) is not
+reliably available offline, and a wrong preview is worse than none. Until
+it returns, unsynced state renders no rating values at all: the card hides
+the settlement columns until the server settles. The eventual shape is a
+settlement-ledger replica — mirror the main arena's `arena_settlements`
+rows into Dexie, so the preview reads the prior state exactly the way
+`GetPlayerLatestArenaEloBeforeMatch` does. Compiling `pkg/elo` to
+WebAssembly (standard Go `GOOS=js GOARCH=wasm`, JSON boundary) stays the
+parity-guaranteed alternative — revisit when either is actually wanted.
 
 ### Edit-during-sync races
 
@@ -164,14 +176,6 @@ replica offline is a future refinement.
 column, a tenant-scoped incremental pull
 (`GET /tenants/{id}/matches?updated_since=`), a `matches` table in Dexie,
 and the feed reading it — which also brings offline feed search.
-
-### Deferred: WASM Elo parity
-
-Compiling `pkg/elo`'s pure math to WebAssembly (standard Go
-`GOOS=js GOARCH=wasm`, JSON boundary) was designed to guarantee the TS Elo
-port never drifts. The offline Elo preview shipped instead as a TS mirror
-of the same formulas (advisory, server-authoritative — see above), so WASM
-stays deferred until an exact-parity requirement actually appears.
 
 ## Consequences
 

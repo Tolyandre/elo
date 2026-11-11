@@ -15,7 +15,6 @@ import { ClubIcons } from "@/components/player-name";
 import { PendingSyncBadge } from "@/components/pending-sync-badge";
 import { formatDateTime } from "@/lib/datetime";
 import type { SyncStatus } from "@/lib/offline/types";
-import type { SettlementPreview } from "@/lib/offline/elo-preview";
 import { Trophy } from "lucide-react";
 
 type MatchCardProps = {
@@ -26,13 +25,6 @@ type MatchCardProps = {
   pending?: boolean;
   syncStatus?: SyncStatus;
   syncError?: string;
-  /**
-   * Client-side settlement preview for the unsynced state
-   * (lib/offline/elo-preview) — fills the delta column while the match has
-   * no server settlement (or its columns describe the pre-edit state). The
-   * values are marked provisional; the sync replaces them with the server's.
-   */
-  preview?: SettlementPreview | null;
   /** Extra content inside the card (e.g. the /offline queue's change list). */
   children?: React.ReactNode;
   /** Action buttons in the card's footer; their clicks must not trigger the card's own navigation. */
@@ -46,7 +38,6 @@ export const MatchCard = React.memo(function MatchCard({
   pending = false,
   syncStatus,
   syncError,
-  preview,
   children,
   actions,
 }: MatchCardProps) {
@@ -69,17 +60,16 @@ export const MatchCard = React.memo(function MatchCard({
   // The settlement columns are scoped to the read's tenant arena and are null
   // when the match did not settle there (ADR-36) — the card hides the rating
   // widgets instead of showing fake zeros for such a match. An unsynced
-  // state shows the client-side preview in the same slots instead.
+  // state (queued create or edit) has no settlement columns at all, so its
+  // card shows no rating values until the server settles it.
   const settled = matchSettled(match);
-  const showPreview = !settled && !!preview;
 
   const { players, ranks, totalEarn, totalPay } = useMemo(() => {
     const players = Object.entries(match.score)
       .map(([playerId, data]) => {
         const name = resolvePlayer(playerId);
-        const row = preview?.[playerId];
-        const ratingStaked = row ? row.ratingStaked : data.ratingStaked ?? 0;
-        const ratingEarned = row ? row.ratingEarned : data.ratingEarned ?? 0;
+        const ratingStaked = data.ratingStaked ?? 0;
+        const ratingEarned = data.ratingEarned ?? 0;
         return {
           name,
           playerId,
@@ -87,7 +77,7 @@ export const MatchCard = React.memo(function MatchCard({
           ratingEarned,
           score: data.score,
           ratingChange: ratingStaked + ratingEarned,
-          ratingAfter: row ? row.ratingAfter : data.ratingAfter ?? null,
+          ratingAfter: data.ratingAfter ?? null,
         };
       })
       .sort((a, b) => b.score - a.score);
@@ -97,7 +87,7 @@ export const MatchCard = React.memo(function MatchCard({
     const totalPay = players.reduce((sum, p) => sum + Math.abs(p.ratingStaked), 0) || 1;
 
     return { players, ranks, totalEarn, totalPay };
-  }, [match.score, resolvePlayer, preview]);
+  }, [match.score, resolvePlayer]);
 
   const handleClick = useCallback(() => {
     if (clickable) {
@@ -233,12 +223,12 @@ export const MatchCard = React.memo(function MatchCard({
                   {p.playerId === myPlayerId
                     ? <span className="break-words align-middle bg-info/15 rounded px-1">{p.name}</span>
                     : <span className="break-words align-middle">{p.name}</span>}
-                  {(settled || showPreview) && p.ratingAfter != null && (
+                  {settled && p.ratingAfter != null && (
                     <span className="text-xs text-muted-foreground align-middle ml-1">{Math.round(p.ratingAfter)}</span>
                   )}
                 </div>
 
-                {(settled || showPreview) && (
+                {settled && (
                   <div className="relative h-2 bg-muted rounded overflow-hidden">
                     {/* Earned Elo indicator */}
                     <div
@@ -258,15 +248,13 @@ export const MatchCard = React.memo(function MatchCard({
                 {p.score}
               </div>
 
-              {(settled || showPreview) && (
+              {settled && (
                 <div className="text-right w-16 flex-shrink-0">
                   <div
-                    title={showPreview ? "Предварительный расчёт — уточнится после синхронизации" : undefined}
                     className={`font-semibold text-sm ${
                       p.ratingChange > 0 ? "text-success" : p.ratingChange < 0 ? "text-destructive" : "text-muted-foreground"
                     }`}
                   >
-                    {showPreview && "≈"}
                     {p.ratingChange >= 0 ? "+" : ""}
                     {p.ratingChange.toFixed(roundToInteger ? 0 : 1)}
                   </div>

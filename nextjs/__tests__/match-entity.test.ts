@@ -7,7 +7,13 @@ import { Base58ID } from "../lib/id";
 // app/api/types directly: the app/api barrel throws on a missing env var at
 // import time, and the test only needs the frontend Match shape + helper.
 import { matchSettled, type Match } from "../app/api/types";
-import { MatchEntity, applyMatchOp, opToMatch, pendingMatchToMatch } from "../lib/offline/match-entity";
+import {
+    MatchEntity,
+    applyMatchOp,
+    matchEditInputs,
+    opToMatch,
+    pendingMatchToMatch,
+} from "../lib/offline/match-entity";
 import { PendingMatch, PendingOp } from "../lib/offline/types";
 
 const MATCH_ID = "match1" as Base58ID;
@@ -266,6 +272,29 @@ describe("opToMatch (the op without a server read)", () => {
         const view = opToMatch(op);
         expect(view.calculator_kind).toBe("skull-king");
         expect(view.calculator_data).toEqual(data);
+    });
+});
+
+describe("matchEditInputs (re-edit accumulates)", () => {
+    it("prefills from the op-overlaid state and keeps the original merge base", () => {
+        const m = savedMatch();
+        // First edit queued: p1 10→12. The server read is still stale.
+        const firstOp = matchOp(savedBase(m), { score: { [P1]: 12, [P2]: 5 }, camp_arena_ids: m.camps.map((c) => c.id) });
+        const { view, base } = matchEditInputs(m, firstOp, helpers);
+        expect(view.score[P1].score).toBe(12);
+        expect(view.score[P2].score).toBe(5);
+        // The base is the first edit's observed server state (verbatim), not
+        // the overlaid state — the second edit's complete patch merges
+        // against it without losing the first edit's changes.
+        expect(base).toBe(firstOp.base);
+        expect(base).toEqual(savedBase(m));
+    });
+
+    it("returns a null base for a first edit (caller captures from the server read)", () => {
+        const { view, base } = matchEditInputs(savedMatch(), null, helpers);
+        expect(view.game_name).toBe("Скull King");
+        expect(view.score[P1].score).toBe(10); // untouched server state
+        expect(base).toBeNull();
     });
 });
 

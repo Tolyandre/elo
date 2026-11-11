@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -12,6 +12,8 @@ import { useTenants } from "@/app/tenantsContext";
 import { useOffline } from "../../offline/OfflineContext";
 import { useMe } from "@/app/meContext";
 import { Match, getMatchByIdPromise } from "../../api";
+import { matchEditInputs } from "@/lib/offline/match-entity";
+import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, AlertCircleIcon, Loader2 } from "lucide-react";
 import { ErrorAlert } from "@/components/error-alert";
@@ -34,7 +36,7 @@ export default function MatchEditPage() {
 
 function MatchEditPageWrapped() {
     const router = useRouter();
-    const { pendingMatches, ready, updatePendingMatch, offline, syncNow, queueMatchUpdate } = useOffline();
+    const { pendingMatches, ready, updatePendingMatch, offline, syncNow, queueMatchUpdate, ops } = useOffline();
     const { matches, loading: matchesLoading } = useMatches();
     const me = useMe();
     // The edit belongs to a community (ADR-36): reads scope the settlement
@@ -92,6 +94,41 @@ function MatchEditPageWrapped() {
     // (the calculator path is gated on calculator_data below).
     const fetchLoading = needsDetail && !editSaved && !fetchError;
 
+    // A queued edit of this saved match (ADR-37): the form prefills from the
+    // op-overlaid state — the user's latest intent, not the stale server read
+    // — while the merge base stays the originally observed server state, so a
+    // re-edit accumulates into the same op. Hooks sit before the early returns.
+    const helpers = useOpNameHelpers();
+    const savedOp = useMemo(
+        () => (ops ?? []).find((o) => o.kind === "match" && o.entityId === id) ?? null,
+        [ops, id],
+    );
+    const editSavedView = useMemo(
+        () => (editSaved ? matchEditInputs(editSaved, savedOp, helpers).view : undefined),
+        [editSaved, savedOp, helpers],
+    );
+    // The calculator branch's merge base, frozen the moment the editor's data
+    // becomes complete — the same rule as MatchForm's sessionBase: a sync
+    // landing mid-edit (the queued op applying and dropping) or another
+    // user's change must not move it, so the submit merge flags exactly the
+    // fields altered server-side since the user last observed the match.
+    const [calcBase, setCalcBase] = useState<Record<string, unknown> | null | undefined>(undefined);
+    useEffect(() => {
+        if (calcBase !== undefined || !matchFromApi || !editSavedView?.calculator_data) return;
+        const server = matchFromApi;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- freeze-once: the base must be the state the editor opened with, not the latest re-render
+        setCalcBase(savedOp?.base ?? {
+            game_id: server.game_id,
+            date: server.dateISO ?? (server.date ? server.date.toISOString() : ""),
+            score: Object.fromEntries(
+                Object.entries(server.score).map(([pid, s]) => [pid, s.score ?? 0]),
+            ),
+            camp_arena_ids: server.camps.map((c) => c.id),
+            calculator_kind: server.calculator_kind,
+            calculator_data: server.calculator_data ?? null,
+        });
+    }, [calcBase, matchFromApi, editSavedView, savedOp]);
+
     if (!id) return null;
 
     // Tenantless edits are off (ADR-36): wait for the scope, then either the
@@ -145,15 +182,19 @@ function MatchEditPageWrapped() {
     // The calculator UI is the single source of truth for scores here — every
     // save recomputes the score map from the calculator state, so the score and
     // calculator_data can never drift apart. There is intentionally NO path to
-    // the generic MatchForm for a calculator-backed match.
-    if (editSaved?.calculator_kind) {
+    // the generic MatchForm for a calculator-backed match. A queued edit
+    // overlays the server read: the editor seeds from the op's calculator_data
+    // (the user's latest state) and the merge base stays the op's original
+    // base, so a re-edit accumulates.
+    if (editSavedView?.calculator_kind) {
+        const kind = editSavedView.calculator_kind;
         // calculator_data is absent from the list response, so wait for the
-        // detail fetch: rendering the editor with empty data would seed its
-        // useState from empty storage and never recover once the fetch lands
-        // (useState initializer runs once).
-        const match = matchFromApi;
-        const kind = match?.calculator_kind;
-        if (!match?.calculator_data || !kind) {
+        // detail fetch — and for the store to hydrate, so the frozen base
+        // sees the queued op's base: rendering the editor with empty data
+        // would seed its useState from empty storage and never recover once
+        // the fetch lands (useState initializer runs once).
+        const server = matchFromApi;
+        if (!ready || !editSavedView.calculator_data || !server || calcBase === undefined) {
             return (
                 <PageContainer width="wide">
                     <LoadingRows />
@@ -163,9 +204,9 @@ function MatchEditPageWrapped() {
         return (
             <CalculatorEdit
                 kind={kind}
-                storage={(match.calculator_data ?? {}) as Record<string, unknown>}
+                storage={(editSavedView.calculator_data ?? {}) as Record<string, unknown>}
                 readOnly={!me.canEdit}
-                onSaved={() => router.push(`/matches/view?id=${match.id}&tenant=${tenantId}`)}
+                onSaved={() => router.push(`/matches/view?id=${editSavedView.id}&tenant=${tenantId}`)}
                 save={(state, adapter) => {
                     // One path for online and offline alike (ADR-37 revised):
                     // the edit queues as an op and the sync three-way-merges
@@ -175,15 +216,16 @@ function MatchEditPageWrapped() {
                     // the two can never drift apart. The calculator editor
                     // never edits the date: the base keeps the raw server
                     // string verbatim (µs precision) and the patch omits it.
-                    queueMatchUpdate(match.id, tenantId, {
-                        game_id: match.game_id,
-                        date: match.dateISO ?? (match.date ? match.date.toISOString() : ""),
+                    // The base was frozen when the session opened (calcBase).
+                    queueMatchUpdate(editSavedView.id, tenantId, calcBase ?? {
+                        game_id: server.game_id,
+                        date: server.dateISO ?? (server.date ? server.date.toISOString() : ""),
                         score: Object.fromEntries(
-                            Object.entries(match.score).map(([pid, s]) => [pid, s.score ?? 0]),
+                            Object.entries(server.score).map(([pid, s]) => [pid, s.score ?? 0]),
                         ),
-                        camp_arena_ids: match.camps.map((c) => c.id),
-                        calculator_kind: match.calculator_kind,
-                        calculator_data: match.calculator_data ?? null,
+                        camp_arena_ids: server.camps.map((c) => c.id),
+                        calculator_kind: server.calculator_kind,
+                        calculator_data: server.calculator_data ?? null,
                     }, {
                         calculator_kind: kind,
                         calculator_data: adapter.toStorage(state),
@@ -220,9 +262,10 @@ function MatchEditPageWrapped() {
                 // synced or deleted), editPending is undefined and we fall back to the
                 // normal "add a new match" form instead of a dead-end error.
                 <MatchForm
-                    key={editPending?.clientId ?? (editSaved ? `saved:${editSaved.id}` : "new")}
+                    key={editPending?.clientId ?? (editSavedView ? `saved:${editSavedView.id}` : "new")}
                     editPending={editPending}
-                    editSaved={editSaved}
+                    editSaved={editSavedView}
+                    editSavedBase={savedOp?.base ?? null}
                 />
             )}
         </PageContainer>
