@@ -30,6 +30,10 @@ const state = vi.hoisted(() => ({
 vi.mock("@/app/gamesContext", () => ({
     useGames: () => ({ games: state.games }),
 }));
+// The name resolver (imported by the combobox) pulls the players context in.
+vi.mock("@/app/players/PlayersContext", () => ({
+    usePlayers: () => ({ playerMap: new Map(), playerDisplayName: (p: { name: string }) => p.name }),
+}));
 vi.mock("@/app/matches/MatchesContext", () => ({
     useMatches: () => ({ matches: state.matches }),
 }));

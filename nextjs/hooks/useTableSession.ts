@@ -50,7 +50,8 @@ export async function waitForSyncedMatch(matchId: string, timeoutMs = 10_000): P
     // least a round trip while online.
     await new Promise((r) => setTimeout(r, 400));
     while (Date.now() < deadline) {
-        if (!loadOfflineStore().matches.some((m) => m.clientId === matchId)) return true;
+        const store = await loadOfflineStore();
+        if (!store.matches.some((m) => m.clientId === matchId)) return true;
         await new Promise((r) => setTimeout(r, 400));
     }
     return false;

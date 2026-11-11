@@ -1,10 +1,11 @@
 "use client"
 
-import React, { createContext, useContext, useCallback, useMemo, ReactNode } from "react";
+import React, { createContext, useContext, useCallback, useEffect, useMemo, ReactNode } from "react";
 import { getPlayersPromise, Player } from "../api";
 import { useMe } from "../meContext";
 import { useTenantScope } from "../tenantScopeContext";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { writeEntities } from "@/lib/offline/db";
 
 type PlayersContextType = {
     players: Player[];
@@ -34,6 +35,14 @@ export function PlayersProvider({ children
     }, [tenantId]);
 
     const players = useMemo(() => data ?? [], [data]);
+
+    // Write-through to the Dexie entity replica (ADR-37 phase 6): the name
+    // resolution layer mirrors every successful fetch, staying coherent
+    // across syncs and offline cold starts.
+    useEffect(() => {
+        if (players.length === 0) return;
+        void writeEntities("player", players.map((p) => ({ id: p.id, name: p.name })));
+    }, [players]);
 
     const { geologistMode } = useMe();
 

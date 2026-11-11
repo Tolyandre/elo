@@ -3,9 +3,9 @@
 import React, { useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { useMe } from "@/app/meContext";
+import { useNameResolver } from "@/hooks/useNameResolver";
 import { Match, matchSettled } from "@/app/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,7 @@ type MatchCardProps = {
 };
 
 export const MatchCard = React.memo(function MatchCard({ match, roundToInteger = false, clickable = false }: MatchCardProps) {
-  const { playerMap, playerDisplayName } = usePlayers();
+  const { resolvePlayer } = useNameResolver();
   const { games } = useGames();
   const { playerId: myPlayerId } = useMe();
   const router = useRouter();
@@ -43,8 +43,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
   const { players, ranks, totalEarn, totalPay } = useMemo(() => {
     const players = Object.entries(match.score)
       .map(([playerId, data]) => {
-        const ctxPlayer = playerMap.get(playerId);
-        const name = ctxPlayer ? playerDisplayName(ctxPlayer) : "Unknown";
+        const name = resolvePlayer(playerId);
         const ratingStaked = data.ratingStaked ?? 0;
         const ratingEarned = data.ratingEarned ?? 0;
         return {
@@ -64,7 +63,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     const totalPay = players.reduce((sum, p) => sum + Math.abs(p.ratingStaked), 0) || 1;
 
     return { players, ranks, totalEarn, totalPay };
-  }, [match.score, playerMap, playerDisplayName]);
+  }, [match.score, resolvePlayer]);
 
   const handleClick = useCallback(() => {
     if (clickable) {
@@ -116,8 +115,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
 
           <div className="mt-3 flex flex-wrap gap-1">
             {Object.entries(match.score).map(([playerId]) => {
-              const ctxPlayer = playerMap.get(playerId);
-              const name = ctxPlayer ? playerDisplayName(ctxPlayer) : "Unknown";
+              const name = resolvePlayer(playerId);
               return (
                 <span
                   key={playerId}

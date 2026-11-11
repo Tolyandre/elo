@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { uuidv7 } from 'uuidv7';
-import { hasNewArrivals, SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
+import { hasNewArrivals, ServerMatchFields, SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
 import { OfflineStore, PendingGame, PendingMatch, PendingPlayer } from '../lib/offline/types';
 import { Base58ID } from '../lib/id';
 
@@ -17,27 +17,38 @@ function makeStore(partial: { games?: OfflineStore['games']; players?: OfflineSt
     };
 }
 
-function okApi(): SyncApi & { calls: string[] } {
+// The mock fns are exposed so tests can reprogram them mid-run; the SyncApi
+// side stays the engine's contract.
+type MockedApi = SyncApi & {
+    calls: string[];
+    createGame: Mock;
+    addGameTag: Mock;
+    createPlayer: Mock;
+    addClubMember: Mock;
+    addMatch: Mock;
+};
+
+function okApi(): MockedApi {
     const calls: string[] = [];
     return {
         calls,
-        createGame: vi.fn(async (body) => {
+        createGame: vi.fn(async (body: { name: string; id: Base58ID }) => {
             calls.push(`game:${body.name}`);
             return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: Base58ID }>;
         }),
-        addGameTag: vi.fn(async ({ game_id, tag_id }) => {
+        addGameTag: vi.fn(async ({ game_id, tag_id }: { game_id: Base58ID; tag_id: Base58ID }) => {
             calls.push(`tag:${game_id}:${tag_id}`);
             return { ok: true, data: null } as SyncCallResult<null>;
         }),
-        createPlayer: vi.fn(async (body) => {
+        createPlayer: vi.fn(async (body: { name: string; id: Base58ID }) => {
             calls.push(`player:${body.name}`);
             return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: Base58ID }>;
         }),
-        addClubMember: vi.fn(async ({ club_id, player_id }) => {
+        addClubMember: vi.fn(async ({ club_id, player_id }: { club_id: Base58ID; player_id: Base58ID }) => {
             calls.push(`club:${club_id}:${player_id}`);
             return { ok: true, data: null } as SyncCallResult<null>;
         }),
-        addMatch: vi.fn(async (body) => {
+        addMatch: vi.fn(async (body: { game_id: Base58ID; id: Base58ID }) => {
             calls.push(`match:${body.game_id}`);
             return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: Base58ID }>;
         }),
@@ -578,5 +589,411 @@ describe('hasNewArrivals', () => {
 
         expect(hasNewArrivals(makeStore({ games: [game], matches: [seen] }), seenIds)).toBe(false);
         expect(hasNewArrivals(makeStore({ games: [game], matches: [seen, fresh] }), seenIds)).toBe(true);
+    });
+});
+
+describe('duplicate-name adoption (ADR-37)', () => {
+    // The canonical entity another device already created under the same name.
+    const CANONICAL_PLAYER = '018f6b00-0000-7000-8000-0000000000aa' as Base58ID;
+    const CANONICAL_GAME = '018f6b00-0000-7000-8000-0000000000bb' as Base58ID;
+
+    function adoptApi(kind: 'player' | 'game', existingId: Base58ID): MockedApi {
+        const base = okApi();
+        const reject = kind === 'player' ? base.createPlayer : base.createGame;
+        reject.mockImplementation(async () => ({
+            ok: false,
+            status: 409,
+            message: 'duplicate name',
+            existingId,
+        }) as SyncCallResult<{ id: Base58ID }>);
+        return base;
+    }
+
+    it('adopts a canonical player: rewrites score keys, applies memberships to the holder, drops the item', async () => {
+        const api = adoptApi('player', CANONICAL_PLAYER);
+        const loserId = uuidv7() as Base58ID;
+        const matchId = uuidv7() as Base58ID;
+        const clubId = uuidv7() as Base58ID;
+        const store = makeStore({
+            players: [pendingPlayer(loserId, 'Вася', '2026-06-01T10:00:00Z', [clubId])],
+            matches: [{
+                clientId: matchId,
+                createdAt: '2026-06-01T11:00:00Z',
+                status: 'pending',
+                gameId: SERVER_GAME_ID,
+                score: { [loserId]: 10, [SERVER_PLAYER_ID]: 5 },
+                campArenaIds: [],
+            }],
+        });
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date('2026-06-12T00:00:00Z'));
+
+        // The membership goes to the canonical id, not the loser's.
+        expect(api.addClubMember).toHaveBeenCalledWith({ club_id: clubId, player_id: CANONICAL_PLAYER });
+        // The match went out referencing the canonical player, and the queued
+        // player is gone.
+        expect(api.addMatch).toHaveBeenCalledTimes(1);
+        expect(api.addMatch.mock.calls[0][0].score).toEqual({ [CANONICAL_PLAYER]: 10, [SERVER_PLAYER_ID]: 5 });
+        expect(outcome.store.players).toHaveLength(0);
+        expect(outcome.store.matches).toHaveLength(0);
+        expect(outcome.syncedCount).toBe(2); // adopted create + match
+    });
+
+    it('adopts a canonical game: rewrites pending match game references', async () => {
+        const api = adoptApi('game', CANONICAL_GAME);
+        const loserId = uuidv7() as Base58ID;
+        const matchId = uuidv7() as Base58ID;
+        const store = makeStore({
+            games: [pendingGame(loserId, 'Каркассон')],
+            matches: [{
+                clientId: matchId,
+                createdAt: '2026-06-01T11:00:00Z',
+                status: 'pending',
+                gameId: loserId,
+                score: { [SERVER_PLAYER_ID]: 10, 'other': 5 },
+                campArenaIds: [],
+            }],
+        });
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date('2026-06-12T00:00:00Z'));
+
+        expect(api.addMatch).toHaveBeenCalledTimes(1);
+        expect(api.addMatch.mock.calls[0][0].game_id).toBe(CANONICAL_GAME);
+        expect(outcome.store.games).toHaveLength(0);
+        expect(outcome.store.matches).toHaveLength(0);
+    });
+
+    it('rewrites the adopted id inside calculator_data (blind deep-walk)', async () => {
+        const api = adoptApi('player', CANONICAL_PLAYER);
+        const loserId = uuidv7() as Base58ID;
+        const matchId = uuidv7() as Base58ID;
+        const store = makeStore({
+            players: [pendingPlayer(loserId, 'Вася')],
+            matches: [{
+                clientId: matchId,
+                createdAt: '2026-06-01T11:00:00Z',
+                status: 'pending',
+                gameId: SERVER_GAME_ID,
+                score: { [loserId]: 10, [SERVER_PLAYER_ID]: 5 },
+                campArenaIds: [],
+                calculatorKind: 'skull_king',
+                // Real storage shape (ADR-09): player references are VALUES
+                // under player_id; rounds are positional — never keyed by id.
+                calculatorData: {
+                    schema_version: 1,
+                    players: [
+                        { player_id: loserId, name: 'Вася' },
+                        { player_id: SERVER_PLAYER_ID, name: 'Петя' },
+                    ],
+                    current_round: 1,
+                    current_player_index: 0,
+                    rounds: [[{ bid: 1, bonus: 0 }, null]],
+                },
+            }],
+        });
+
+        await syncOffline(store, api, noopPersist, () => store, () => new Date('2026-06-12T00:00:00Z'));
+
+        const sent = api.addMatch.mock.calls[0][0];
+        expect(sent.calculator_data).toEqual({
+            schema_version: 1,
+            players: [
+                { player_id: CANONICAL_PLAYER, name: 'Вася' },
+                { player_id: SERVER_PLAYER_ID, name: 'Петя' },
+            ],
+            current_round: 1,
+            current_player_index: 0,
+            rounds: [[{ bid: 1, bonus: 0 }, null]],
+        });
+        // The losing id is gone everywhere.
+        expect(JSON.stringify(sent.calculator_data)).not.toContain(loserId);
+    });
+
+    it('keeps the item queued with an error when a membership against the canonical id is rejected', async () => {
+        const api = adoptApi('player', CANONICAL_PLAYER);
+        api.addClubMember.mockImplementation(async () => ({
+            ok: false,
+            status: 404,
+            message: 'club not found',
+        }) as SyncCallResult<null>);
+        const loserId = uuidv7() as Base58ID;
+        const clubId = uuidv7() as Base58ID;
+        const store = makeStore({
+            players: [pendingPlayer(loserId, 'Вася', '2026-06-01T10:00:00Z', [clubId])],
+        });
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date('2026-06-12T00:00:00Z'));
+
+        // Visible and retryable: the next run re-adopts (a no-op) and retries
+        // the membership — the reference rewrite already happened.
+        expect(outcome.store.players).toHaveLength(1);
+        expect(outcome.store.players[0].status).toBe('error');
+        expect(outcome.store.players[0].error).toBe('club not found');
+    });
+});
+
+describe('unresolved-reference deferral (ADR-37)', () => {
+    it('defers a match whose player is still queued with an error instead of sending it', async () => {
+        const api = okApi();
+        api.createPlayer.mockImplementation(async () => ({
+            ok: false,
+            status: 400,
+            message: 'name is required',
+        }) as SyncCallResult<{ id: Base58ID }>);
+        const loserId = uuidv7() as Base58ID;
+        const matchId = uuidv7() as Base58ID;
+        const store = makeStore({
+            players: [pendingPlayer(loserId, 'Вася')],
+            matches: [{
+                clientId: matchId,
+                createdAt: '2026-06-01T11:00:00Z',
+                status: 'pending',
+                gameId: SERVER_GAME_ID,
+                score: { [loserId]: 10 },
+                campArenaIds: [],
+            }],
+        });
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date('2026-06-12T00:00:00Z'));
+
+        expect(api.addMatch).not.toHaveBeenCalled();
+        // The match stays pending with NO error badge — it is deferred, not
+        // rejected; the next run retries it after the player is repaired.
+        expect(outcome.store.matches).toHaveLength(1);
+        expect(outcome.store.matches[0].status).toBe('pending');
+        expect(outcome.store.matches[0].error).toBeUndefined();
+    });
+
+    it('syncs the deferred match once the dependency is repaired (next run)', async () => {
+        const api = okApi();
+        const loserId = uuidv7() as Base58ID;
+        const matchId = uuidv7() as Base58ID;
+        const firstRunStore = makeStore({
+            players: [pendingPlayer(loserId, 'Вася')],
+            matches: [{
+                clientId: matchId,
+                createdAt: '2026-06-01T11:00:00Z',
+                status: 'pending',
+                gameId: SERVER_GAME_ID,
+                score: { [loserId]: 10 },
+                campArenaIds: [],
+            }],
+        });
+
+        // Run 1: the player errors (no adoption) and the match defers.
+        api.createPlayer.mockImplementationOnce(async () => ({
+            ok: false,
+            status: 400,
+            message: 'name is required',
+        }) as SyncCallResult<{ id: Base58ID }>);
+        const first = await syncOffline(firstRunStore, api, noopPersist, () => firstRunStore, () => new Date('2026-06-12T00:00:00Z'));
+        expect(api.addMatch).not.toHaveBeenCalled();
+
+        // Run 2: the player syncs, the deferred match goes out after it.
+        const secondStore: OfflineStore = {
+            games: first.store.games,
+            players: first.store.players.map((p) => ({ ...p, status: 'pending' as const, error: undefined })),
+            matches: first.store.matches,
+        };
+        const second = await syncOffline(secondStore, api, noopPersist, () => secondStore, () => new Date('2026-06-12T00:00:00Z'));
+
+        expect(api.addMatch).toHaveBeenCalledTimes(1);
+        expect(second.store.matches).toHaveLength(0);
+        expect(second.syncedCount).toBe(2);
+    });
+});
+
+describe('op replay (ADR-37 phase 7)', () => {
+    const opFixture = (over: Record<string, unknown> = {}) => ({
+        entityId: '018f6b00-0000-7000-8000-0000000000e1' as Base58ID,
+        kind: 'player' as const,
+        op: 'update' as const,
+        createdAt: '2026-06-01T12:00:00Z',
+        status: 'pending' as const,
+        base: { name: 'Вася' },
+        patch: { name: 'Вася Обновлённый' },
+        ...over,
+    });
+
+    function okOpsApi() {
+        return {
+            getPlayer: vi.fn(async () => ({ ok: true, data: { name: 'Вася' } }) as SyncCallResult<{ name: string } | null>),
+            patchPlayer: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
+            deletePlayer: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
+            getGame: vi.fn(async () => ({ ok: true, data: { name: 'Каркассон' } }) as SyncCallResult<{ name: string } | null>),
+            patchGame: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
+            deleteGame: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
+            getMatch: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<ServerMatchFields | null>),
+            putMatch: vi.fn(async () => ({ ok: true, data: null }) as SyncCallResult<null>),
+        };
+    }
+
+    it('sends a clean player rename and drops the op', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        const store = makeStore({ players: [] });
+        store.ops = [opFixture()];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        expect(ops.patchPlayer).toHaveBeenCalledWith(store.ops![0].entityId, { name: 'Вася Обновлённый' });
+        expect(outcome.store.ops).toHaveLength(0);
+        expect(outcome.syncedCount).toBe(1);
+    });
+
+    it('turns a same-field race into a conflict instead of sending', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        // The server moved under the user: base "Вася" is now "Вася (новый)".
+        ops.getPlayer.mockImplementation(async () => ({ ok: true, data: { name: 'Вася (новый)' } }) as SyncCallResult<{ name: string } | null>);
+        const store = makeStore({});
+        store.ops = [opFixture()];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        expect(ops.patchPlayer).not.toHaveBeenCalled();
+        expect(outcome.store.ops).toHaveLength(1);
+        expect(outcome.store.ops![0].status).toBe('conflict');
+        expect(outcome.store.ops![0].conflict).toEqual([
+            { field: 'name', label: 'Имя', ours: 'Вася Обновлённый', theirs: 'Вася (новый)' },
+        ]);
+    });
+
+    it('takes the server value when the user did not touch the field', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        const store = makeStore({});
+        store.ops = [opFixture({ patch: { name: 'Вася' } })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        // Untouched → the server's value wins; the merged PATCH equals it.
+        expect(ops.patchPlayer).toHaveBeenCalledWith(store.ops![0].entityId, { name: 'Вася' });
+        expect(outcome.store.ops).toHaveLength(0);
+    });
+
+    it('deletes a player when the server still holds the observed value', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        const store = makeStore({});
+        store.ops = [opFixture({ op: 'delete', patch: undefined })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        expect(ops.deletePlayer).toHaveBeenCalledTimes(1);
+        expect(outcome.store.ops).toHaveLength(0);
+    });
+
+    it('guards a stale delete: the server value changed → conflict', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        ops.getPlayer.mockImplementation(async () => ({ ok: true, data: { name: 'Вася (новый)' } }) as SyncCallResult<{ name: string } | null>);
+        const store = makeStore({});
+        store.ops = [opFixture({ op: 'delete', patch: undefined })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        expect(ops.deletePlayer).not.toHaveBeenCalled();
+        expect(outcome.store.ops![0].status).toBe('conflict');
+        expect(outcome.store.ops![0].conflict![0].theirs).toBe('Вася (новый)');
+    });
+
+    it('drops a delete whose target is already gone (404)', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        ops.getPlayer.mockImplementation(async () => ({ ok: true, data: null }) as SyncCallResult<{ name: string } | null>);
+        const store = makeStore({});
+        store.ops = [opFixture({ op: 'delete', patch: undefined })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        expect(ops.deletePlayer).not.toHaveBeenCalled();
+        expect(outcome.store.ops).toHaveLength(0);
+    });
+
+    it('merges match score per key and sends the PUT with the merged map', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        const matchId = '018f6b00-0000-7000-8000-0000000000e2' as Base58ID;
+        ops.getMatch.mockImplementation(async () => ({
+            ok: true,
+            data: {
+                game_id: SERVER_GAME_ID,
+                date: '2026-06-01T11:00:00Z',
+                score: { p1: 10, p2: 25 },
+                camp_arena_ids: [],
+            },
+        }) as SyncCallResult<{ game_id: Base58ID; date: string; score: Record<string, number>; camp_arena_ids: Base58ID[] } | null>);
+        const store = makeStore({});
+        store.ops = [opFixture({
+            entityId: matchId,
+            kind: 'match',
+            tenant: '018f6b00-0000-7000-8000-000000000101' as Base58ID,
+            base: { game_id: SERVER_GAME_ID, date: '2026-06-01T11:00:00Z', score: { p1: 10, p2: 20 }, camp_arena_ids: [] },
+            patch: { game_id: SERVER_GAME_ID, date: '2026-06-01T11:00:00Z', score: { p1: 15, p2: 20 }, camp_arena_ids: [] },
+        })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        // p1: user changed, server == base → apply; p2: untouched → server's.
+        expect(ops.putMatch).toHaveBeenCalledWith(matchId, '018f6b00-0000-7000-8000-000000000101', expect.objectContaining({
+            score: { p1: 15, p2: 25 },
+        }));
+        expect(outcome.store.ops).toHaveLength(0);
+    });
+
+    it('conflicts a match on a per-key score race', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        ops.getMatch.mockImplementation(async () => ({
+            ok: true,
+            data: {
+                game_id: SERVER_GAME_ID,
+                date: '2026-06-01T11:00:00Z',
+                score: { p1: 12, p2: 25 },
+                camp_arena_ids: [],
+            },
+        }) as SyncCallResult<{ game_id: Base58ID; date: string; score: Record<string, number>; camp_arena_ids: Base58ID[] } | null>);
+        const store = makeStore({});
+        store.ops = [opFixture({
+            entityId: '018f6b00-0000-7000-8000-0000000000e2' as Base58ID,
+            kind: 'match',
+            base: { game_id: SERVER_GAME_ID, date: '2026-06-01T11:00:00Z', score: { p1: 10, p2: 20 }, camp_arena_ids: [] },
+            patch: { game_id: SERVER_GAME_ID, date: '2026-06-01T11:00:00Z', score: { p1: 15, p2: 20 }, camp_arena_ids: [] },
+        })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        expect(ops.putMatch).not.toHaveBeenCalled();
+        expect(outcome.store.ops![0].status).toBe('conflict');
+        expect(outcome.store.ops![0].conflict).toEqual([
+            { field: 'score:p1', label: 'Счёт (p1)', ours: '15', theirs: '12' },
+        ]);
+    });
+
+    it('leaves conflicted ops untouched for /offline resolution', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        const store = makeStore({});
+        store.ops = [opFixture({ status: 'conflict' as const, conflict: [{ field: 'name', label: 'Имя', ours: 'a', theirs: 'b' }] })];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        expect(ops.getPlayer).not.toHaveBeenCalled();
+        expect(outcome.store.ops).toHaveLength(1);
+        expect(outcome.store.ops![0].status).toBe('conflict');
+    });
+
+    it('drops an update whose target no longer exists (server 404)', async () => {
+        const api = okApi();
+        const ops = okOpsApi();
+        ops.getPlayer.mockImplementation(async () => ({ ok: false, status: 404, message: 'player not found' }) as SyncCallResult<{ name: string } | null>);
+        const store = makeStore({});
+        store.ops = [opFixture()];
+
+        const outcome = await syncOffline(store, api, noopPersist, () => store, () => new Date(), ops);
+
+        expect(ops.patchPlayer).not.toHaveBeenCalled();
+        expect(outcome.store.ops).toHaveLength(0);
     });
 });

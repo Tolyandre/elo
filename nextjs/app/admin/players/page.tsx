@@ -37,7 +37,7 @@ type RenameTarget = { id: Base58ID; name: string };
 export default function PlayersAdminPage() {
     const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
     const { isAuthenticated, canEdit, loading: meLoading } = useMe();
-    const { pendingPlayers, updatePendingPlayer, deletePendingPlayer } = useOffline();
+    const { pendingPlayers, offline, updatePendingPlayer, deletePendingPlayer, queuePlayerUpdate, queuePlayerDelete } = useOffline();
     const [nameQuery, setNameQuery] = useState<string>("");
     const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
@@ -74,6 +74,12 @@ export default function PlayersAdminPage() {
     const userMap = new Map((users ?? []).map(u => [u.id, u.name]));
 
     const del = useConfirmAction(async (p: DeleteTarget) => {
+        // Offline (ADR-37): queue a guarded delete op — the sync re-checks the
+        // entity server-side before removing it.
+        if (offline) {
+            queuePlayerDelete(p.id, { name: p.name });
+            return;
+        }
         await deletePlayerPromise(p.id);
         invalidatePlayers();
     });
@@ -100,6 +106,13 @@ export default function PlayersAdminPage() {
         }
         try {
             setActionLoading(true);
+            // Offline (ADR-37): queue an edit op with the base the form
+            // observed — the sync three-way-merges it server-side.
+            if (offline) {
+                queuePlayerUpdate(renameTarget.id, { name: renameTarget.name }, { name: next });
+                setRenameTarget(null);
+                return;
+            }
             await patchPlayerPromise(renameTarget.id, { name: next });
             invalidatePlayers();
             setRenameTarget(null);

@@ -4,7 +4,31 @@ import { uuidv7 } from "uuidv7";
 import { Base58ID, encodeId } from "../id";
 import type { GameMode, MatchMode } from "../game-modes";
 
-export type SyncStatus = "pending" | "syncing" | "error";
+/**
+ * Lifecycle of a queued item. `conflict` (ADR-37) marks an item the sync
+ * engine could not merge: at least one field the user changed was also
+ * changed server-side. The item waits on the /offline queue page, where the
+ * user resolves each field (keep mine / take the server's) at their leisure —
+ * sync never opens merge dialogs mid-UX.
+ */
+export type SyncStatus = "pending" | "syncing" | "error" | "conflict";
+
+/**
+ * One unresolved field of a conflicted item (ADR-37). `ours`/`theirs` carry
+ * raw values in a lossless string encoding (names as-is, numbers as decimal
+ * strings, dates as ISO) so a resolution can be written back verbatim; the
+ * queue page formats them for display.
+ */
+export type PendingConflictField = {
+    /** Machine key: "name" for players/games; "date", "score:<playerId>", … for matches. */
+    field: string;
+    /** Human-readable field label shown on the queue page. */
+    label: string;
+    /** The value this device queued. */
+    ours: string;
+    /** The value the server currently holds. */
+    theirs: string;
+};
 
 type PendingBase = {
     /** Final UUIDv7 id; used both as the local id and the server `id` on sync. */
@@ -13,6 +37,12 @@ type PendingBase = {
     createdAt: string;
     status: SyncStatus;
     error?: string;
+    /**
+     * Unresolved merge fields — present only while `status` is "conflict"
+     * (ADR-37). Shrinks as the user resolves fields on the queue page; the
+     * item returns to "pending" (and re-syncs) once the list is empty.
+     */
+    conflict?: PendingConflictField[];
 };
 
 export type PendingPlayer = PendingBase & {
@@ -96,6 +126,35 @@ export type OfflineStore = {
     games: PendingGame[];
     players: PendingPlayer[];
     matches: PendingMatch[];
+    /**
+     * Edits and deletes of SAVED entities, queued while offline (ADR-37).
+     * One op per entity id — a later op replaces an earlier one (last write
+     * wins within a device). Ops carry `base` (the entity as the form
+     * observed it) so the sync can three-way-merge against the server.
+     */
+    ops?: PendingOp[];
+};
+
+/** The entity kind an op targets. Matches merge at score-key granularity. */
+export type OpEntityKind = "player" | "game" | "match";
+
+export type PendingOp = {
+    /** The saved entity's id — final, never rewritten. */
+    entityId: Base58ID;
+    kind: OpEntityKind;
+    op: "update" | "delete";
+    /** ISO time of queueing; orders ops deterministically. */
+    createdAt: string;
+    status: SyncStatus;
+    error?: string;
+    /** Match updates only: the community the PUT is scoped to (ADR-36). */
+    tenant?: Base58ID;
+    /** update only: the entity fields as the form observed them (the merge base). */
+    base?: Record<string, unknown>;
+    /** update only: the fields the user changed. */
+    patch?: Record<string, unknown>;
+    /** Unresolved merge fields — present only while status is "conflict". */
+    conflict?: PendingConflictField[];
 };
 
 export function newOfflineId(): Base58ID {
@@ -103,5 +162,5 @@ export function newOfflineId(): Base58ID {
 }
 
 export function emptyOfflineStore(): OfflineStore {
-    return { games: [], players: [], matches: [] };
+    return { games: [], players: [], matches: [], ops: [] };
 }

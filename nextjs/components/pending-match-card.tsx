@@ -2,15 +2,14 @@
 
 import React, { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { usePlayers } from "@/app/players/PlayersContext";
-import { useGames } from "@/app/gamesContext";
-import { useOffline } from "@/app/offline/OfflineContext";
+import { useNameResolver } from "@/hooks/useNameResolver";
 import { PendingMatch } from "@/lib/offline/types";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
 import { ClubIcons } from "@/components/player-name";
 import { CloudOff } from "lucide-react";
+import { SplitSquareHorizontal } from "lucide-react";
 import { formatDateTime } from "@/lib/datetime";
 
 // Card for a match created offline and not yet synced: no Elo data, with a
@@ -18,34 +17,19 @@ import { formatDateTime } from "@/lib/datetime";
 // delete actions live (delete is the escape hatch when the server rejects the
 // item after reconnecting).
 export function PendingMatchCard({ match, clickable = false }: { match: PendingMatch; clickable?: boolean }) {
-    const { playerMap, playerDisplayName } = usePlayers();
-    const { games } = useGames();
-    const { pendingPlayers, pendingGames } = useOffline();
+    const { resolvePlayer, resolveGame } = useNameResolver();
     const router = useRouter();
 
-    const gameName = useMemo(() => {
-        const pending = pendingGames.find((g) => g.clientId === match.gameId);
-        if (pending) return `${pending.name} (офлайн)`;
-        return games.find((g) => g.id === match.gameId)?.name ?? "Неизвестная игра";
-    }, [match.gameId, games, pendingGames]);
+    const gameName = useMemo(() => resolveGame(match.gameId), [match.gameId, resolveGame]);
 
     const players = useMemo(() => {
         const entries: [string, number][] = match.mode === "coop"
             ? (match.playerIds ?? Object.keys(match.score)).map((id) => [id, 0])
             : Object.entries(match.score);
         return entries
-            .map(([playerId, score]) => {
-                const pending = pendingPlayers.find((p) => p.clientId === playerId);
-                const ctxPlayer = playerMap.get(playerId);
-                const name = pending
-                    ? `${pending.name} (офлайн)`
-                    : ctxPlayer
-                        ? playerDisplayName(ctxPlayer)
-                        : "Unknown";
-                return { playerId, name, score };
-            })
+            .map(([playerId, score]) => ({ playerId, name: resolvePlayer(playerId), score }))
             .sort((a, b) => b.score - a.score);
-    }, [match.score, match.mode, match.playerIds, pendingPlayers, playerMap, playerDisplayName]);
+    }, [match.score, match.mode, match.playerIds, resolvePlayer]);
 
     const createdAt = new Date(match.createdAt);
 
@@ -70,6 +54,11 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                             <Badge variant="destructive">
                                 <CloudOff />
                                 ошибка: {match.error}
+                            </Badge>
+                        ) : match.status === "conflict" ? (
+                            <Badge variant="destructive">
+                                <SplitSquareHorizontal />
+                                конфликт
                             </Badge>
                         ) : (
                             <Badge variant="secondary">
@@ -126,6 +115,11 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                         <Badge variant="destructive">
                             <CloudOff />
                             ошибка: {match.error}
+                        </Badge>
+                    ) : match.status === "conflict" ? (
+                        <Badge variant="destructive">
+                            <SplitSquareHorizontal />
+                            конфликт
                         </Badge>
                     ) : (
                         <Badge variant="secondary">

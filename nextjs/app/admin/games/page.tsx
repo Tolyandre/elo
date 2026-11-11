@@ -46,7 +46,7 @@ type GameRow = GameListItem;
 export default function GamesAdminPage() {
     const { games: gamesFromContext, invalidate: invalidateGames } = useGames();
     const { isAuthenticated, canEdit, loading: meLoading } = useMe();
-    const { pendingGames, offline, updatePendingGame, deletePendingGame } = useOffline();
+    const { pendingGames, offline, updatePendingGame, deletePendingGame, queueGameDelete } = useOffline();
     const [search, setSearch] = useState<string>("");
     const [filterTagIds, setFilterTagIds] = useState<Set<Base58ID>>(new Set());
     const [tab, setTab] = useState("main");
@@ -55,6 +55,12 @@ export default function GamesAdminPage() {
     const [sortBy, setSortBy] = useState<GameSortMode>("recent");
 
     const del = useConfirmAction(async (g: GameRow) => {
+        // Offline (ADR-37): queue a guarded delete op — the sync re-checks the
+        // entity server-side before removing it.
+        if (offline) {
+            queueGameDelete(g.id, { name: g.name });
+            return;
+        }
         await deleteGamePromise(g.id);
         invalidateGames();
     });

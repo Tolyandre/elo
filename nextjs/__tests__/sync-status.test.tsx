@@ -6,27 +6,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 
-// jsdom lacks the layout APIs Radix Popover touches while positioning content.
-Element.prototype.scrollIntoView = () => {};
-class ResizeObserverStub {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-}
-(globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
-
 const mocks = vi.hoisted(() => ({
     state: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/app/offline/OfflineContext", () => ({
     useOffline: () => mocks.state,
-}));
-
-// LoginLink (rendered when authRequired) imports the api client, which throws
-// without the inlined base URL.
-vi.mock("@/app/api", () => ({
-    EloWebServiceBaseUrl: "http://api.test",
 }));
 
 const { SyncStatus } = await import("@/components/sync-status");
@@ -37,6 +22,7 @@ const baseState = {
     pendingGames: [],
     pendingCount: 0,
     errorCount: 0,
+    conflictCount: 0,
     offline: false,
     isOnline: true,
     apiReachable: true,
@@ -55,14 +41,9 @@ function renderSyncStatus() {
     });
     return {
         text: () => document.body.textContent ?? "",
-        open: () => {
-            const trigger = container.querySelector("button");
-            if (!trigger) throw new Error("SyncStatus trigger not rendered");
-            act(() => {
-                trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            });
-        },
-        cloudOffIcon: () => document.body.querySelector(".lucide-cloud-off"),
+        link: () => container.querySelector("a"),
+        badge: () => container.querySelector('[data-slot="badge"]'),
+        cloudOffIcon: () => container.querySelector(".lucide-cloud-off"),
         unmount() {
             act(() => {
                 root.unmount();
@@ -80,36 +61,43 @@ describe("SyncStatus", () => {
     it("renders nothing when online, data fresh and nothing pending", () => {
         const view = renderSyncStatus();
         expect(view.cloudOffIcon()).toBeNull();
-        expect(view.text()).not.toContain("Статус сохранения");
+        expect(view.link()).toBeNull();
         view.unmount();
     });
 
-    it("shows the crossed cloud and slow-connection wording when reads come from the cache", () => {
+    it("links to the /offline queue page when offline", () => {
+        mocks.state = { ...baseState, offline: true, isOnline: false };
+        const view = renderSyncStatus();
+        expect(view.cloudOffIcon()).not.toBeNull();
+        expect(view.link()?.getAttribute("href")).toBe("/offline");
+        view.unmount();
+    });
+
+    it("keeps the crossed cloud for cached reads between pings", () => {
         mocks.state = { ...baseState, dataFromCache: true };
         const view = renderSyncStatus();
         expect(view.cloudOffIcon()).not.toBeNull();
-        view.open();
-        expect(view.text()).toContain("Медленное соединение");
-        expect(view.text()).toContain("кэша и могут быть устаревшими");
+        expect(view.link()?.getAttribute("href")).toBe("/offline");
         view.unmount();
     });
 
-    it("does not show the slow-connection wording when fully offline (other wording covers it)", () => {
-        mocks.state = { ...baseState, offline: true, isOnline: false, dataFromCache: true };
+    it("shows a secondary count badge for a healthy pending queue", () => {
+        mocks.state = { ...baseState, pendingCount: 3 };
         const view = renderSyncStatus();
-        expect(view.cloudOffIcon()).not.toBeNull();
-        view.open();
-        expect(view.text()).toContain("Нет сети");
-        expect(view.text()).not.toContain("Медленное соединение");
+        expect(view.badge()?.textContent).toBe("3");
+        expect(view.badge()?.className).toContain("bg-secondary");
         view.unmount();
     });
 
-    it("keeps the server-down wording when the API is unreachable", () => {
-        mocks.state = { ...baseState, offline: true, apiReachable: false, dataFromCache: true };
+    it("marks the badge destructive when items have errors or conflicts", () => {
+        mocks.state = { ...baseState, pendingCount: 2, errorCount: 1 };
         const view = renderSyncStatus();
-        view.open();
-        expect(view.text()).toContain("Сервер API недоступен");
-        expect(view.text()).not.toContain("Медленное соединение");
+        expect(view.badge()?.className).toContain("bg-destructive");
         view.unmount();
+
+        mocks.state = { ...baseState, pendingCount: 2, conflictCount: 1 };
+        const view2 = renderSyncStatus();
+        expect(view2.badge()?.className).toContain("bg-destructive");
+        view2.unmount();
     });
 });

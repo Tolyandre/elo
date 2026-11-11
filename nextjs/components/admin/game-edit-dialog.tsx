@@ -65,7 +65,7 @@ export function GameEditDialog({
     onClose: () => void;
     onSaved: () => void;
 }) {
-    const { addPendingGame, pendingGames } = useOffline();
+    const { addPendingGame, pendingGames, offline, queueGameUpdate } = useOffline();
     const { games, invalidate: invalidateGames } = useGames();
     const [alias, setAlias] = useState(game?.alias ?? "");
     const [nameEn, setNameEn] = useState(game?.name_en ?? "");
@@ -123,6 +123,26 @@ export function GameEditDialog({
         }
         setSaving(true);
         try {
+            // Offline (ADR-37 phase 7): queue a metadata edit op — the base is
+            // the metadata as the dialog opened, the patch what the user
+            // changed; the sync three-way-merges against the server.
+            if (offline) {
+                const meta = metadata();
+                queueGameUpdate(
+                    game.id,
+                    {
+                        alias: game.alias ?? null,
+                        name_en: game.name_en ?? null,
+                        name_ru: game.name_ru ?? null,
+                        bgg_ref: game.bgg_ref ?? null,
+                        tesera_ref: game.tesera_ref ?? null,
+                        game_mode: game.game_mode,
+                    },
+                    { ...meta },
+                );
+                onSaved();
+                return;
+            }
             await patchGamePromise(game.id, metadata());
             onSaved();
         } catch {

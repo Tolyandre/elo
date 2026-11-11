@@ -26,6 +26,7 @@ import { useMatches } from "@/app/matches/MatchesContext"
 import { useMe } from "@/app/meContext"
 import { useOffline } from "@/app/offline/OfflineContext"
 import { useFavoriteGames } from "@/app/useFavoriteGames"
+import { useNameResolver } from "@/hooks/useNameResolver"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { buildGameGroups, buildGameTabs, type GameGroup, type GameTab } from "@/lib/game-groups"
 import type { GameListItem } from "@/app/api"
@@ -87,9 +88,8 @@ export function GameCombobox({
     };
   }, [pendingGames, filterGame]);
 
-  const displayName = (id: string) =>
-    games.find((game) => game.id === id)?.name
-    ?? pendingGames.find((g) => g.clientId === id)?.name;
+  // The shared resolver (ADR-37): pending → live list → replica → unknown.
+  const displayName = useNameResolver().resolveGame;
 
   const handleSelect = (currentValue: string) => {
     const next = currentValue === value ? "" : currentValue;

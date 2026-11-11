@@ -40,6 +40,7 @@ export const PAGES = [
     "/matches/view",
     "/new",
     "/oauth2-callback",
+    "/offline",
     "/players/collection",
     "/players/view",
     "/settings",

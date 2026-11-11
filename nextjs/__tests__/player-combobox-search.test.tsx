@@ -32,6 +32,14 @@ vi.mock("@/app/players/PlayersContext", () => ({
         playerDisplayName: (p: { name: string }) => p.name,
     }),
 }));
+// The name resolver (imported by the combobox) pulls the game/offline
+// contexts in, whose modules reach the real api client otherwise.
+vi.mock("@/app/gamesContext", () => ({
+    useGames: () => ({ games: [] }),
+}));
+vi.mock("@/app/offline/OfflineContext", () => ({
+    useOffline: () => ({ pendingPlayers: [], pendingGames: [] }),
+}));
 vi.mock("@/app/clubsContext", () => ({
     useClubs: () => ({
         clubs: state.clubs,

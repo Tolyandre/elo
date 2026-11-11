@@ -8,6 +8,7 @@ import { useGames } from "../gamesContext";
 import { useMatches } from "./MatchesContext";
 import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
+import { useNameResolver } from "@/hooks/useNameResolver";
 import { useTenantScope, useTenantMembership } from "../tenantScopeContext";
 import { participantsMembershipIssue } from "@/lib/tenant-members";
 import { Match, updateMatchPromise } from "../api";
@@ -71,9 +72,11 @@ export function MatchFormAuthAlerts() {
 }
 
 export function MatchForm({ editPending, editSaved }: { editPending?: PendingMatch; editSaved?: Match }) {
-    const { players, playerDisplayName, loading } = usePlayers();
+    const { loading } = usePlayers();
     const { games } = useGames();
-    const { pendingPlayers, pendingGames, offline, isSyncing, submitMatch, updatePendingMatch } = useOffline();
+    const { pendingGames, offline, isSyncing, submitMatch, updatePendingMatch, queueMatchUpdate } = useOffline();
+    // The shared resolver (ADR-37): pending → live list → replica → Unknown.
+    const { resolvePlayer } = useNameResolver();
     const isEdit = !!editPending || !!editSaved;
     // Block saving an offline (pending) edit while a sync is running — the sync
     // could remove/rewrite this very match mid-flight. Creating and editing saved
@@ -180,12 +183,8 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         sessionStorage.removeItem(`match-form:${draftKey}:game-won`);
     };
 
-    const resolvePlayerName = (id: string): string => {
-        const pending = pendingPlayers.find((p) => p.clientId === id);
-        if (pending) return `${pending.name} (офлайн)`;
-        const found = players.find((pl) => pl.id === id);
-        return found ? playerDisplayName(found) : "Unknown";
-    };
+    // The shared resolver (ADR-37): pending → live list → replica → Unknown.
+    const resolvePlayerName = resolvePlayer;
 
     // Display name for a participant, resolved at render time from the current
     // players/pending context (with the stored snapshot as a last-resort
@@ -368,6 +367,41 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     setBottomErrorMessage("Выберите сообщество");
                     return;
                 }
+                // Offline (ADR-37 phase 7): queue an edit op — the base is the
+                // match as the form prefilled it, the patch what the user
+                // changed; the sync three-way-merges against the server before
+                // sending. The tournament association is not edited offline
+                // (slot associations lock server-side); omitting it keeps the
+                // stored state.
+                if (offline) {
+                    const baseScore = Object.fromEntries(
+                        Object.entries(editSaved.score).map(([pid, data]) => [pid, data.score ?? 0]),
+                    );
+                    queueMatchUpdate(editSaved.id, tenant.id, {
+                        game_id: editSaved.game_id,
+                        date: editSaved.dateISO ?? (editSaved.date ? new Date(editSaved.date).toISOString() : ""),
+                        score: baseScore,
+                        camp_arena_ids: editSaved.camps.map((c) => c.id),
+                        ...(editSaved.mode
+                            ? {
+                                  mode: editSaved.mode,
+                                  player_ids: Object.keys(baseScore),
+                                  ...(editSaved.game_score != null ? { game_score: editSaved.game_score } : {}),
+                                  ...(editSaved.game_won != null ? { game_won: editSaved.game_won } : {}),
+                              }
+                            : {}),
+                    }, {
+                        game_id: selectedGameId,
+                        date: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
+                        ...(coopMode
+                            ? { ...coopFields, camp_arena_ids: [] as Base58ID[] }
+                            : { score, camp_arena_ids: campIdsToSubmit() }),
+                    });
+                    clearDraft();
+                    toast.success("Изменение сохранено на устройстве — отправится, когда появится связь");
+                    router.push(`/matches/view?id=${editSaved.id}&tenant=${tenant.id}`);
+                    return;
+                }
                 await updateMatchPromise(editSaved.id, tenant.id, {
                     game_id: selectedGameId,
                     // Untouched date → original full-precision instant (edit-date.ts).
@@ -448,11 +482,13 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
             {offline && (editSaved ? (
-                <Alert variant="destructive">
+                <Alert>
                     <CloudOff />
-                    <AlertTitle>Нет связи с сервером — редактирование сохранённой партии недоступно</AlertTitle>
+                    <AlertTitle>Офлайн — правка сохранённой партии сохранится на устройстве</AlertTitle>
                     <AlertDescription>
-                        Попробуйте снова, когда соединение восстановится.
+                        Изменение отправится на сервер автоматически, когда связь восстановится. Если партию
+                        тем временем правили на другом устройстве, конфликтные поля разрешатся на странице
+                        офлайн-очереди.
                     </AlertDescription>
                 </Alert>
             ) : (

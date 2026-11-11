@@ -5,34 +5,38 @@ import {
     ReactNode,
     createContext,
     useCallback,
+    useMemo,
     useContext,
     useEffect,
     useRef,
     useState,
 } from "react";
 import { usePathname } from "next/navigation";
-import { client, pingApiPromise } from "../api";
+import { ApiError, client, getGamesPromise, getPlayersPromise, pingApiPromise, unwrap } from "../api";
 import { useGames } from "../gamesContext";
 import { useMatches } from "../matches/MatchesContext";
 import { useMe } from "../meContext";
 import { usePlayers } from "../players/PlayersContext";
 import { useClubs } from "../clubsContext";
-import { hasNewArrivals, SyncApi, SyncCallResult, syncOffline } from "@/lib/offline/sync";
+import { hasNewArrivals, OpsApi, SyncApi, SyncCallResult, syncOffline } from "@/lib/offline/sync";
 import type { MatchMode } from "@/lib/game-modes";
 import {
     OfflineStore,
+    PendingConflictField,
     PendingGame,
     PendingMatch,
+    PendingOp,
     PendingPlayer,
+    SyncStatus,
     emptyOfflineStore,
     newOfflineId,
 } from "@/lib/offline/types";
+import { applyResolutions, parseValue } from "@/lib/offline/merge";
+import { hasPendingWrites, readStore, subscribeStore, writeEntities, writeStore } from "@/lib/offline/db";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useTenantScope } from "../tenantScopeContext";
 import { parseSwMessage } from "@/lib/sw-messages";
 import { emitDataChange } from "@/lib/live-data";
-
-const STORAGE_KEY = "offline-pending-v1";
 
 export type SubmitMatchResult = { id: string };
 
@@ -45,8 +49,12 @@ type  OfflineState = {
     pendingMatches: PendingMatch[];
     pendingPlayers: PendingPlayer[];
     pendingGames: PendingGame[];
+    /** Edits/deletes of saved entities queued while offline (ADR-37 phase 7). */
+    ops: PendingOp[];
     pendingCount: number;
     errorCount: number;
+    /** Items waiting for a field-level merge decision on the /offline page (ADR-37). */
+    conflictCount: number;
     /** True once the store has been hydrated from localStorage after mount. */
     ready: boolean;
     /**
@@ -102,78 +110,195 @@ type  OfflineState = {
         calculator_data?: Record<string, never> | null;
     }) => Promise<SubmitMatchResult>;
     syncNow: () => void;
+    /**
+     * Applies the user's per-field choices for a conflicted item (ADR-37).
+     * `resolutions` maps a `PendingConflictField.field` key to the chosen raw
+     * value (either `ours` or `theirs` of that field). Each resolved field
+     * disappears from the item's conflict list; when the last one is gone the
+     * item returns to "pending" and the next sync retries it with the merged
+     * content. Match score fields ("score:<playerId>") merge per key into the
+     * existing score map — unresolved players keep their queued scores.
+     */
+    resolvePendingConflict: (
+        kind: "match" | "player" | "game",
+        clientId: Base58ID,
+        resolutions: Record<string, string>,
+    ) => void;
+    /**
+     * Queues an edit of a SAVED player/game/match (ADR-37 phase 7). The op
+     * carries the base the form observed and the patch the user made; the
+     * sync three-way-merges against the server before sending. One op per
+     * entity — queueing again replaces the earlier one.
+     */
+    queuePlayerUpdate: (entityId: Base58ID, base: { name: string }, patch: { name: string }) => void;
+    queuePlayerDelete: (entityId: Base58ID, base: { name: string }) => void;
+    queueGameUpdate: (entityId: Base58ID, base: Record<string, unknown>, patch: Record<string, unknown>) => void;
+    queueGameDelete: (entityId: Base58ID, base: { name: string }) => void;
+    queueMatchUpdate: (
+        entityId: Base58ID,
+        tenant: Base58ID | null,
+        base: Record<string, unknown>,
+        patch: Record<string, unknown>,
+    ) => void;
+    /** Drops a queued op (the user gives up on an errored/conflicted edit or delete). */
+    deleteOp: (entityId: Base58ID) => void;
+    /**
+     * Applies the user's per-field choices for a conflicted op: the chosen
+     * value becomes the patch and the server's last-known value the base, so
+     * the next sync merges cleanly. Match score fields
+     * ("score:<playerId>") merge per key into the patch's score map.
+     */
+    resolveOpConflict: (entityId: Base58ID, resolutions: Record<string, string>) => void;
 };
 
 const OfflineContext = createContext<OfflineState | undefined>(undefined);
 
 /**
- * Read the persisted offline store. A store that fails to parse is dropped and
- * the queue starts empty: browsers do not corrupt stored JSON, and there is no
- * manual repair step on mobile. The persisted shape changes only additively —
- * a new optional field ships with a loader backfill (below), breaking reshapes
- * are split across releases (ADR-16) — so no versioned migration layer here.
- * Exported so non-React code can observe queue state (e.g. waiting for a
- * just-queued match to sync).
+ * Read the persisted offline queue (ADR-37: IndexedDB via Dexie, with the
+ * one-time ADR-16 localStorage migration inside). Exported so non-React code
+ * can observe queue state (e.g. the table-session's sync wait) — now async,
+ * as IndexedDB reads are.
  */
-export function loadOfflineStore(): OfflineStore {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return emptyOfflineStore();
-        const parsed = JSON.parse(raw) as Partial<OfflineStore>;
-        // Backfill fields added after the initial offline store version, so
-        // older localStorage entries don't break the sync engine or UI. Parse
-        // loosely (the on-disk shape may predate these fields) then default.
-        const rawPlayers = (parsed.players ?? []) as Array<Partial<PendingPlayer>>;
-        const players: PendingPlayer[] = rawPlayers.map((p) => ({
-            clientId: p.clientId!,
-            createdAt: p.createdAt!,
-            status: p.status ?? "pending",
-            ...(p.status === "error" && typeof p.error === "string" ? { error: p.error } : {}),
-            name: p.name!,
-            clubIds: p.clubIds ?? [],
-        }));
-        const rawMatches = (parsed.matches ?? []) as Array<Partial<PendingMatch>>;
-        const matches: PendingMatch[] = rawMatches.map((m) => ({
-            clientId: m.clientId!,
-            createdAt: m.createdAt!,
-            status: m.status ?? "pending",
-            ...(m.status === "error" && typeof m.error === "string" ? { error: m.error } : {}),
-            gameId: m.gameId!,
-            score: m.score!,
-            // Deliberately not mapped from the old `tournamentIds` field: camp
-            // arena ids are a different keyspace than the removed tournament
-            // ids (ADR-27), so queued tournaments are dropped.
-            campArenaIds: m.campArenaIds ?? [],
-            calculatorKind: m.calculatorKind ?? null,
-            calculatorData: m.calculatorData ?? null,
-        }));
-        const rawGames = (parsed.games ?? []) as Array<Partial<PendingGame>>;
-        const games: PendingGame[] = rawGames.map((g) => ({
-            clientId: g.clientId!,
-            createdAt: g.createdAt!,
-            status: g.status ?? "pending",
-            ...(g.status === "error" && typeof g.error === "string" ? { error: g.error } : {}),
-            name: g.name!,
-            tagIds: g.tagIds ?? [],
-            meta: g.meta,
-        }));
-        return { games, players, matches };
-    } catch {
-        // corrupted store — drop it and start with an empty queue
-    }
-    return emptyOfflineStore();
+export const loadOfflineStore = readStore;
+
+// ─── Op replay API (ADR-37 phase 7) ──────────────────────────────────────────
+
+// The plain number the merge compares — the API's score row is a settlement
+// record whose `.score` carries the player's points.
+function plainScore(match: { score: Record<string, { score: number | null }> }): Record<string, number> {
+    return Object.fromEntries(
+        Object.entries(match.score).map(([key, value]) => [key, value.score ?? 0]),
+    );
 }
 
-function persistStore(store: OfflineStore) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+// fresh GETs give the merge its "theirs"; writes apply the merged result.
+// Errors follow the sync contract: { ok: false } for HTTP errors, throw for
+// network failure.
+const opsApi: OpsApi = {
+    // There is no GET single player — the global catalog stands in; a missing
+    // id resolves null (the engine drops the op as "already gone"). Reads
+    // unwrap the { status, data } envelope.
+    async getPlayer(id) {
+        // The generated error type for this read is `never` (no `content` on
+        // the error responses), so go through unwrap/ApiError like the api
+        // helpers do.
+        try {
+            const body = await unwrap(client.GET("/players", { params: { query: {} } }));
+            const found = body.data.find((p) => p.id === id);
+            return { ok: true, data: found ? { name: found.name } : null };
+        } catch (err) {
+            if (err instanceof ApiError) return { ok: false, status: err.status, message: err.message };
+            throw err;
+        }
+    },
+    async patchPlayer(id, body) {
+        const { error, response } = await client.PATCH("/players/{id}", { params: { path: { id } }, body });
+        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        return { ok: true, data: null };
+    },
+    async deletePlayer(id) {
+        const { error, response } = await client.DELETE("/players/{id}", { params: { path: { id } } });
+        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        return { ok: true, data: null };
+    },
+    async getGame(id) {
+        try {
+            const body = await unwrap(client.GET("/games", {}));
+            const found = body.data.games.find((g) => g.id === id);
+            return { ok: true, data: found ? { name: found.name } : null };
+        } catch (err) {
+            if (err instanceof ApiError) return { ok: false, status: err.status, message: err.message };
+            throw err;
+        }
+    },
+    async patchGame(id, body) {
+        const { error, response } = await client.PATCH("/games/{id}", { params: { path: { id } }, body });
+        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        return { ok: true, data: null };
+    },
+    async deleteGame(id) {
+        const { error, response } = await client.DELETE("/games/{id}", { params: { path: { id } } });
+        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        return { ok: true, data: null };
+    },
+    async getMatch(id) {
+        // Reads are tenant-scoped (ADR-36) — the tenant in force now scopes
+        // the settlement columns, which the merge does not use anyway.
+        const { data, error, response } = await client.GET("/matches/{id}", {
+            params: { path: { id }, query: { tenant: tenantFallbackRef.current ?? "" } },
+        });
+        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        const match = data.data;
+        const score = plainScore(match);
+        return {
+            ok: true,
+            data: {
+                game_id: match.game_id,
+                date: match.date,
+                score,
+                camp_arena_ids: (match.camps ?? []).map((c) => c.id),
+                ...(match.mode ? { mode: match.mode } : {}),
+                // Coop participants are the zero-scored score keys server-side.
+                ...(match.mode === "coop" ? { player_ids: Object.keys(score) as Base58ID[] } : {}),
+                ...(match.game_score != null ? { game_score: match.game_score } : {}),
+                ...(match.game_won != null ? { game_won: match.game_won } : {}),
+            },
+        };
+    },
+    async putMatch(id, tenant, body) {
+        // The update is tenant-scoped (ADR-36); the op carries the tenant the
+        // match belonged to when the edit was queued.
+        if (!tenant) {
+            return { ok: false, status: 400, message: "Не указано сообщество — сохраните партию заново" };
+        }
+        const { error, response } = await client.PUT("/matches/{id}", {
+            params: { path: { id }, query: { tenant } },
+            body,
+        });
+        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        return { ok: true, data: null };
+    },
+};
+
+// Returns a conflicted item with its resolved conflict fields removed
+// (ADR-37): once the last field is resolved the item returns to "pending"
+// and the next sync retries it with the merged content.
+function withResolutions<
+    T extends { status: SyncStatus; error?: string; conflict?: PendingConflictField[] },
+>(item: T, resolutions: Record<string, string>): T {
+    const remaining = (item.conflict ?? []).filter((f) => !(f.field in resolutions));
+    return {
+        ...item,
+        status: remaining.length > 0 ? "conflict" : "pending",
+        error: undefined,
+        conflict: remaining.length > 0 ? remaining : undefined,
+    };
 }
 
 // openapi-fetch returns { error } for HTTP errors and throws (TypeError) on network failure —
 // exactly the contract syncOffline expects.
+// A create-409 body may name the entity to adopt (ADR-37); openapi-fetch
+// types the error union with ApiError | DuplicateNameError, so the field is
+// narrowed with `in` before use.
+function errorResult(error: { message?: string; existing_id?: Base58ID }, status: number): {
+    ok: false;
+    status: number;
+    message: string;
+    existingId?: Base58ID;
+} {
+    return {
+        ok: false,
+        status,
+        message: error.message ?? `Ошибка ${status}`,
+        // `in` narrows DuplicateNameError (the holder's id) from ApiError.
+        ...("existing_id" in error && error.existing_id ? { existingId: error.existing_id } : {}),
+    };
+}
+
 const syncApi: SyncApi = {
     async createGame(body): Promise<SyncCallResult<{ id: Base58ID }>> {
         const { data, error, response } = await client.POST("/games", { body });
-        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        if (error) return errorResult(error, response.status);
         return { ok: true, data: { id: data.data.id } };
     },
     async addGameTag({ game_id, tag_id }): Promise<SyncCallResult<null>> {
@@ -186,7 +311,7 @@ const syncApi: SyncApi = {
     },
     async createPlayer(body): Promise<SyncCallResult<{ id: Base58ID }>> {
         const { data, error, response } = await client.POST("/players", { body });
-        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        if (error) return errorResult(error, response.status);
         return { ok: true, data: { id: data.data.id } };
     },
     async addClubMember({ club_id, player_id }): Promise<SyncCallResult<null>> {
@@ -242,7 +367,8 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         storeRef.current = store;
     }, [store]);
 
-    const pendingCount = store.games.length + store.players.length + store.matches.length;
+    const ops = useMemo(() => store.ops ?? [], [store.ops]);
+    const pendingCount = store.games.length + store.players.length + store.matches.length + ops.length;
     const pendingCountRef = useRef(pendingCount);
     useEffect(() => {
         pendingCountRef.current = pendingCount;
@@ -254,28 +380,38 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     const { invalidate: invalidateGames } = useGames();
     const { invalidate: invalidateClubs } = useClubs();
 
-    // localStorage is unavailable during static export rendering — hydrate after mount.
+    // IndexedDB is unavailable during static export rendering — hydrate after
+    // mount. The read runs the one-time ADR-16 localStorage migration.
     useEffect(() => {
-        /* eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe hydration */
-        setStore(loadOfflineStore());
-        setLoaded(true);
+        let cancelled = false;
+        readStore().then((store) => {
+            if (cancelled) return;
+            setStore(store);
+            storeRef.current = store;
+            setLoaded(true);
+        });
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     // Another tab wrote the offline store (creates from any tab queue here now,
     // even while online) — adopt its state so this tab's UI follows. Adoption
     // is safe mid-sync too: engine writes are merged over the live store (see
     // syncOffline), so a run can no longer clobber items queued or deleted in
-    // another tab while it was in flight.
+    // another tab while it was in flight. This tab's own writes are skipped by
+    // the snapshot comparison (the DB converges to the mirror); while a write
+    // of ours is in flight adoption pauses, so a remote echo can never revert
+    // a not-yet-flushed local change.
     useEffect(() => {
         if (!loaded) return;
-        const onStorage = (e: StorageEvent) => {
-            if (e.key !== STORAGE_KEY) return;
-            const next = loadOfflineStore();
-            storeRef.current = next;
-            setStore(next);
-        };
-        window.addEventListener("storage", onStorage);
-        return () => window.removeEventListener("storage", onStorage);
+        const sameStore = (a: OfflineStore, b: OfflineStore) =>
+            JSON.stringify(a) === JSON.stringify(b);
+        return subscribeStore((snapshot) => {
+            if (hasPendingWrites() || sameStore(snapshot, storeRef.current)) return;
+            storeRef.current = snapshot;
+            setStore(snapshot);
+        });
     }, [loaded]);
 
     // The service worker reports whether API reads were served from the cache
@@ -297,19 +433,20 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     const mutateStore = useCallback((fn: (s: OfflineStore) => OfflineStore) => {
         setStore((prev) => {
             const next = fn(prev);
-            persistStore(next);
             // Keep the ref in sync synchronously: `storeRef` is otherwise updated
             // by a lagging effect, so a sync triggered right after a mutation (e.g.
             // delete + navigation re-probing /ping) would read a stale snapshot and
             // resurrect the just-removed item.
             storeRef.current = next;
+            void writeStore(next);
             return next;
         });
     }, []);
 
     const syncNow = useCallback(() => {
         if (syncInProgressRef.current) return;
-        if (storeRef.current.games.length + storeRef.current.players.length + storeRef.current.matches.length === 0) return;
+        const initial = storeRef.current;
+        if (initial.games.length + initial.players.length + initial.matches.length + (initial.ops?.length ?? 0) === 0) return;
         syncInProgressRef.current = true;
         setIsSyncing(true);
         setAuthRequired(false);
@@ -330,9 +467,11 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                         (s) => {
                             storeRef.current = s;
                             setStore(s);
-                            persistStore(s);
+                            void writeStore(s);
                         },
-                        loadOfflineStore,
+                        () => storeRef.current,
+                        undefined,
+                        opsApi,
                     ).catch((err) => {
                         // Per-item failures are handled inside the engine; an
                         // escape here means a persist itself threw (e.g.
@@ -349,6 +488,17 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                         invalidatePlayers();
                         invalidateGames();
                         invalidateClubs();
+                        // Mirror the fresh server lists into the entity replica
+                        // (ADR-37 phase 6): names resolve from the mirror the
+                        // moment the sync lands, without waiting for the
+                        // contexts' refetches. A failed pull is harmless — the
+                        // providers' write-throughs refresh it on next browse.
+                        void Promise.all([getPlayersPromise(), getGamesPromise()])
+                            .then(([players, games]) => {
+                                void writeEntities("player", players.map((p) => ({ id: p.id, name: p.name })));
+                                void writeEntities("game", games.games.map((g) => ({ id: g.id, name: g.name })));
+                            })
+                            .catch(() => {});
                         // Arena timelines render useArenaMatches, not the contexts
                         // above — tell them the sync landed directly (same signal
                         // the server's SSE echo carries, without depending on the
@@ -522,7 +672,13 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
 
     const deletePendingPlayer = useCallback(
         (clientId: string) => {
-            mutateStore((s) => ({ ...s, players: s.players.filter((p) => p.clientId !== clientId) }));
+            // Cascade (ADR-37): queued matches referencing this player can
+            // never sync once the player is gone — remove them with it.
+            mutateStore((s) => ({
+                ...s,
+                players: s.players.filter((p) => p.clientId !== clientId),
+                matches: s.matches.filter((m) => !(clientId in m.score || m.playerIds?.includes(clientId as Base58ID))),
+            }));
         },
         [mutateStore],
     );
@@ -557,7 +713,209 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
 
     const deletePendingGame = useCallback(
         (clientId: string) => {
-            mutateStore((s) => ({ ...s, games: s.games.filter((g) => g.clientId !== clientId) }));
+            // Cascade: queued matches referencing this game can never sync.
+            mutateStore((s) => ({
+                ...s,
+                games: s.games.filter((g) => g.clientId !== clientId),
+                matches: s.matches.filter((m) => m.gameId !== clientId),
+            }));
+        },
+        [mutateStore],
+    );
+
+    // ── Ops: offline edits/deletes of saved entities (ADR-37 phase 7) ──
+
+    // One op per entity — a later queue replaces the earlier one (last write
+    // wins within a device; cross-device races merge at sync time).
+    const queueOp = useCallback(
+        (op: PendingOp) => {
+            mutateStore((s) => ({
+                ...s,
+                ops: [...(s.ops ?? []).filter((o) => o.entityId !== op.entityId), op].sort((a, b) =>
+                    a.createdAt.localeCompare(b.createdAt),
+                ),
+            }));
+        },
+        [mutateStore],
+    );
+
+    const queuePlayerUpdate = useCallback(
+        (entityId: Base58ID, base: { name: string }, patch: { name: string }) => {
+            queueOp({
+                entityId, kind: "player", op: "update",
+                createdAt: new Date().toISOString(), status: "pending",
+                base: { ...base }, patch: { ...patch },
+            });
+        },
+        [queueOp],
+    );
+
+    const queuePlayerDelete = useCallback(
+        (entityId: Base58ID, base: { name: string }) => {
+            queueOp({
+                entityId, kind: "player", op: "delete",
+                createdAt: new Date().toISOString(), status: "pending",
+                base: { ...base },
+            });
+        },
+        [queueOp],
+    );
+
+    const queueGameUpdate = useCallback(
+        // Game ops carry the full metadata the edit dialog edits (the display
+        // name derives server-side from alias → ru → en, ADR-37 phase 7).
+        (entityId: Base58ID, base: Record<string, unknown>, patch: Record<string, unknown>) => {
+            queueOp({
+                entityId, kind: "game", op: "update",
+                createdAt: new Date().toISOString(), status: "pending",
+                base: { ...base }, patch: { ...patch },
+            });
+        },
+        [queueOp],
+    );
+
+    const queueGameDelete = useCallback(
+        (entityId: Base58ID, base: { name: string }) => {
+            queueOp({
+                entityId, kind: "game", op: "delete",
+                createdAt: new Date().toISOString(), status: "pending",
+                base: { ...base },
+            });
+        },
+        [queueOp],
+    );
+
+    const queueMatchUpdate = useCallback(
+        (entityId: Base58ID, tenant: Base58ID | null, base: Record<string, unknown>, patch: Record<string, unknown>) => {
+            queueOp({
+                entityId, kind: "match", op: "update",
+                createdAt: new Date().toISOString(), status: "pending",
+                tenant: tenant ?? undefined,
+                base: { ...base }, patch: { ...patch },
+            });
+        },
+        [queueOp],
+    );
+
+    const deleteOp = useCallback(
+        (entityId: Base58ID) => {
+            mutateStore((s) => ({ ...s, ops: (s.ops ?? []).filter((o) => o.entityId !== entityId) }));
+        },
+        [mutateStore],
+    );
+
+    // Field-level resolution for a conflicted op (ADR-37): the chosen value
+    // becomes the patch and the server's last-known value the base, so the
+    // next sync merges cleanly. Match ops map "score:<playerId>" keys into
+    // the score map and "date" into the date field; a conflicted delete is
+    // resolved by adopting the server's current values as the base (the
+    // queue page's «удалить всё равно»).
+    const resolveOpConflict = useCallback(
+        (entityId: Base58ID, resolutions: Record<string, string>) => {
+            mutateStore((s) => ({
+                ...s,
+                ops: (s.ops ?? []).map((o) => {
+                    if (o.entityId !== entityId || o.status !== "conflict") return o;
+                    if (o.op === "delete") {
+                        // Proceed-with-delete: adopt the server's values as the
+                        // base so the stale-guard passes on the next run.
+                        const nextBase = { ...(o.base ?? {}) };
+                        for (const f of o.conflict ?? []) nextBase[f.field] = parseValue(f.theirs);
+                        const remaining = (o.conflict ?? []).filter((f) => !(f.field in resolutions));
+                        return { ...o, base: nextBase, status: "pending" as const, error: undefined, conflict: remaining.length > 0 ? remaining : undefined };
+                    }
+                    if (o.kind === "match") {
+                        const base = { ...(o.base ?? {}) };
+                        const patch = { ...(o.patch ?? {}) };
+                        const scoreBase = { ...((base.score ?? {}) as Record<string, number>) };
+                        const scorePatch = { ...((patch.score ?? {}) as Record<string, number>) };
+                        let scoreChanged = false;
+                        for (const [field, value] of Object.entries(resolutions)) {
+                            const parsed = parseValue(value);
+                            if (field.startsWith("score:")) {
+                                const playerId = field.slice("score:".length);
+                                scorePatch[playerId] = parsed as number;
+                                scoreBase[playerId] = parsed as number;
+                                scoreChanged = true;
+                            } else if (field === "date") {
+                                patch.date = parsed;
+                                base.date = parsed;
+                            } else {
+                                patch[field] = parsed;
+                                // The base gets the server's last-known value.
+                                const f = (o.conflict ?? []).find((c) => c.field === field);
+                                if (f) base[field] = parseValue(f.theirs);
+                            }
+                        }
+                        if (scoreChanged) {
+                            patch.score = scorePatch;
+                            base.score = scoreBase;
+                        }
+                        const remaining = (o.conflict ?? []).filter((f) => !(f.field in resolutions));
+                        return { ...o, base, patch, status: remaining.length > 0 ? ("conflict" as const) : ("pending" as const), error: undefined, conflict: remaining.length > 0 ? remaining : undefined };
+                    }
+                    const { base, patch } = applyResolutions(o.base ?? {}, o.patch ?? {}, o.conflict ?? [], resolutions);
+                    const remaining = (o.conflict ?? []).filter((f) => !(f.field in resolutions));
+                    return { ...o, base, patch, status: remaining.length > 0 ? ("conflict" as const) : ("pending" as const), error: undefined, conflict: remaining.length > 0 ? remaining : undefined };
+                }),
+            }));
+        },
+        [mutateStore],
+    );
+
+    // Field-level conflict resolution (ADR-37): the /offline queue page calls
+    // this per field the user decided on the queue page. Match score fields
+    // merge per key into the existing map, so a half-resolved match keeps the
+    // queued scores of its unresolved players.
+    const resolvePendingConflict = useCallback(
+        (kind: "match" | "player" | "game", clientId: Base58ID, resolutions: Record<string, string>) => {
+            mutateStore((s) => {
+                if (kind === "player") {
+                    return {
+                        ...s,
+                        players: s.players.map((p) =>
+                            p.clientId === clientId && p.status === "conflict"
+                                ? withResolutions(
+                                      resolutions["name"] !== undefined ? { ...p, name: resolutions["name"] } : p,
+                                      resolutions,
+                                  )
+                                : p,
+                        ),
+                    };
+                }
+                if (kind === "game") {
+                    return {
+                        ...s,
+                        games: s.games.map((g) =>
+                            g.clientId === clientId && g.status === "conflict"
+                                ? withResolutions(
+                                      resolutions["name"] !== undefined ? { ...g, name: resolutions["name"] } : g,
+                                      resolutions,
+                                  )
+                                : g,
+                        ),
+                    };
+                }
+                return {
+                    ...s,
+                    matches: s.matches.map((m) => {
+                        if (m.clientId !== clientId || m.status !== "conflict") return m;
+                        let next = m;
+                        for (const [field, value] of Object.entries(resolutions)) {
+                            if (field === "date") {
+                                next = { ...next, createdAt: value };
+                            } else if (field.startsWith("score:")) {
+                                const playerId = field.slice("score:".length);
+                                const parsed = Number(value);
+                                if (Number.isFinite(parsed)) {
+                                    next = { ...next, score: { ...next.score, [playerId]: parsed } };
+                                }
+                            }
+                        }
+                        return withResolutions(next, resolutions);
+                    }),
+                };
+            });
         },
         [mutateStore],
     );
@@ -611,7 +969,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     const errorCount =
         store.games.filter((g) => g.status === "error").length +
         store.players.filter((p) => p.status === "error").length +
-        store.matches.filter((m) => m.status === "error").length;
+        store.matches.filter((m) => m.status === "error").length +
+        ops.filter((o) => o.status === "error").length;
+
+    const conflictCount =
+        store.games.filter((g) => g.status === "conflict").length +
+        store.players.filter((p) => p.status === "conflict").length +
+        store.matches.filter((m) => m.status === "conflict").length +
+        ops.filter((o) => o.status === "conflict").length;
 
     return (
         <OfflineContext.Provider
@@ -619,8 +984,10 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                 pendingMatches: store.matches,
                 pendingPlayers: store.players,
                 pendingGames: store.games,
+                ops,
                 pendingCount,
                 errorCount,
+                conflictCount,
                 ready: loaded,
                 offline,
                 isOnline,
@@ -639,6 +1006,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                 deletePendingGame,
                 submitMatch,
                 syncNow,
+                resolvePendingConflict,
+                queuePlayerUpdate,
+                queuePlayerDelete,
+                queueGameUpdate,
+                queueGameDelete,
+                queueMatchUpdate,
+                deleteOp,
+                resolveOpConflict,
             }}
         >
             {children}

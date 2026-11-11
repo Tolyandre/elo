@@ -1,8 +1,9 @@
 "use client"
 
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, ReactNode } from "react";
 import { GameListItem, getGamesPromise } from "./api";
 import { useCachedAsyncResource } from "@/hooks/useCachedAsyncResource";
+import { writeEntities } from "@/lib/offline/db";
 
 type GamesContextType = {
   games: GameListItem[];
@@ -19,7 +20,14 @@ const GAMES_CACHE_KEY = "games-cache-v1";
 export const GamesProvider = ({ children }: { children: ReactNode }) => {
   const { data, invalidate } = useCachedAsyncResource(getGamesPromise, GAMES_CACHE_KEY);
 
-  const games = data?.games ?? [];
+  const games = useMemo(() => data?.games ?? [], [data]);
+
+  // Write-through to the Dexie entity replica (ADR-37 phase 6): the name
+  // resolution layer mirrors every successful fetch.
+  useEffect(() => {
+    if (games.length === 0) return;
+    void writeEntities("game", games.map((g) => ({ id: g.id, name: g.name })));
+  }, [games]);
 
   return (
     <GamesContext.Provider value={{ games, invalidate }}>

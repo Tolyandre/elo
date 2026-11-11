@@ -1,5 +1,6 @@
 "use client";
 import type { Base58ID } from "@/lib/id";
+import type { SyncStatus } from "@/lib/offline/types";
 
 import React, { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,7 @@ import {
 type PendingEntity = {
     clientId: Base58ID;
     name: string;
-    status: "pending" | "syncing" | "error";
+    status: SyncStatus;
     error?: string;
 };
 

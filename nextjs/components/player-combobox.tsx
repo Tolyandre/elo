@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ResponsiveCommandPopover } from "@/components/responsive-command-popover"
 import { usePlayers } from "@/app/players/PlayersContext"
+import { useNameResolver } from "@/hooks/useNameResolver"
 import { useClubs } from "@/app/clubsContext"
 import { useMe } from "@/app/meContext"
 import { useRecentPlayerIds } from "@/app/players/useRecentPlayerIds"
@@ -44,6 +45,7 @@ export function PlayerCombobox({
   const { players, playerDisplayName } = usePlayers()
   const { clubs, clubDisplayName } = useClubs()
   const { playerId: myPlayerId } = useMe()
+  const { resolvePlayer } = useNameResolver()
 
   const recentPlayerIds = useRecentPlayerIds()
 
@@ -82,7 +84,7 @@ export function PlayerCombobox({
   }
 
   const selectedLabel = value
-    ? (() => { const p = players.find((player) => player.id === value); return p ? playerDisplayName(p) : value })()
+    ? resolvePlayer(value)
     : "Игрок..."
 
   const trigger = (
