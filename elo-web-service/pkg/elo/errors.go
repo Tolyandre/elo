@@ -1,6 +1,26 @@
 package elo
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
+)
+
+// DuplicateNameError reports a create that hit a global unique-name index
+// (ADR-37): the entity already exists under ExistingID, so the offline sync
+// adopts that id (rewrites queued references to it) instead of leaving the
+// item stuck behind the 409. Only create paths produce it — a rename
+// collision stays a plain unique violation.
+type DuplicateNameError struct {
+	Kind       string // "player" or "game"
+	Name       string
+	ExistingID id.ID
+}
+
+func (e *DuplicateNameError) Error() string {
+	return fmt.Sprintf("%s with name %q already exists", e.Kind, e.Name)
+}
 
 var (
 	ErrTooFewPlayers                    = errors.New("партия требует минимум 2 игрока")

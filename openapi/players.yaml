@@ -98,11 +98,11 @@ PlayersCollection:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: Player with this name already exists
+        description: Player with this name already exists (existing_id names the entity to adopt, ADR-37)
         content:
           application/json:
             schema:
-              $ref: './common.yaml#/ApiError'
+              $ref: './common.yaml#/DuplicateNameError'
 
 PlayersRecent:
   get:

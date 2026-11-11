@@ -205,6 +205,12 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 	player, err := s.api.PlayerService.CreatePlayer(ctx, request.Body.Id, name, currentActorID(ctx))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusConflict {
+			// DuplicateNameError (ADR-37) names the entity holding the name,
+			// so the offline sync adopts its id instead of renaming.
+			var dup *elo.DuplicateNameError
+			if errors.As(err, &dup) {
+				return CreatePlayer409JSONResponse{Status: StatusFail, Message: "player with this name already exists", ExistingId: &dup.ExistingID}, nil
+			}
 			return CreatePlayer409JSONResponse{Status: StatusFail, Message: "player with this name already exists"}, nil
 		}
 		return nil, err

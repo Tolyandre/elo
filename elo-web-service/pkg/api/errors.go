@@ -28,6 +28,9 @@ import (
 //	default:                   return nil, err
 //	}
 func domainStatusCode(err error) int {
+	// Hoisted for the DuplicateNameError case below: errors.As needs a
+	// **DuplicateNameError target, which an inline literal cannot provide.
+	var dupName *elo.DuplicateNameError
 	switch {
 	// --- 400 Bad Request: invalid input / referential integrity ------------
 	case errors.Is(err, elo.ErrTooFewPlayers),
@@ -113,7 +116,10 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrTournamentScoreEditUnsafe),
 		errors.Is(err, elo.ErrTournamentRulingUnsafe),
 		errors.Is(err, elo.ErrTournamentSlotNotPlaying),
-		db.IsUniqueViolation(err):
+		db.IsUniqueViolation(err),
+		// DuplicateNameError (ADR-37) replaces the raw unique violation on the
+		// create paths — it carries the id of the entity to adopt.
+		errors.As(err, &dupName):
 		return http.StatusConflict
 
 	// --- 422 Unprocessable Entity: semantically valid but rule-violating ----

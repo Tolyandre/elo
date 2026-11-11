@@ -471,6 +471,23 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 		}
 		return nil
 	})
+	if err != nil && db.IsUniqueViolation(err) {
+		// The games_name_unique index fired on the generated display name
+		// (ADR-37). The name column is COALESCE(alias, name_ru, name_en) —
+		// recompute it from the very values the failed insert carried and
+		// name the existing holder so the offline sync can adopt its id. The
+		// failed tx is aborted, so the lookup runs on a fresh connection.
+		display := alias
+		if display == "" {
+			display = nameRu
+		}
+		if display == "" {
+			display = nameEn
+		}
+		if existing, lerr := db.New(s.Pool).GetGameByName(ctx, display); lerr == nil {
+			return nil, &DuplicateNameError{Kind: "game", Name: display, ExistingID: existing.ID}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

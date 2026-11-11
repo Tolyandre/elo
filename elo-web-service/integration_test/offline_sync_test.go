@@ -4,11 +4,15 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/google/uuid"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -153,9 +157,14 @@ func TestCreatePlayerAndGame_IdempotencyKey(t *testing.T) {
 	if p1.ID != p2.ID {
 		t.Errorf("player retry created a duplicate: first=%s second=%s", p1.ID, p2.ID)
 	}
-	// Same name with a different key must still hit the name unique constraint.
-	if _, err := playerSvc.CreatePlayer(ctx, newID(t), "Оффлайн Игрок", ""); !db.IsUniqueViolation(err) {
-		t.Errorf("duplicate name with new key: expected unique violation, got %v", err)
+	// Same name with a different key must still conflict — but as a
+	// DuplicateNameError (ADR-37) that names the entity to adopt.
+	_, err = playerSvc.CreatePlayer(ctx, newID(t), "Оффлайн Игрок", "")
+	var playerDup *elo.DuplicateNameError
+	if !errors.As(err, &playerDup) {
+		t.Errorf("duplicate name with new key: expected DuplicateNameError, got %v", err)
+	} else if playerDup.ExistingID != p1.ID {
+		t.Errorf("DuplicateNameError existing id = %s, want %s", playerDup.ExistingID, p1.ID)
 	}
 
 	gameKey := newID(t)
@@ -170,8 +179,12 @@ func TestCreatePlayerAndGame_IdempotencyKey(t *testing.T) {
 	if g1.ID != g2.ID {
 		t.Errorf("game retry created a duplicate: first=%s second=%s", g1.ID, g2.ID)
 	}
-	if _, err := gameSvc.AddGame(ctx, newID(t), "Оффлайн Игра", ""); !db.IsUniqueViolation(err) {
-		t.Errorf("duplicate game name with new key: expected unique violation, got %v", err)
+	_, err = gameSvc.AddGame(ctx, newID(t), "Оффлайн Игра", "")
+	var gameDup *elo.DuplicateNameError
+	if !errors.As(err, &gameDup) {
+		t.Errorf("duplicate game name with new key: expected DuplicateNameError, got %v", err)
+	} else if gameDup.ExistingID != g1.ID {
+		t.Errorf("game DuplicateNameError existing id = %s, want %s", gameDup.ExistingID, g1.ID)
 	}
 }
 
@@ -240,5 +253,125 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 	if !errors.Is(err, elo.ErrHistoryChangeConflict) {
 		t.Errorf("backdated AddMatch: expected ErrHistoryChangeConflict, got: %v", err)
+	}
+}
+
+// TestCreatePlayer_DuplicateNameReturnsExistingId verifies the HTTP envelope of
+// ADR-37: a second create with the same name (different id — the offline-sync
+// race) answers 409 with existing_id naming the entity to adopt.
+func TestCreatePlayer_DuplicateNameReturnsExistingId(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	token := createTestUser(t, pool, true)
+	router := setupRouter(pool)
+
+	uid, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate player id: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/players", strings.NewReader(`{"id":"`+uid.String()+`","name":"Дубликат Игрок"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first create: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	uid2, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate second player id: %v", err)
+	}
+	req2 := httptest.NewRequest(http.MethodPost, "/players", strings.NewReader(`{"id":"`+uid2.String()+`","name":"Дубликат Игрок"}`))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer "+token)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("duplicate create: expected 409, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp struct {
+		Status     string `json:"status"`
+		Message    string `json:"message"`
+		ExistingID string `json:"existing_id"`
+	}
+	if err := json.NewDecoder(w2.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode 409 body: %v", err)
+	}
+	if resp.Status != "fail" {
+		t.Errorf("status = %q, want fail", resp.Status)
+	}
+	// existing_id is the Base58 wire form of the first player's canonical id.
+	encoded, err := json.Marshal(idpkg.ID(uid.String()))
+	if err != nil {
+		t.Fatalf("encode id: %v", err)
+	}
+	want := strings.Trim(string(encoded), `"`)
+	if resp.ExistingID != want {
+		t.Errorf("existing_id = %q, want %q", resp.ExistingID, want)
+	}
+
+	// The idempotent replay (same id) still answers 200, unchanged by the new error shape.
+	req3 := httptest.NewRequest(http.MethodPost, "/players", strings.NewReader(`{"id":"`+uid.String()+`","name":"Дубликат Игрок"}`))
+	req3.Header.Set("Content-Type", "application/json")
+	req3.Header.Set("Authorization", "Bearer "+token)
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+	if w3.Code != http.StatusOK {
+		t.Errorf("idempotent replay: expected 200, got %d: %s", w3.Code, w3.Body.String())
+	}
+}
+
+// TestCreateGame_DuplicateNameReturnsExistingId verifies the same ADR-37
+// envelope for the game create path (the display name is a generated column).
+func TestCreateGame_DuplicateNameReturnsExistingId(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	token := createTestUser(t, pool, true)
+	router := setupRouter(pool)
+
+	uid, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate game id: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/games", strings.NewReader(`{"id":"`+uid.String()+`","name":"Дубликат Игра"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first create: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	uid2, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate second game id: %v", err)
+	}
+	req2 := httptest.NewRequest(http.MethodPost, "/games", strings.NewReader(`{"id":"`+uid2.String()+`","name":"Дубликат Игра"}`))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer "+token)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("duplicate create: expected 409, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp struct {
+		Status     string `json:"status"`
+		ExistingID string `json:"existing_id"`
+	}
+	if err := json.NewDecoder(w2.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode 409 body: %v", err)
+	}
+	encoded, err := json.Marshal(idpkg.ID(uid.String()))
+	if err != nil {
+		t.Fatalf("encode id: %v", err)
+	}
+	want := strings.Trim(string(encoded), `"`)
+	if resp.Status != "fail" || resp.ExistingID != want {
+		t.Errorf("status = %q, existing_id = %q, want fail + %q", resp.Status, resp.ExistingID, want)
 	}
 }

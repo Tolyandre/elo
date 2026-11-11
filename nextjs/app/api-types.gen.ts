@@ -2283,6 +2283,9 @@ export interface components {
             /** @description The player has submitted their final scoring */
             done: boolean;
         };
+        DuplicateNameError: components["schemas"]["ApiError"] & {
+            existing_id?: components["schemas"]["Base58ID"];
+        };
         /**
          * @description What the game is played as (ADR-33). competitive — rating events only; coop — cooperative or solo only (never rated, excluded from arenas, markets, tournaments and profile stats); mixed — each match picks one of the two.
          * @enum {string}
@@ -2696,13 +2699,13 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Player with this name already exists */
+            /** @description Player with this name already exists (existing_id names the entity to adopt, ADR-37) */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["DuplicateNameError"];
                 };
             };
         };
@@ -3171,13 +3174,13 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Game with this name already exists */
+            /** @description Game with this display name already exists (existing_id names the entity to adopt, ADR-37) */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["DuplicateNameError"];
                 };
             };
         };

@@ -20,13 +20,13 @@ import (
 
 // Defines values for ApiErrorStatus.
 const (
-	Fail ApiErrorStatus = "fail"
+	ApiErrorStatusFail ApiErrorStatus = "fail"
 )
 
 // Valid indicates whether the value is a known member of the ApiErrorStatus enum.
 func (e ApiErrorStatus) Valid() bool {
 	switch e {
-	case Fail:
+	case ApiErrorStatusFail:
 		return true
 	default:
 		return false
@@ -771,6 +771,21 @@ func (e AuditAuditTournamentStateDetailsTo) Valid() bool {
 	case AuditAuditTournamentStateDetailsToRegistration:
 		return true
 	case AuditAuditTournamentStateDetailsToRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CommonDuplicateNameErrorStatus.
+const (
+	CommonDuplicateNameErrorStatusFail CommonDuplicateNameErrorStatus = "fail"
+)
+
+// Valid indicates whether the value is a known member of the CommonDuplicateNameErrorStatus enum.
+func (e CommonDuplicateNameErrorStatus) Valid() bool {
+	switch e {
+	case CommonDuplicateNameErrorStatusFail:
 		return true
 	default:
 		return false
@@ -2630,6 +2645,17 @@ type AuditAuditUserUpdateDetails struct {
 	} `json:"allow_editing"`
 	SchemaVersion int `json:"schema_version"`
 }
+
+// CommonDuplicateNameError defines model for common_DuplicateNameError.
+type CommonDuplicateNameError struct {
+	// ExistingId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	ExistingId *Base58ID                      `json:"existing_id,omitempty"`
+	Message    string                         `json:"message"`
+	Status     CommonDuplicateNameErrorStatus `json:"status"`
+}
+
+// CommonDuplicateNameErrorStatus defines model for CommonDuplicateNameError.Status.
+type CommonDuplicateNameErrorStatus string
 
 // GamesGameArtRefreshResult defines model for games_GameArtRefreshResult.
 type GamesGameArtRefreshResult struct {
@@ -8543,7 +8569,7 @@ func (response CreateGame403JSONResponse) VisitCreateGameResponse(w http.Respons
 	return err
 }
 
-type CreateGame409JSONResponse ApiError
+type CreateGame409JSONResponse CommonDuplicateNameError
 
 func (response CreateGame409JSONResponse) VisitCreateGameResponse(w http.ResponseWriter) error {
 
@@ -10081,7 +10107,7 @@ func (response CreatePlayer403JSONResponse) VisitCreatePlayerResponse(w http.Res
 	return err
 }
 
-type CreatePlayer409JSONResponse ApiError
+type CreatePlayer409JSONResponse CommonDuplicateNameError
 
 func (response CreatePlayer409JSONResponse) VisitCreatePlayerResponse(w http.ResponseWriter) error {
 

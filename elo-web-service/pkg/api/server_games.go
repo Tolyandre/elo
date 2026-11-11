@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -107,6 +108,12 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusConflict:
+			// DuplicateNameError (ADR-37) names the entity holding the name,
+			// so the offline sync adopts its id instead of renaming.
+			var dup *elo.DuplicateNameError
+			if errors.As(err, &dup) {
+				return CreateGame409JSONResponse{Status: StatusFail, Message: "game with this name already exists", ExistingId: &dup.ExistingID}, nil
+			}
 			return CreateGame409JSONResponse{Status: StatusFail, Message: "game with this name already exists"}, nil
 		case http.StatusBadRequest:
 			return CreateGame400JSONResponse{Status: StatusFail, Message: err.Error()}, nil

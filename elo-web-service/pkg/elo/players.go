@@ -271,6 +271,15 @@ func (s *PlayerService) CreatePlayer(ctx context.Context, playerID id.ID, name s
 		}
 		return nil
 	})
+	if err != nil && db.IsUniqueViolation(err) {
+		// The global unique-name index fired (ADR-37): name the existing
+		// entity so the offline sync can adopt its id instead of leaving the
+		// queued player stuck behind a 409. The failed tx is aborted, so the
+		// holder lookup runs on a fresh connection.
+		if existing, lerr := db.New(s.Pool).GetPlayerByName(ctx, name); lerr == nil {
+			return created, &DuplicateNameError{Kind: "player", Name: name, ExistingID: existing.ID}
+		}
+	}
 	return created, err
 }
 

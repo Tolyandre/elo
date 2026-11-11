@@ -18,6 +18,19 @@ ApiSuccessMessage:
       type: string
   required: [status, message]
 
+# The 409 body of create endpoints whose name is globally unique (ADR-37):
+# alongside the usual error fields it names the entity that already holds the
+# name, so the offline sync adopts that id (rewrites queued references to it)
+# instead of leaving the item stuck on a rename/delete loop. Only create
+# paths produce it — a rename collision stays a plain ApiError.
+DuplicateNameError:
+  allOf:
+    - $ref: '#/ApiError'
+    - type: object
+      properties:
+        existing_id:
+          $ref: '#/Base58ID'
+
 # The identifier type every id-bearing property MUST reference (enforced by
 # internal/openapilint). Conversion between this wire form and the canonical
 # UUID used inside the service is structural: generators map this schema to a
