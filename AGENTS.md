@@ -61,6 +61,7 @@ Container runtimes for the integration tests: `DOCKER_HOST`/`CONTAINER_HOST` are
 - `go test -C elo-web-service ./pkg/elo/ -run TestName`: run a single Go test.
 - Backend without make (inside `elo-web-service/`): `go run . --config-path ./config/config.dev.yaml`; migrations against an explicit DSN: `go run . --migrate-db-dsn=postgres://... --migrate-db`.
 - `gomod2nix generate` (run inside `elo-web-service/`): regenerate `gomod2nix.toml` after **any** change to `go.mod` (adding/upgrading a dependency via `go get`). Nix builds the Go service with `-mod=vendor` from `gomod2nix.toml`, so an out-of-date manifest breaks `nix build` / `nix flake check` even though `go build ./...` works. Always commit `go.mod`, `go.sum`, and `gomod2nix.toml` together.
+- `nix/frontend.nix` pins the frontend dependency set: update its `pnpmDeps.hash` (the `fetchPnpmDeps` call) after **any** change to `nextjs/package.json` / `pnpm-lock.yaml` (adding/upgrading a dependency via `pnpm add`). The fetch is content-addressed against the lockfile, so an out-of-date hash breaks `nix build .#frontend` / deploys with a `hash mismatch in fixed-output derivation` even though `pnpm build` works locally — take the new `got:` hash from that error and put it into `pnpmDeps.hash`. Always commit `package.json`, `pnpm-lock.yaml`, and the hash change together.
 - `pnpm --dir ./nextjs lint`: lint frontend code.
 - `pnpm --dir ./nextjs test`: run frontend Vitest tests.
 - `go test -C elo-web-service ./...`: run regular Go tests.
