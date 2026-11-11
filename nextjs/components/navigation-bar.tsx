@@ -78,11 +78,10 @@ export function NavigationBar() {
               ) : (
                 <>
                   {tenant ? <TenantIcon icon={tenant.icon} className="h-4 w-4" /> : <Users className="h-4 w-4 shrink-0" />}
-                  {/* Harder truncation on phones: the one-line nav row must
-                      hold the offline indicator, the table icon and the menu
-                      items too — a long community name would push it past the
-                      viewport and force a horizontal page scroll. */}
-                  <span className="truncate max-w-[5rem] sm:max-w-[8rem] md:max-w-[12rem]">{tenant?.name ?? "Выберите сообщество"}</span>
+                  {/* The community name shows in full — never truncated; the
+                      compact menu items (icon-only below sm) keep the row
+                      within the viewport instead. */}
+                  <span>{tenant?.name ?? "Выберите сообщество"}</span>
                 </>
               )}
             </Link>
@@ -133,9 +132,11 @@ export function NavigationBar() {
         </NavigationMenuItem>
 
         <NavigationMenuItem>
-          <NavigationMenuTrigger className="px-1.5 sm:px-2">
-            <Menu className="h-4 w-4 mr-1" />
-            Меню
+          <NavigationMenuTrigger className="px-1.5 sm:px-2" aria-label="Меню">
+            <Menu className="h-4 w-4 sm:mr-1" />
+            {/* Icon-only on phones, like «Справка»: the one-line nav row must
+                also hold the community name in full. */}
+            <span className="hidden sm:inline">Меню</span>
           </NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-2 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
