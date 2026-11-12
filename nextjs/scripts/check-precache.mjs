@@ -13,7 +13,12 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PAGES } from "../lib/offline/routes.ts";
-import { precacheUrlsForRoute, precacheUrlToFile, urlWithinBasePath } from "../lib/offline/precache-urls.ts";
+import {
+    precacheUrlsForRoute,
+    precacheUrlToFile,
+    segmentedPayloadUrlsForRoute,
+    urlWithinBasePath,
+} from "../lib/offline/precache-urls.ts";
 
 const OUT = "out";
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -26,7 +31,8 @@ if (!existsSync(OUT)) {
 // 1. Every precache URL must be servable on the deploy and backed by a file.
 const broken = [];
 for (const route of PAGES) {
-    for (const url of precacheUrlsForRoute(route, basePath)) {
+    const urls = [...precacheUrlsForRoute(route, basePath), ...segmentedPayloadUrlsForRoute(route, basePath, OUT)];
+    for (const url of urls) {
         if (!urlWithinBasePath(url, basePath)) {
             broken.push(`${url} — outside the deploy root ${basePath}/, can never be served`);
             continue;
@@ -71,4 +77,4 @@ if (broken.length > 0) {
     process.exit(1);
 }
 
-console.log(`check-precache: OK — ${PAGES.length} routes precached (html + txt).`);
+console.log(`check-precache: OK — ${PAGES.length} routes precached (html + txt + segmented payloads).`);

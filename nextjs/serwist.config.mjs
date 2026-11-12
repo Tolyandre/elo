@@ -12,9 +12,10 @@
 // (Node ≥ 22.18 — the pinned CI/Nix toolchain is Node 24).
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { serwist } from "@serwist/next/config";
 import { PAGES } from "./lib/offline/routes.ts";
-import { precacheUrlsForRoute } from "./lib/offline/precache-urls.ts";
+import { precacheUrlToFile, precacheUrlsForRoute, segmentedPayloadUrlsForRoute } from "./lib/offline/precache-urls.ts";
 
 export default serwist.withNextConfig((nextConfig) => {
   // Same source as next.config.ts; baked into every precache URL.
@@ -70,6 +71,21 @@ export default serwist.withNextConfig((nextConfig) => {
     ],
     additionalPrecacheEntries: [
       ...PAGES.flatMap((p) => precacheUrlsForRoute(p, basePath).map((url) => ({ url, revision }))),
+      // The segmented RSC payloads the Next 16.2 router fetches on every
+      // navigation (lib/offline/precache-urls.ts): without them a hard
+      // navigation offline dies on the framework error page once the runtime
+      // cache misses (the router's _rsc token changes every build). Served for
+      // any query string — the precache matches by pathname — so the router's
+      // cache-busting token never matters. Content-hashed like the wasm: a
+      // payload the build did not change is not re-downloaded.
+      ...PAGES.flatMap((p) =>
+        segmentedPayloadUrlsForRoute(p, basePath, "out").map((url) => ({
+          url,
+          revision: createHash("md5")
+            .update(readFileSync(join("out", precacheUrlToFile(url, basePath))))
+            .digest("hex"),
+        })),
+      ),
       ...wasmPrecacheEntries,
     ],
     esbuildOptions: {
