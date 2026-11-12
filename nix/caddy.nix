@@ -39,13 +39,17 @@ let
   '';
 
   # try_files reproduces GitHub Pages' clean-URL behaviour (/players ->
-  # players.html), matching the static export's routing (ADR-25).
+  # players.html), matching the static export's routing (ADR-25). The service
+  # worker script must always revalidate: the browser's SW update check reads
+  # it through the HTTP cache in Firefox, and a heuristically-fresh copy
+  # (file_server sends no Cache-Control) keeps clients stuck on old versions.
   uiHandle = ''
     @${name}-ui path ${basePath} ${basePath}/*
     handle @${name}-ui {
       uri strip_prefix ${basePath}
       root * ${frontendRoot}
       try_files {path} {path}.html {path}/index.html /index.html
+      header /sw.js Cache-Control "no-cache"
       file_server
     }
   '';

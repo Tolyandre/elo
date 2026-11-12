@@ -20,6 +20,7 @@ let
       uri strip_prefix /elo
       root * ${frontend}
       try_files {path} {path}.html {path}/index.html /index.html
+      header /sw.js Cache-Control "no-cache"
       file_server
     }
   '';
@@ -36,6 +37,7 @@ let
       uri strip_prefix /elo-stage
       root * ${frontend}
       try_files {path} {path}.html {path}/index.html /index.html
+      header /sw.js Cache-Control "no-cache"
       file_server
     }
   '';
@@ -53,6 +55,7 @@ let
         uri strip_prefix /elo
         root * ${frontend}
         try_files {path} {path}.html {path}/index.html /index.html
+        header /sw.js Cache-Control "no-cache"
         file_server
       }
 
