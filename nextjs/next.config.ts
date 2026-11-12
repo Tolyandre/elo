@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import type { NextConfig } from "next";
 import withSerwistInit from "@serwist/next";
 import { PAGES } from "./lib/offline/routes";
@@ -9,6 +11,21 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 // Revision versions precached pages so a new deploy invalidates old HTML.
 const revision = process.env.GITHUB_SHA ?? crypto.randomUUID();
+
+// The offline settlement engine (ADR-38): precache it so the ratings engine
+// works on a cold offline open (the page fetches the 4 MB module on every load
+// anyway). Revision is the file's content hash, so a deploy re-downloads it
+// only when the engine actually changed — the precache update flow (new worker
+// install + cleanupOutdatedCaches) invalidates the old copy. Guarded on the
+// file's presence: a bare local build without `make build-wasm` must still
+// produce an installable worker (a precache entry for a missing URL would
+// fail the install).
+const wasmPrecacheEntries = existsSync("public/wasm/settlement.wasm")
+    ? (["settlement.wasm", "wasm_exec.js"] as const).map((file) => ({
+        url: `${basePath}/wasm/${file}`,
+        revision: createHash("md5").update(readFileSync(`public/wasm/${file}`)).digest("hex"),
+      }))
+    : [];
 
 const withSerwist = withSerwistInit({
   swSrc: "app/sw.ts",
@@ -23,9 +40,10 @@ const withSerwist = withSerwistInit({
   // <basePath>/ and one outside the worker scope — so the app rewrites that
   // request to <basePath>/index.txt client-side (lib/root-rsc-payload.ts) and
   // only the index.txt name is precached here.
-  additionalPrecacheEntries: PAGES.flatMap((p) =>
-    precacheUrlsForRoute(p, basePath).map((url) => ({ url, revision })),
-  ),
+  additionalPrecacheEntries: [
+    ...PAGES.flatMap((p) => precacheUrlsForRoute(p, basePath).map((url) => ({ url, revision }))),
+    ...wasmPrecacheEntries,
+  ],
 });
 
 const nextConfig: NextConfig = {
