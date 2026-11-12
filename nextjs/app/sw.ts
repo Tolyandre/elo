@@ -34,6 +34,18 @@ const precacheTotal = precacheManifest?.length ?? 0;
 let precacheDone = 0;
 let installing = false;
 
+// Take-over nudges from the page (components/sw-update-reloader.tsx). The
+// constructor's skipWaiting() sets the flag before install, but the spec's
+// Try Activate also requires the OLD worker to have no pending events at
+// that moment — during a page-load burst it usually does have them, and
+// Chromium does not re-attempt promptly once the worker goes idle, so the
+// update would sit "installed" until the next navigation. Every
+// skipWaiting() call re-invokes Try Activate (spec §4.1.4), so a page-side
+// nudge retries activation until the old worker is briefly idle. Idempotent.
+self.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "SKIP_WAITING") void self.skipWaiting();
+});
+
 self.addEventListener("install", () => {
     installing = true;
     precacheDone = 0;

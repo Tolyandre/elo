@@ -50,6 +50,27 @@ export function SwUpdateReloader() {
         };
         navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 
+        // Nudge a waiting worker into taking over. The new worker sets its skip
+        // waiting flag at evaluation, but the spec's activation gate also demands
+        // that the OLD worker have no pending events at that exact moment — the
+        // page-load burst (precache serves, wasm, API reads) usually fails it, and
+        // the browser then retries lazily, leaving the update "installed" until a
+        // much later navigation. Each skipWaiting() call re-runs the activation
+        // attempt (spec §4.1.4), so while a waiting worker exists we re-send
+        // SKIP_WAITING every second until the old worker is briefly idle and the
+        // takeover lands (controllerchange reloads the page above). Harmless when
+        // nothing is waiting; the worker side is idempotent.
+        const nudgeWaitingWorker = () => {
+            navigator.serviceWorker.getRegistration()
+                .then((reg) => {
+                    if (reg?.waiting && reg.waiting.state === "installed") {
+                        reg.waiting.postMessage({ type: "SKIP_WAITING" });
+                    }
+                })
+                .catch(() => { /* no registration — nothing to nudge */ });
+        };
+        const nudgeTimer = window.setInterval(nudgeWaitingWorker, 1000);
+
         // Force an update check now (on every page load) and whenever the user
         // returns to the app. The browser's automatic check on navigation can be
         // throttled or unreliable (notably in Firefox and installed PWAs), so we
@@ -68,6 +89,7 @@ export function SwUpdateReloader() {
         document.addEventListener("visibilitychange", onFocus);
 
         return () => {
+            window.clearInterval(nudgeTimer);
             navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
             window.removeEventListener("focus", onFocus);
             document.removeEventListener("visibilitychange", onFocus);
