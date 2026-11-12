@@ -168,6 +168,24 @@ const serwist = new Serwist({
             handler: new NetworkOnly(),
         },
         {
+            // The offline settlement engine (ADR-38): settlement.wasm +
+            // wasm_exec.js, rebuilt per deploy and not precached (the GitHub
+            // Pages CI build has no wasm artifact, and a precache entry for a
+            // missing file would fail the worker's install). Cache them at
+            // runtime on the first online load so the engine keeps working
+            // offline; only 2xx responses enter the cache. A few entries
+            // cover the current pair plus leftovers from recent deploys.
+            matcher: ({ url, sameOrigin, request }) =>
+                sameOrigin && request.method === "GET" && url.pathname.startsWith(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/wasm/`),
+            handler: new CacheFirst({
+                cacheName: "wasm-engine",
+                plugins: [
+                    new CacheableResponsePlugin({ statuses: [200] }),
+                    new ExpirationPlugin({ maxEntries: 10 }),
+                ],
+            }),
+        },
+        {
             // BGG box art (ADR-31): immutable content-addressed URLs, so serve
             // from cache immediately and keep them offline-capable. Only
             // 2xx responses enter the cache; capped so one long session

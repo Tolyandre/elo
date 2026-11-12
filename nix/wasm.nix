@@ -3,8 +3,8 @@
 # same settlement math as the server, so offline-computed ratings cannot
 # drift. Outputs settlement.wasm plus the matching Go wasm_exec.js runtime —
 # the frontend derivation copies both into nextjs/public/wasm/ before
-# `next build` (the service worker precaches them; make build-wasm writes the
-# same pair locally for `next dev`).
+# `next build` (the service worker caches them at runtime, CacheFirst; make
+# build-wasm writes the same pair locally for `next dev`).
 {
   buildGoApplication,
   go,

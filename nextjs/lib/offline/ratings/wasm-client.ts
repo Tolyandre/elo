@@ -137,17 +137,23 @@ async function instantiate(): Promise<WasmBridge | null> {
     await loadWasmExecRuntime();
     if (!window.Go || !WebAssembly) return null;
     const go = new window.Go();
-    const bytes = await fetch(assetUrl("settlement.wasm")).then((res) => {
-        if (!res.ok) throw new Error(`settlement.wasm ${res.status}`);
-        return res.arrayBuffer();
-    });
+    const wasmUrl = assetUrl("settlement.wasm");
     // instantiateStreaming needs the application/wasm MIME type, which not
-    // every static host sets; fall back to the buffered form.
+    // every static host sets; only then fall back to a buffered fetch. The
+    // module is ~4 MB, so the common path must fetch it exactly once.
     let instance: WebAssembly.Instance;
     try {
-        const { instance: inst } = await WebAssembly.instantiateStreaming(fetch(assetUrl("settlement.wasm")), go.importObject);
+        const res = await fetch(wasmUrl);
+        if (!res.ok) throw new Error(`settlement.wasm ${res.status}`);
+        const { instance: inst } = await WebAssembly.instantiateStreaming(Promise.resolve(res), go.importObject);
         instance = inst;
     } catch {
+        // Streaming can fail on a wrong MIME type (the body may then be
+        // unusable) — fall back to one buffered fetch.
+        const bytes = await fetch(wasmUrl).then((res) => {
+            if (!res.ok) throw new Error(`settlement.wasm ${res.status}`);
+            return res.arrayBuffer();
+        });
         ({ instance } = await WebAssembly.instantiate(bytes, go.importObject));
     }
     void go.run(instance);
