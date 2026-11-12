@@ -85,6 +85,21 @@ export type SettingsHistoryRow = {
     elite_league_matches_2months: number;
 };
 
+/**
+ * One mirrored match document (the tenant-scoped detail response, verbatim) —
+ * the offline fallback behind the match view and the edit form. The slim
+ * matchReplica rows (ADR-38) carry only what the settlement replay needs; the
+ * form needs full fidelity (calculator_data, camps, tournament link), so the
+ * detail read is written through per opened match, like arenaDocs. Editing a
+ * match that was never mirrored stays online-only: a slim-replica prefill
+ * would read camps as empty and a submit could wipe them server-side.
+ */
+export type MatchDocRow = {
+    matchId: string;
+    match: Record<string, unknown>; // the wire Match object as returned
+    fetchedAt: string;
+};
+
 class OfflineDB extends Dexie {
     games!: Table<PendingGame, string>;
     players!: Table<PendingPlayer, string>;
@@ -107,6 +122,7 @@ class OfflineDB extends Dexie {
     arenaDocs!: Table<ArenaDocRow, string>;
     arenaPlayers!: Table<ArenaPlayersSnapshotRow, string>;
     settingsHistory!: Table<SettingsHistoryRow, string>;
+    matchDocs!: Table<MatchDocRow, string>;
 
     constructor() {
         super("elo-offline-v1");
@@ -142,6 +158,20 @@ class OfflineDB extends Dexie {
             arenaDocs: "arenaId",
             arenaPlayers: "arenaId",
             settingsHistory: "effective_date",
+        });
+        this.version(5).stores({
+            games: "clientId",
+            players: "clientId",
+            matches: "clientId",
+            entityPlayers: "id",
+            entityGames: "id",
+            ops: "entityId",
+            arenaSettlements: "[arenaId+id], [arenaId+date+id]",
+            matchReplica: "id, date",
+            arenaDocs: "arenaId",
+            arenaPlayers: "arenaId",
+            settingsHistory: "effective_date",
+            matchDocs: "matchId",
         });
     }
 }
@@ -532,6 +562,62 @@ export function writeArenaPlayersSnapshot(arenaId: string, players: Record<strin
         pendingWrites--;
     });
     return writeChain;
+}
+
+/** Stores one match document (the detail read's write-through). Non-throwing. */
+export function writeMatchDoc(match: Record<string, unknown>, matchId: string): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const row: MatchDocRow = { matchId, match, fetchedAt: new Date().toISOString() };
+    const run = async () => {
+        const d = db();
+        try {
+            await d.matchDocs.put(row);
+        } catch (err) {
+            console.error("match doc replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/**
+ * Stores one match document only when the mirror holds nothing for it yet —
+ * the list-row write-through. List rows omit calculator_data, so they must
+ * never overwrite a full detail mirror (a downgraded mirror would offline-edit
+ * a calculator match from empty state); a detail fetch always puts verbatim.
+ */
+export function writeMatchDocIfAbsent(match: Record<string, unknown>, matchId: string): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const run = async () => {
+        const d = db();
+        try {
+            const known = await d.matchDocs.get(matchId);
+            if (known) return;
+            await d.matchDocs.put({ matchId, match, fetchedAt: new Date().toISOString() });
+        } catch (err) {
+            console.error("match doc replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/** Reads one mirrored match document; null when absent. Never throws. */
+export async function readMatchDoc(matchId: string): Promise<Record<string, unknown> | null> {
+    if (!isBrowser()) return null;
+    try {
+        const row = await db().matchDocs.get(matchId);
+        return row?.match ?? null;
+    } catch (err) {
+        console.error("match doc replica read failed", err);
+        return null;
+    }
 }
 
 /** Replaces the mirrored elo-settings history (GET /settings/all). */

@@ -13,6 +13,7 @@ import { useOffline } from "../../offline/OfflineContext";
 import { useMe } from "@/app/meContext";
 import { Match, getMatchByIdPromise } from "../../api";
 import { matchEditInputs } from "@/lib/offline/match-entity";
+import { readMatchDoc, writeMatchDoc } from "@/lib/offline/db";
 import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, AlertCircleIcon, Loader2 } from "lucide-react";
@@ -85,8 +86,27 @@ function MatchEditPageWrapped() {
         if (matchFromContext && !matchFromContext.calculator_kind) return;
         fetchedRef.current = true;
         getMatchByIdPromise(id, tenantId)
-            .then(setMatchFromApi)
-            .catch((e) => setFetchError(e.message ?? "Неизвестная ошибка"));
+            .then((m) => {
+                // Write-through the full document (calculator_data, camps,
+                // tournament): the offline edit fallback reads this mirror.
+                void writeMatchDoc(m as unknown as Record<string, unknown>, id);
+                setMatchFromApi(m);
+            })
+            .catch(async (e) => {
+                // Offline (or the API down): a match previously viewed or edited
+                // on this device still edits from the mirrored document — the
+                // merge base is just older, which the sync's three-way merge
+                // resolves per field (ADR-37). A mirror written from a list row
+                // may lack calculator_data; such a doc cannot safely prefill the
+                // calculator editor, so only full documents stand in. Without a
+                // usable mirror the form cannot prefill at all (a slim replica
+                // prefill would read camps as empty and a submit could wipe
+                // them server-side).
+                const doc = await readMatchDoc(id);
+                const usable = doc !== null && !(doc.calculator_kind && !doc.calculator_data);
+                if (usable) setMatchFromApi(doc as unknown as Match);
+                else setFetchError(e.message ?? "Неизвестная ошибка");
+            });
     }, [needsDetail, matchFromContext, id, tenantId]);
 
     const editSaved = matchFromApi ?? matchFromContext ?? undefined;
@@ -253,7 +273,18 @@ function MatchEditPageWrapped() {
             {isSaved && !editSaved && fetchError ? (
                 <Alert variant="destructive">
                     <AlertCircleIcon />
-                    <AlertDescription>Ошибка: {fetchError}</AlertDescription>
+                    {offline ? (
+                        <>
+                            <AlertTitle>Нет связи с сервером</AlertTitle>
+                            <AlertDescription>
+                                Эта партия не открывалась на устройстве, пока была связь, поэтому офлайн её
+                                отредактировать нельзя. Откройте её онлайн — после этого правки будут работать и
+                                без сети.
+                            </AlertDescription>
+                        </>
+                    ) : (
+                        <AlertDescription>Ошибка: {fetchError}</AlertDescription>
+                    )}
                 </Alert>
             ) : (isSaved && !editSaved && (fetchLoading || matchesLoading)) || (!ready && !!id) ? (
                 <LoadingRows />

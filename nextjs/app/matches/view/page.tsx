@@ -12,6 +12,7 @@ import { TenantChooser } from "@/components/tenant-chooser";
 import { useOffline } from "../../offline/OfflineContext";
 import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise, matchSettled } from "../../api";
 import { MatchEntity, withLocalSettlement } from "@/lib/offline/match-entity";
+import { readMatchDoc, writeMatchDoc, writeMatchDocIfAbsent } from "@/lib/offline/db";
 import { useLocalRatings } from "../../offline/ratings/LocalRatingsContext";
 import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import { PendingChangesCard } from "@/components/offline/pending-changes-card";
@@ -140,9 +141,19 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
     setError(null);
     getMatchByIdPromise(matchId, tenantId)
       .then((m) => {
+        // Write-through the full document (calculator_data, camps, tournament):
+        // the offline view/edit fallback reads this mirror (ADR-37/38).
+        void writeMatchDoc(m as unknown as Record<string, unknown>, matchId);
         if (!cancelled) setMatchFromApi(m);
       })
-      .catch((e) => setError(e.message ?? "Неизвестная ошибка"))
+      .catch(async (e) => {
+        // Offline (or the API is down): a previously viewed match renders from
+        // the mirrored document instead of dead-ending on an error.
+        const doc = await readMatchDoc(matchId);
+        if (cancelled) return;
+        if (doc) setMatchFromApi(doc as unknown as Match);
+        else setError(e.message ?? "Неизвестная ошибка");
+      })
       .finally(() => {
         if (!cancelled) setFetchLoading(false);
       });
@@ -168,6 +179,16 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   }, [matchId, tenantId]);
 
   const match = matchFromApi ?? matchFromContext;
+
+  // Write-through the match document for the offline view/edit fallback: the
+  // detail mirror (full fidelity) when this page fetched it, otherwise the
+  // context row — but only into an empty slot, because list rows omit
+  // calculator_data and must not degrade an existing full mirror (ADR-37/38).
+  useEffect(() => {
+    if (!match || !tenantId) return;
+    if (match === matchFromApi) void writeMatchDoc(match as unknown as Record<string, unknown>, matchId);
+    else void writeMatchDocIfAbsent(match as unknown as Record<string, unknown>, matchId);
+  }, [match, matchFromApi, matchId, tenantId]);
 
   // A queued edit of this match (ADR-37): the entity overlays it on the
   // server read, so the view shows the user's latest intent rather than the

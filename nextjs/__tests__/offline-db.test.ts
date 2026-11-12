@@ -8,6 +8,7 @@ import {
     readArenaDoc,
     readArenaPlayersSnapshot,
     readEntities,
+    readMatchDoc,
     readRatingsReplica,
     readStore,
     subscribeEntities,
@@ -17,6 +18,8 @@ import {
     writeArenaPlayersSnapshot,
     writeArenaSettlements,
     writeEntities,
+    writeMatchDoc,
+    writeMatchDocIfAbsent,
     writeMatchReplica,
     writeSettingsHistory,
     writeStore,
@@ -235,6 +238,28 @@ describe("ratings replica (ADR-38)", () => {
         expect(await readArenaDoc("a1")).toMatchObject({ name: "Арена" });
         expect(await readArenaDoc("missing")).toBeNull();
         expect(await readArenaPlayersSnapshot("a1")).toHaveLength(1);
+    });
+
+    it("mirrors match documents per id — the offline view/edit fallback", async () => {
+        const match = { id: "m1", game_id: "g1", score: { p1: { score: 10 } }, calculator_kind: null };
+        await writeMatchDoc(match as Record<string, unknown>, "m1");
+        // A re-fetch of the same match replaces its mirror.
+        await writeMatchDoc({ ...match, score: { p1: { score: 20 } } } as Record<string, unknown>, "m1");
+
+        expect(await readMatchDoc("m1")).toMatchObject({ score: { p1: { score: 20 } } });
+        expect(await readMatchDoc("missing")).toBeNull();
+    });
+
+    it("never lets a list-row mirror overwrite a full detail mirror", async () => {
+        // The detail mirror lands first (full fidelity), then a list row for the
+        // same match (no calculator_data) must not degrade it.
+        await writeMatchDoc({ id: "m1", calculator_kind: "skull-king", calculator_data: { round: 3 } }, "m1");
+        await writeMatchDocIfAbsent({ id: "m1", calculator_kind: "skull-king" }, "m1");
+        expect(await readMatchDoc("m1")).toMatchObject({ calculator_data: { round: 3 } });
+
+        // An empty slot does take the list row (the offline view still renders).
+        await writeMatchDocIfAbsent({ id: "m2", calculator_kind: null }, "m2");
+        expect(await readMatchDoc("m2")).toMatchObject({ id: "m2" });
     });
 
     it("notifies subscribers of replica writes", async () => {
