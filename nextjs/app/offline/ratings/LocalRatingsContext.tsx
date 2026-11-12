@@ -95,6 +95,21 @@ function arenaFromDoc(doc: Record<string, unknown>): EngineArena | null {
     };
 }
 
+/**
+ * The document-mirror read for the replay candidates: like the engine itself,
+ * degrades to null on anything unexpected — the mirror stores whatever the
+ * server once returned, and a schema drift must cost the provisional values,
+ * not the render.
+ */
+function arenaFromDocSafe(doc: Record<string, unknown>): EngineArena | null {
+    try {
+        return arenaFromDoc(doc);
+    } catch (err) {
+        console.error("arena doc mirror unreadable; degrading", err);
+        return null;
+    }
+}
+
 export const LocalRatingsProvider = ({ children }: { children: ReactNode }) => {
     const { pendingMatches, ops } = useOffline();
     const { tenants } = useTenants();
@@ -136,16 +151,18 @@ export const LocalRatingsProvider = ({ children }: { children: ReactNode }) => {
 
         // Candidate arenas: the tenants' main arenas (their settings doc must
         // have been mirrored — hydrateRatingsReplica fetches it) plus every
-        // arena the user has viewed.
+        // arena the user has viewed. Each candidate degrades independently: a
+        // malformed mirrored document or a failed replay must cost one arena's
+        // provisional values, never the whole render.
         const candidates = new Map<string, EngineArena>();
         for (const t of tenants) {
             const doc = replica.arenaDocs.get(t.main_arena_id);
-            const arena = doc ? arenaFromDoc(doc) : null;
+            const arena = doc ? arenaFromDocSafe(doc) : null;
             if (arena) candidates.set(t.main_arena_id, { ...arena, membershipMode: t.arena_membership_mode });
         }
         for (const [arenaId, doc] of replica.arenaDocs) {
             if (!candidates.has(arenaId)) {
-                const arena = arenaFromDoc(doc);
+                const arena = arenaFromDocSafe(doc);
                 if (arena) candidates.set(arenaId, arena);
             }
         }

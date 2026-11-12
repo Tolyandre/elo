@@ -209,8 +209,23 @@ function toFrozen(rows: LedgerRow[]): WasmFrozenSettlement[] {
  * supported, or there are no local events — in the last case there is
  * nothing to recompute and the fast path avoids loading wasm at all.
  * Synchronous: the wasm bridge call is synchronous once loaded.
+ *
+ * Never throws: any failure inside the replay (an empty settings history on a
+ * cold replica, schema drift in a mirrored document, a wasm-side error) is a
+ * degrade-to-null, because this runs inside the provider's render — a throw
+ * here would blank the whole app instead of just the provisional values
+ * (ADR-38's "reads never throw" contract).
  */
 export function runEngine(input: EngineInput): EngineResult | null {
+    try {
+        return runEngineInner(input);
+    } catch (err) {
+        console.error("offline settlement replay failed; degrading to replica values", err);
+        return null;
+    }
+}
+
+function runEngineInner(input: EngineInput): EngineResult | null {
     const { bridge, arena } = input;
     if (!bridge) return null;
 

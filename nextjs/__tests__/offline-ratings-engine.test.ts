@@ -120,6 +120,16 @@ describe("runEngine (ADR-38)", () => {
         expect(result).toBeNull();
     });
 
+    it("degrades to null when the replay throws (empty settings history on a cold replica)", async () => {
+        const bridge: WasmBridge = {
+            replayArena: () => {
+                throw new Error("settlement replay failed: no elo settings history");
+            },
+        };
+        const result = runEngine(baseInput({ bridge, pendingMatches: [pendingMatch("pm1", { p1: 10, p2: 5 })] }));
+        expect(result).toBeNull();
+    });
+
     it("returns null without local events (the replica fast path)", async () => {
         const { bridge, captured } = capturingBridge();
         const result = runEngine(baseInput({ bridge, matches: [replicaRow("m1", "2026-06-01T10:00:00Z", { p1: 10, p2: 5 })] }));
