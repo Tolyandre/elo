@@ -5,7 +5,7 @@
   "packageManager": "pnpm@11.18.0",
   "scripts": {
     "dev": "node scripts/generate-image-pools.mjs && next dev --turbopack",
-    "build": "node scripts/generate-image-pools.mjs && next build --webpack && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-precache.mjs",
+    "build": "node scripts/generate-image-pools.mjs && next build --webpack && serwist build serwist.config.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-precache.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest",
@@ -48,6 +48,7 @@
     "vaul": "^1.1.2"
   },
   "devDependencies": {
+    "@serwist/cli": "^9.5.13",
     "@serwist/next": "^9.5.12",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/katex": "^0.16.8",
@@ -55,6 +56,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "autoprefixer": "^10.5.4",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "16.2.12",
     "fake-indexeddb": "^6.2.8",

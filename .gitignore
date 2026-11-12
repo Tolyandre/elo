@@ -68,7 +68,8 @@ devenv.local.yaml
 # generated artifacts
 /openapi/bundled.json
 
-# generated service worker (built by @serwist/next during pnpm build)
+# stale workers from the old withSerwist build (the worker now lands in
+# nextjs/out/, already ignored above)
 nextjs/public/sw.js
 nextjs/public/sw.js.map
 
