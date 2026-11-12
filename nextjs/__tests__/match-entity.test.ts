@@ -13,6 +13,7 @@ import {
     matchEditInputs,
     opToMatch,
     pendingMatchToMatch,
+    withLocalSettlement,
 } from "../lib/offline/match-entity";
 import { PendingMatch, PendingOp } from "../lib/offline/types";
 
@@ -332,5 +333,66 @@ describe("MatchEntity.changes", () => {
             },
         });
         expect(entity?.changes(helpers)).toEqual([]);
+    });
+});
+
+// ─── withLocalSettlement (ADR-38) ─────────────────────────────────────────────
+
+describe("withLocalSettlement", () => {
+    const local = {
+        p1: { ratingStaked: -5.5, ratingEarned: 21.5, ratingAfter: 1016 },
+        p2: { ratingStaked: -16, ratingEarned: 0, ratingAfter: 984 },
+    };
+
+    it("fills the unset settlement columns of a pending display state", () => {
+        const view = pendingMatchToMatch({
+            clientId: MATCH_ID,
+            createdAt: "2026-01-09T12:00:00.000Z",
+            status: "pending",
+            gameId: GAME_ID,
+            score: { p1: 10, p2: 5 },
+            campArenaIds: [],
+        });
+        expect(matchSettled(view)).toBe(false);
+        const filled = withLocalSettlement(view, local);
+        expect(matchSettled(filled)).toBe(true);
+        expect(filled.score.p1).toMatchObject({ ratingStaked: -5.5, ratingEarned: 21.5, ratingAfter: 1016 });
+        expect(filled.score.p2).toMatchObject({ ratingStaked: -16, ratingEarned: 0, ratingAfter: 984 });
+        // The scores themselves are untouched.
+        expect(filled.score.p1.score).toBe(10);
+    });
+
+    it("keeps server-settled rows and leaves players without a local row null", () => {
+        const view: Match = {
+            ...pendingMatchToMatch({
+                clientId: MATCH_ID,
+                createdAt: "2026-01-09T12:00:00.000Z",
+                status: "pending",
+                gameId: GAME_ID,
+                score: { p1: 10, p2: 5 },
+                campArenaIds: [],
+            }),
+            score: {
+                p1: { ratingStaked: 3, ratingEarned: 4, score: 10, ratingAfter: 1007 },
+                p2: { ratingStaked: null, ratingEarned: null, score: 5, ratingAfter: null },
+            },
+        };
+        const filled = withLocalSettlement(view, { p1: local.p1 });
+        // p1 was already settled by the server — untouched.
+        expect(filled.score.p1).toBe(view.score.p1);
+        // p2 has no local settlement (e.g. not an arena member) — stays null.
+        expect(filled.score.p2.ratingStaked).toBeNull();
+    });
+
+    it("returns the input untouched without a settlement (pre-ADR-38 rendering)", () => {
+        const view = pendingMatchToMatch({
+            clientId: MATCH_ID,
+            createdAt: "2026-01-09T12:00:00.000Z",
+            status: "pending",
+            gameId: GAME_ID,
+            score: { p1: 10 },
+            campArenaIds: [],
+        });
+        expect(withLocalSettlement(view, null)).toBe(view);
     });
 });

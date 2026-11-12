@@ -3,238 +3,59 @@ package elo
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"time"
 
-	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
-	"github.com/tolyandre/elo-web-service/pkg/ratingmath"
+	"github.com/tolyandre/elo-web-service/pkg/settlement"
 )
 
-// ArenaPrevState bundles the per-player prior state needed to compute one
-// match's settlements in ONE arena.
-type ArenaPrevState struct {
-	Elo     map[id.ID]float64 // true Elo before this match
-	Rating  map[id.ID]float64 // display rating before this match
-	League  map[id.ID]*string // league before this match (nil when arena has no leagues)
-	Count6M map[id.ID]int     // arena matches in the last 6 months (includes this match)
-	Count2M map[id.ID]int     // arena matches in the last 2 months (includes this match)
-
-	Settings EloSettings // K/D/starting_elo/win_reward at the match date
-}
-
-// arenaPlayerResult holds one player's dual-track deltas and new values for
-// one match in one arena.
-type arenaPlayerResult struct {
-	eloStaked    float64
-	eloEarned    float64
-	newElo       float64
-	ratingStaked float64
-	ratingEarned float64
-	newRating    float64
-	league       *string
-}
+// ArenaPrevState is the per-player prior state of one match in one arena.
+// The struct lives in pkg/settlement (the offline wasm build links it,
+// ADR-38); the alias keeps the historical name.
+type ArenaPrevState = settlement.ArenaPrevState
 
 // ---------------------------------------------------------------------------
-// League progression, driven by the arena's settings league list (ADR-24).
-// The list is in promotion order and must be a subsequence of
-// newbie → amateur → elite (enforced by arenasettings.Parse).
+// League progression wrappers. The logic lives in pkg/settlement — the
+// offline client's wasm build runs the exact same code (ADR-38) — and the
+// arena-taking signatures below are the historical in-package shape.
 // ---------------------------------------------------------------------------
-
-func strPtr(s string) *string { return &s }
 
 // arenaLeaguePriority orders leagues for ranking: lower = ranked higher.
-// The settings list is in promotion order (newbie → amateur → elite), so the
-// priority inverts it: elite sorts first. League-less arenas put everyone in
-// one bucket (all equal, ties broken by rating).
 func arenaLeaguePriority(league *string, arena Arena) int {
-	if league == nil {
-		return len(arena.Settings.Leagues)
-	}
-	for i, l := range arena.Settings.Leagues {
-		if l.Kind == *league {
-			return len(arena.Settings.Leagues) - 1 - i
-		}
-	}
-	return len(arena.Settings.Leagues)
-}
-
-// baseLeague returns the highest non-elite league (the tier players settle in
-// when they leave newbie and do not qualify for elite).
-func baseLeague(arena Arena) string {
-	for i := len(arena.Settings.Leagues) - 1; i >= 0; i-- {
-		if arena.Settings.Leagues[i].Kind != LeagueElite {
-			return arena.Settings.Leagues[i].Kind
-		}
-	}
-	return arena.Settings.Leagues[len(arena.Settings.Leagues)-1].Kind
+	return settlement.ArenaLeaguePriority(league, arena.Settings)
 }
 
 // initialArenaLeague returns the league for a player with no prior settlement
-// in the arena. Players whose starting gap exceeds the newbie threshold start
-// as newbies (ADR-03); when the arena has no newbie league they start in the
-// first league.
+// in the arena.
 func initialArenaLeague(arena Arena, s EloSettings) *string {
-	if len(arena.Settings.Leagues) == 0 {
-		return nil
-	}
-	if nl, ok := arena.Settings.Newbie(); ok {
-		if s.StartingElo-arena.Settings.StartingRating > nl.GoalGap {
-			return strPtr(LeagueNewbie)
-		}
-	}
-	for _, l := range arena.Settings.Leagues {
-		if l.Kind != LeagueNewbie {
-			return strPtr(l.Kind)
-		}
-	}
-	return strPtr(LeagueNewbie)
+	return settlement.InitialArenaLeague(arena.Settings, s)
 }
 
 // effectiveArenaLeague accounts for time-based demotion from elite: the
 // stored league is set at write time; if the player's recent match counts have
 // dropped below the elite thresholds they are effectively in the base league.
 func effectiveArenaLeague(stored *string, cnt60, cnt180 int, arena Arena) *string {
-	if stored == nil {
-		return nil
-	}
-	if *stored == LeagueElite {
-		if el, ok := arena.Settings.Elite(); ok && cnt180 >= el.Matches6M && cnt60 >= el.Matches2M {
-			return stored
-		}
-		return strPtr(baseLeague(arena))
-	}
-	return stored
+	return settlement.EffectiveArenaLeague(stored, cnt60, cnt180, arena.Settings)
 }
 
 // displayLeague is the league a players listing shows: unsettled players
 // derive from the starting values, settled players get the stale-elite
-// correction. A league-less arena names no league — the empty string (the
-// helpers above return nil there, and the listing SQL coalesces the stored
-// NULL league to 'newbie', which would misreport every settled player).
+// correction.
 func displayLeague(stored *string, settled bool, cnt60, cnt180 int, arena Arena, s EloSettings) string {
-	if len(arena.Settings.Leagues) == 0 {
-		return ""
-	}
-	var league *string
-	if settled {
-		league = effectiveArenaLeague(stored, cnt60, cnt180, arena)
-	} else {
-		league = initialArenaLeague(arena, s)
-	}
-	if league == nil {
-		return ""
-	}
-	return *league
+	return settlement.DisplayLeague(stored, settled, cnt60, cnt180, arena.Settings, s)
 }
 
 // determineArenaLeague returns the league a player is in AFTER a settlement.
-// A newbie stays while the elo−rating gap exceeds the newbie goal; the elite
-// check applies immediately when the counts qualify (a promoted newbie can
-// jump straight to elite); everyone else lands in the base league.
 func determineArenaLeague(prev *string, newRating, newElo float64, count6M, count2M int, arena Arena) *string {
-	if len(arena.Settings.Leagues) == 0 {
-		return nil
-	}
-	if nl, ok := arena.Settings.Newbie(); ok {
-		if prev != nil && *prev == LeagueNewbie && newElo-newRating > nl.GoalGap {
-			return strPtr(LeagueNewbie)
-		}
-	}
-	if el, ok := arena.Settings.Elite(); ok {
-		if count6M >= el.Matches6M && count2M >= el.Matches2M {
-			return strPtr(LeagueElite)
-		}
-	}
-	return strPtr(baseLeague(arena))
+	return settlement.DetermineArenaLeague(prev, newRating, newElo, count6M, count2M, arena.Settings)
 }
 
 // ---------------------------------------------------------------------------
-// Rating catch-up scaling (ADR-03), parameterized by the arena's catch_up
-// settings (v2 — no longer tied to the newbie league).
+// Per-match settlement calculation (DB-facing halves; the pure math is
+// settlement.BuildArenaResults).
 // ---------------------------------------------------------------------------
-
-// scaleRatingEarned amplifies rating_earned when elo > rating (rating still
-// catching up). Maps ratingEarnedRaw ∈ [0, K] to [earnedMin·t, K+(earnedMax−K)·t]
-// where t depends on the gap. When rating >= elo, earned is unchanged.
-func scaleRatingEarned(ratingEarnedRaw, prevElo, prevRating float64, cu arenasettings.CatchUp, s EloSettings) float64 {
-	if prevRating >= prevElo {
-		return ratingEarnedRaw
-	}
-	gap := prevElo - prevRating
-	t := 1 - math.Exp(-gap/cu.Tau)
-	earnedMin := cu.EarnedMin * t
-	earnedMax := s.K + (cu.EarnedMax-s.K)*t
-	if s.K == 0 {
-		return earnedMin
-	}
-	return earnedMin + (ratingEarnedRaw/s.K)*(earnedMax-earnedMin)
-}
-
-// scaleRatingStaked amplifies rating_staked when rating > elo (rating has
-// overshot). When rating <= elo, staked is unchanged.
-func scaleRatingStaked(ratingStakedRaw, prevElo, prevRating float64, cu arenasettings.CatchUp, s EloSettings) float64 {
-	if prevRating <= prevElo || s.K == 0 {
-		return ratingStakedRaw
-	}
-	gap := prevRating - prevElo
-	t := 1 - math.Exp(-gap/cu.Tau)
-	stakedScale := s.K + (cu.EarnedMax-s.K)*t
-	return ratingStakedRaw * (stakedScale / s.K)
-}
-
-// ---------------------------------------------------------------------------
-// Per-match settlement calculation
-// ---------------------------------------------------------------------------
-
-// buildArenaResults computes the dual-track (elo + rating) settlement for
-// every player in the match, in the given arena. Pure calculation — no DB
-// writes. The catch-up scaling always applies (it is a no-op while
-// rating >= elo), so an arena whose starting rating equals the starting elo
-// has rating ≡ elo: the two tracks mirror each other exactly. With a lower
-// starting rating the visible rating catches up to elo through the scaled
-// earned — with or without leagues.
-func buildArenaResults(playerScores map[id.ID]float64, prev ArenaPrevState, arena Arena) map[id.ID]arenaPlayerResult {
-	s := prev.Settings
-
-	newElos := CalculateNewElo(prev.Elo, s.StartingElo, playerScores, s.K, s.D, s.WinReward)
-	absoluteLoserScore := ratingmath.GetAbsoluteLoserScore(playerScores)
-
-	results := make(map[id.ID]arenaPlayerResult, len(playerScores))
-	for pid, score := range playerScores {
-		// Elo track.
-		eloStaked := -s.K * WinExpectation(prev.Elo[pid], playerScores, s.StartingElo, prev.Elo, s.D)
-		eloEarned := s.K * ratingmath.NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
-
-		// Rating track: the player's own rating replaces their elo in
-		// WinExpectation; earned/staked are scaled by the elo↔rating gap.
-		prevEloForRating := make(map[id.ID]float64, len(prev.Elo))
-		for k, v := range prev.Elo {
-			prevEloForRating[k] = v
-		}
-		prevEloForRating[pid] = prev.Rating[pid]
-
-		ratingStakedRaw := -s.K * WinExpectation(prev.Rating[pid], playerScores, s.StartingElo, prevEloForRating, s.D)
-		ratingEarnedRaw := s.K * ratingmath.NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
-		ratingStaked := scaleRatingStaked(ratingStakedRaw, prev.Elo[pid], prev.Rating[pid], arena.Settings.CatchUp, s)
-		ratingEarned := scaleRatingEarned(ratingEarnedRaw, prev.Elo[pid], prev.Rating[pid], arena.Settings.CatchUp, s)
-		newRating := prev.Rating[pid] + ratingStaked + ratingEarned
-		league := determineArenaLeague(prev.League[pid], newRating, newElos[pid], prev.Count6M[pid], prev.Count2M[pid], arena)
-
-		results[pid] = arenaPlayerResult{
-			eloStaked:    eloStaked,
-			eloEarned:    eloEarned,
-			newElo:       newElos[pid],
-			ratingStaked: ratingStaked,
-			ratingEarned: ratingEarned,
-			newRating:    newRating,
-			league:       league,
-		}
-	}
-	return results
-}
 
 // lockAndGetPrevArenaState locks the match's players in sorted order and
 // returns each player's prior state in the given arena. The current match is
@@ -339,7 +160,7 @@ func storeArenaMatchSettlements(
 	ctx context.Context, q *db.Queries, arena Arena, match db.Match,
 	playerScores map[id.ID]float64, prev ArenaPrevState,
 ) error {
-	results := buildArenaResults(playerScores, prev, arena)
+	results := settlement.BuildArenaResults(playerScores, prev, arena.Settings)
 
 	playerIDs := make([]id.ID, 0, len(playerScores))
 	for playerID := range playerScores {
@@ -354,14 +175,14 @@ func storeArenaMatchSettlements(
 			ArenaID:      arena.ID,
 			PlayerID:     playerID,
 			Date:         match.Date,
-			RatingAfter:  r.newRating,
-			EloAfter:     r.newElo,
+			RatingAfter:  r.NewRating,
+			EloAfter:     r.NewElo,
 			MatchID:      &match.ID,
-			EloStaked:    r.eloStaked,
-			EloEarned:    r.eloEarned,
-			RatingStaked: r.ratingStaked,
-			RatingEarned: r.ratingEarned,
-			League:       ptrText(r.league),
+			EloStaked:    r.EloStaked,
+			EloEarned:    r.EloEarned,
+			RatingStaked: r.RatingStaked,
+			RatingEarned: r.RatingEarned,
+			League:       ptrText(r.League),
 		}); err != nil {
 			return fmt.Errorf("unable to upsert arena settlement for player %s: %w", playerID, err)
 		}

@@ -389,6 +389,11 @@ type Querier interface {
 	// per-player lateral then degrades into per-match probes of match_scores
 	// (~3s for a 100-player arena); the aggregate shape is estimate-insensitive.
 	ListArenaPlayersAt(ctx context.Context, arg ListArenaPlayersAtParams) ([]ListArenaPlayersAtRow, error)
+	// Ascending keyset page of one arena's settlement ledger (ADR-38): the
+	// offline client mirrors the chain to replay ratings locally. Ordered by the
+	// replay index (arena_id, date, id); the cursor is the last row's (date, id),
+	// so a page boundary never splits or skips same-date rows.
+	ListArenaSettlementsByArena(ctx context.Context, arg ListArenaSettlementsByArenaParams) ([]ListArenaSettlementsByArenaRow, error)
 	// kind narrows the list for the /arenas page tabs: 'games' returns every
 	// user-managed arena except camps and the global one (the main page, not a
 	// list entry); 'camps' returns only camp arenas; 'tournaments' returns only

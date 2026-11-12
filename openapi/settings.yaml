@@ -199,4 +199,24 @@ EloSettingEntry:
     win_reward:
       type: number
       format: double
-  required: [effective_date, elo_const_k, elo_const_d, starting_elo, win_reward]
+    newbie_league_earned_min:
+      type: number
+      format: double
+      description: The league parameters ride along so the offline settlement
+        replay (ADR-38) can resolve them as-of the match date.
+    newbie_league_earned_max:
+      type: number
+      format: double
+    newbie_league_earned_tau:
+      type: number
+      format: double
+    newbie_league_goal_gap:
+      type: number
+      format: double
+    elite_league_matches_6months:
+      type: integer
+    elite_league_matches_2months:
+      type: integer
+  required: [effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
+             newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
+             newbie_league_goal_gap, elite_league_matches_6months, elite_league_matches_2months]

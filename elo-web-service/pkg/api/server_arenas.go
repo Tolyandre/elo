@@ -654,3 +654,93 @@ func (s *StrictServer) ListHomeFeed(ctx context.Context, request ListHomeFeedReq
 	}
 	return ListHomeFeed200JSONResponse(page), nil
 }
+
+// settlementCursor is the opaque keyset token of one settlements ledger page
+// (ADR-38): the last returned row's (date, id).
+type settlementCursor struct {
+	Date rfc3339Time `json:"date"`
+	Id   string      `json:"id"`
+}
+
+// ListArenaSettlements serves the arena's settlement ledger ascending
+// (date, id) in pages — the offline client mirrors the chain to replay
+// ratings locally (ADR-38). Market settlements ride along as frozen rows.
+func (s *StrictServer) ListArenaSettlements(ctx context.Context, request ListArenaSettlementsRequestObject) (ListArenaSettlementsResponseObject, error) {
+	arenaID := parseIDParam(request.Id)
+	if _, err := s.api.ArenaService.GetArena(ctx, arenaID); err != nil {
+		if db.IsNoRows(err) {
+			return ListArenaSettlements404JSONResponse{Status: StatusFail, Message: "Arena not found"}, nil
+		}
+		return nil, err
+	}
+
+	limit := 1000
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if limit < 1 || limit > 5000 {
+		return ListArenaSettlements400JSONResponse{Status: StatusFail, Message: "limit must be between 1 and 5000"}, nil
+	}
+
+	var cursorDate pgtype.Timestamptz
+	var cursorID *id.ID
+	if request.Params.Next != nil && *request.Params.Next != "" {
+		c, err := decodeCursorToken[settlementCursor](*request.Params.Next)
+		if err != nil {
+			return ListArenaSettlements400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
+		}
+		cid, err := id.Parse(c.Id)
+		if err != nil {
+			return ListArenaSettlements400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
+		}
+		cursorDate = pgtype.Timestamptz{Time: time.Time(c.Date), Valid: true}
+		cursorID = &cid
+	}
+
+	// One extra row decides whether another page follows.
+	rows, err := s.api.ArenaService.ListArenaSettlements(ctx, arenaID, cursorDate, cursorID, limit+1)
+	if err != nil {
+		return nil, err
+	}
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
+	}
+
+	data := make([]ArenasArenaSettlement, 0, len(rows))
+	for _, r := range rows {
+		item := ArenasArenaSettlement{
+			Id:            Base58ID(r.ID),
+			PlayerId:      Base58ID(r.PlayerID),
+			Date:          r.Date.Time,
+			Discriminator: ArenasArenaSettlementDiscriminator(r.Discriminator),
+			RatingAfter:   r.RatingAfter,
+			EloAfter:      r.EloAfter,
+			EloStaked:     r.EloStaked,
+			EloEarned:     r.EloEarned,
+			RatingStaked:  r.RatingStaked,
+			RatingEarned:  r.RatingEarned,
+		}
+		if r.MatchID != nil {
+			matchID := Base58ID(*r.MatchID)
+			item.MatchId = &matchID
+		}
+		if r.MarketID != nil {
+			marketID := Base58ID(*r.MarketID)
+			item.MarketId = &marketID
+		}
+		if r.League.Valid {
+			league := r.League.String
+			item.League = &league
+		}
+		data = append(data, item)
+	}
+
+	page := ArenasArenaSettlementsPage{Status: StatusSuccess, Data: data}
+	if hasMore && len(rows) > 0 {
+		last := rows[len(rows)-1]
+		token := encodeCursorToken(settlementCursor{Date: rfc3339Time(last.Date.Time), Id: string(last.ID)})
+		page.Next = &token
+	}
+	return ListArenaSettlements200JSONResponse(page), nil
+}

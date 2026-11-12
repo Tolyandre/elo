@@ -241,6 +241,86 @@ func (q *Queries) GetPlayerLatestArenaRatingBeforeMatch(ctx context.Context, arg
 	return i, err
 }
 
+const listArenaSettlementsByArena = `-- name: ListArenaSettlementsByArena :many
+SELECT s.id, s.player_id, s.date, s.rating_after, s.elo_after, s.discriminator,
+       s.match_id, s.market_id, s.elo_staked, s.elo_earned,
+       s.rating_staked, s.rating_earned, s.league
+FROM arena_settlements s
+WHERE s.arena_id = $1::uuid
+  AND (
+      $2::timestamptz IS NULL
+      OR (s.date, s.id) > ($2::timestamptz, $3::uuid)
+  )
+ORDER BY s.date ASC, s.id ASC
+LIMIT $4::int
+`
+
+type ListArenaSettlementsByArenaParams struct {
+	ArenaID    id.ID              `json:"arena_id"`
+	CursorDate pgtype.Timestamptz `json:"cursor_date"`
+	CursorID   *id.ID             `json:"cursor_id"`
+	PageLimit  int32              `json:"page_limit"`
+}
+
+type ListArenaSettlementsByArenaRow struct {
+	ID            id.ID              `json:"id"`
+	PlayerID      id.ID              `json:"player_id"`
+	Date          pgtype.Timestamptz `json:"date"`
+	RatingAfter   float64            `json:"rating_after"`
+	EloAfter      float64            `json:"elo_after"`
+	Discriminator string             `json:"discriminator"`
+	MatchID       *id.ID             `json:"match_id"`
+	MarketID      *id.ID             `json:"market_id"`
+	EloStaked     float64            `json:"elo_staked"`
+	EloEarned     float64            `json:"elo_earned"`
+	RatingStaked  float64            `json:"rating_staked"`
+	RatingEarned  float64            `json:"rating_earned"`
+	League        pgtype.Text        `json:"league"`
+}
+
+// Ascending keyset page of one arena's settlement ledger (ADR-38): the
+// offline client mirrors the chain to replay ratings locally. Ordered by the
+// replay index (arena_id, date, id); the cursor is the last row's (date, id),
+// so a page boundary never splits or skips same-date rows.
+func (q *Queries) ListArenaSettlementsByArena(ctx context.Context, arg ListArenaSettlementsByArenaParams) ([]ListArenaSettlementsByArenaRow, error) {
+	rows, err := q.db.Query(ctx, listArenaSettlementsByArena,
+		arg.ArenaID,
+		arg.CursorDate,
+		arg.CursorID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListArenaSettlementsByArenaRow{}
+	for rows.Next() {
+		var i ListArenaSettlementsByArenaRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PlayerID,
+			&i.Date,
+			&i.RatingAfter,
+			&i.EloAfter,
+			&i.Discriminator,
+			&i.MatchID,
+			&i.MarketID,
+			&i.EloStaked,
+			&i.EloEarned,
+			&i.RatingStaked,
+			&i.RatingEarned,
+			&i.League,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLatestArenaStatePerPlayer = `-- name: ListLatestArenaStatePerPlayer :many
 SELECT DISTINCT ON (s.player_id)
   s.player_id,

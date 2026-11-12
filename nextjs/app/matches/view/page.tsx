@@ -11,7 +11,8 @@ import { useTenantScope } from "../../tenantScopeContext";
 import { TenantChooser } from "@/components/tenant-chooser";
 import { useOffline } from "../../offline/OfflineContext";
 import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise, matchSettled } from "../../api";
-import { MatchEntity } from "@/lib/offline/match-entity";
+import { MatchEntity, withLocalSettlement } from "@/lib/offline/match-entity";
+import { useLocalRatings } from "../../offline/ratings/LocalRatingsContext";
 import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import { PendingChangesCard } from "@/components/offline/pending-changes-card";
 import { MarketCard } from "@/components/market-card";
@@ -182,6 +183,18 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
     [match, matchId, op],
   );
   const view = useMemo(() => entity?.effective(helpers) ?? null, [entity, helpers]);
+  // Offline edits fill the settlement columns from the local replay (ADR-38):
+  // a match edited while offline shows its recomputed rating changes
+  // (provisional) instead of the stale pre-edit server ones.
+  const { getMatchSettlement } = useLocalRatings();
+  const localSettlement = useMemo(
+    () => (op ? getMatchSettlement(matchId, tenantId) : null),
+    [op, matchId, tenantId, getMatchSettlement],
+  );
+  const settledView = useMemo(
+    () => (view ? withLocalSettlement(view, localSettlement) : null),
+    [view, localSettlement],
+  );
 
   // The context data is only trustworthy once it has settled for the current
   // tenant: mid-refetch it still holds the previous community's settlement
@@ -230,13 +243,13 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
     );
   }
 
-  if (!match || !view) return <NotFound />;
+  if (!match || !settledView) return <NotFound />;
 
   // A competitive match the current community's main arena does not admit
   // (its openness rule, evaluated at the match date) has no settlement there:
   // the rating columns are null and the card hides them instead of showing
   // zeros that would suggest a played-out rating change.
-  const settled = matchSettled(match);
+  const settled = matchSettled(settledView);
 
   return (
     <PageContainer width="narrow">
@@ -261,7 +274,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
       </Card>
 
       <MatchCard
-        match={view}
+        match={settledView}
         roundToInteger={roundToInteger}
         pending={!!op}
         syncStatus={op?.status ?? undefined}

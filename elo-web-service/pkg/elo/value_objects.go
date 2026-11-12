@@ -8,24 +8,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
+	"github.com/tolyandre/elo-web-service/pkg/settlement"
 )
 
-// EloSettings holds the Elo calculation constants effective at a point in time.
-type EloSettings struct {
-	K           float64
-	D           float64
-	StartingElo float64
-	WinReward   float64
-
-	// Newbie league earned scaling parameters.
-	NewbieLeagueEarnedMin float64
-	NewbieLeagueEarnedMax float64
-	NewbieLeagueEarnedTau float64
-	NewbieLeagueGoalGap   float64 // gap threshold for newbie → amateur promotion
-
-	EliteMatches6M int
-	EliteMatches2M int
-}
+// EloSettings holds the Elo calculation constants effective at a point in
+// time. The struct lives in pkg/settlement (the offline wasm build links it,
+// ADR-38); the alias keeps the historical name.
+type EloSettings = settlement.EloSettings
 
 // EloSettingsFromDB converts a sqlc-generated row to the domain value object,
 // decoupling the domain from the generated DB type. The starting-rating

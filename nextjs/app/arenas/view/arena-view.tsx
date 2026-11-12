@@ -24,6 +24,17 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useClubs } from "@/app/clubsContext";
 import { useMe } from "@/app/meContext";
 import { useTenantScope } from "@/app/tenantScopeContext";
+import { useLocalRatings } from "@/app/offline/ratings/LocalRatingsContext";
+import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
+import {
+    drainArenaSettlements,
+} from "@/lib/offline/ratings/hydrate";
+import {
+    readArenaDoc,
+    readArenaPlayersSnapshot,
+    writeArenaDoc,
+    writeArenaPlayersSnapshot,
+} from "@/lib/offline/db";
 import { ArenaMedalsTab } from "./arena-medals-tab";
 import { ArenaFeedTab } from "./arena-feed-tab";
 import { useArenaFeed, type ArenaMatchFilters } from "./use-arena-feed";
@@ -70,6 +81,35 @@ export function ArenaView() {
     return { notFound: false as const, arena, players };
   }, [effectiveId]);
 
+  // Ratings replica (ADR-38): every successful fetch writes through (the
+  // arena doc + players snapshot seed the offline first paint, the view
+  // enters the followed set), and the arena's settlement ledger drains so
+  // the offline replay can run for it.
+  useEffect(() => {
+    if (data?.notFound || !data?.arena || effectiveId == null) return;
+    void writeArenaDoc(data.arena as unknown as Record<string, unknown>, data.arena.id);
+    void writeArenaPlayersSnapshot(data.arena.id, data.players as unknown as Record<string, unknown>[]);
+    void drainArenaSettlements(effectiveId).catch(() => {});
+  }, [data, effectiveId]);
+
+  // The last mirrored state stands in while the network has nothing (offline
+  // or slow): the first paint reads the replica, the fetch refreshes it.
+  const [seed, setSeed] = useState<{ arena: Awaited<ReturnType<typeof getArenaSafePromise>>; players: Awaited<ReturnType<typeof getArenaPlayersPromise>> } | null>(null);
+  useEffect(() => {
+    let stopped = false;
+    const load = async () => {
+      if (effectiveId == null) return null;
+      const [doc, snapshot] = await Promise.all([readArenaDoc(effectiveId), readArenaPlayersSnapshot(effectiveId)]);
+      return doc && snapshot ? { arena: doc as never, players: snapshot as never } : null;
+    };
+    void load().then((next) => {
+      if (!stopped) setSeed(next);
+    });
+    return () => {
+      stopped = true;
+    };
+  }, [effectiveId, data]);
+
   // Live refresh (ADR-36 phase 6): data-change signals — a queued arena
   // recalculation, matches or players recorded elsewhere — refetch the arena
   // (the stale mark drives the spinner) and the standings.
@@ -80,8 +120,10 @@ export function ArenaView() {
   }, [invalidate]);
 
   const notFound = data?.notFound === true;
-  const arena = notFound ? null : data?.arena ?? null;
-  const players = useMemo(() => (notFound ? [] : data?.players ?? []), [data, notFound]);
+  // Server data first; the replica seed stands in while the network has
+  // nothing (offline cold start) — the fetch refreshes over it.
+  const arena = notFound ? null : data?.arena ?? seed?.arena ?? null;
+  const serverPlayers = useMemo(() => (notFound ? [] : data?.players ?? seed?.players ?? []), [notFound, data, seed]);
   const recalculating = arena?.stale_at != null;
   // The id-less view without a resolved tenant: the scope shows its chooser
   // dialog; if it was dismissed, say what's missing instead of spinning.
@@ -127,6 +169,16 @@ export function ArenaView() {
   const [period, setPeriod] = useLocalStorage<ArenaRankPeriod>("arena-players-period", "day_ago");
   const [clubId, setClubId] = useState<Base58ID | null>(null);
   const { clubs } = useClubs();
+  // Local ratings overlay (ADR-38): when the offline replay has local events
+  // for this arena, the locally recomputed standings replace the mirrored
+  // server rows (marked by the provisional note below).
+  const { getArenaOverlay } = useLocalRatings();
+  const nameHelpers = useOpNameHelpers();
+  const overlay = useMemo(
+    () => (effectiveId != null ? getArenaOverlay(effectiveId, (pid) => nameHelpers.playerName(pid)) : null),
+    [effectiveId, getArenaOverlay, nameHelpers],
+  );
+  const players = useMemo(() => overlay ?? serverPlayers, [overlay, serverPlayers]);
   const displayedPlayers = useMemo(() => {
     if (clubId == null) return players;
     if (clubId === NO_CLUB_ID) {
@@ -215,9 +267,14 @@ export function ArenaView() {
             Арена пересчитывается — рейтинг скоро обновится.
           </p>
         )}
+        {overlay != null && (
+          <p className="text-sm text-muted-foreground">
+            Предварительный расчёт: учтены партии, ещё не отправленные на сервер.
+          </p>
+        )}
 
         {error && <ErrorAlert message={error} />}
-        {loading && !needsTenant && (
+        {loading && !needsTenant && seed == null && (
           <div className="space-y-2">
             <Skeleton className="h-6 w-40" />
             <Skeleton className="h-48 w-full rounded-xl" />

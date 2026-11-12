@@ -27,20 +27,31 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
+          version = self.rev or self.dirtyRev or "dev";
+          # The offline settlement engine (pkg/settlement → wasm, ADR-38);
+          # the frontend derivation copies it into public/wasm/.
+          settlement-wasm = pkgs.callPackage ./nix/wasm.nix {
+            inherit buildGoApplication version;
+          };
         in
         {
           default = pkgs.callPackage ./nix/default.nix {
               inherit buildGoApplication;
-              version = self.rev or self.dirtyRev;
+              inherit version;
             };
+
+          # The offline settlement engine (pkg/settlement → WebAssembly,
+          # ADR-38): settlement.wasm + the matching wasm_exec.js runtime.
+          inherit settlement-wasm;
 
           # Static Next.js export. The default parameters target the GitHub Pages
           # deployment (basePath "/elo", prod backend); override basePath /
           # apiBaseUrl / bannerText for other installs (e.g. stage).
           frontend = pkgs.callPackage ./nix/frontend.nix {
+            wasm = settlement-wasm;
             apiBaseUrl = "https://toly.is-cool.dev/elo-web-service";
             basePath = "/elo";
-            revision = self.rev or self.dirtyRev or "dev";
+            revision = version;
           };
         }
       );

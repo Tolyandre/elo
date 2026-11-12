@@ -35,6 +35,8 @@ import { applyResolutions, parseValue } from "@/lib/offline/merge";
 import { hasPendingWrites, readStore, subscribeStore, writeEntities, writeStore } from "@/lib/offline/db";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useTenantScope } from "../tenantScopeContext";
+import { useTenants } from "../tenantsContext";
+import { hydrateRatingsReplica } from "@/lib/offline/ratings/hydrate";
 import { parseSwMessage } from "@/lib/sw-messages";
 import { emitDataChange } from "@/lib/live-data";
 
@@ -381,8 +383,15 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     const [apiReachable, setApiReachable] = useState<boolean | null>(null);
     const [dataFromCache, setDataFromCache] = useState(false);
     const isOnline = useOnlineStatus();
-    // The current tenant for the legacy-item fallback (see tenantFallbackRef).
+    // The current tenant for the legacy-item fallback (see tenantFallbackRef)
+    // and the ratings-replica hydration (ADR-38, via tenantsRef — the sync
+    // callback reads the refs to keep its dependencies stable).
     const { tenantId } = useTenantScope();
+    const { tenants } = useTenants();
+    const tenantsRef = useRef(tenants);
+    useEffect(() => {
+        tenantsRef.current = tenants;
+    }, [tenants]);
     useEffect(() => {
         tenantFallbackRef.current = tenantId;
     }, [tenantId]);
@@ -532,6 +541,13 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                         // the server's SSE echo carries, without depending on the
                         // stream being connected).
                         emitDataChange({ matches: true, players: true, arenas: false });
+                        // Ratings replica (ADR-38): refresh the offline replay's
+                        // raw material — settings history, the tenant's match
+                        // history, the followed arenas' settlement ledgers.
+                        // Best-effort; the arena views' write-throughs keep the
+                        // arenas the user browses fresh as well.
+                        const tenant = tenantsRef.current.find((t) => t.id === tenantFallbackRef.current);
+                        if (tenant) void hydrateRatingsReplica(tenant).catch(() => {});
                     }
                     // Items queued while this run was in flight hit the probe's
                     // syncNow, which was a guarded no-op, and nothing re-triggers

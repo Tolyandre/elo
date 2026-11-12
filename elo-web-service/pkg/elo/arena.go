@@ -10,6 +10,7 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
+	"github.com/tolyandre/elo-web-service/pkg/settlement"
 )
 
 // Well-known ids of the arena row created by schema migration 051 — the
@@ -32,11 +33,12 @@ const (
 // their ?tenant='s main arena.
 var BlueMenArenaID = mustParseID("elo: blue men arena id", blueMenArenaIDUUID)
 
-// League kind names stored in arena settings and settlement rows.
+// League kind names stored in arena settings and settlement rows. Defined in
+// pkg/settlement (the offline wasm build links it, ADR-38).
 const (
-	LeagueNewbie  = "newbie"
-	LeagueAmateur = "amateur"
-	LeagueElite   = "elite"
+	LeagueNewbie  = settlement.LeagueNewbie
+	LeagueAmateur = settlement.LeagueAmateur
+	LeagueElite   = settlement.LeagueElite
 )
 
 func mustParseID(what, s string) id.ID {
@@ -180,6 +182,8 @@ func textPtr(t pgtype.Text) *string {
 	s := t.String
 	return &s
 }
+
+func strPtr(s string) *string { return &s }
 
 func ptrText(s *string) pgtype.Text {
 	if s == nil {

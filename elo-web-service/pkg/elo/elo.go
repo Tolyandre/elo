@@ -1,12 +1,8 @@
 package elo
 
 import (
-	"maps"
-	"math"
-	"slices"
-
 	"github.com/tolyandre/elo-web-service/pkg/id"
-	"github.com/tolyandre/elo-web-service/pkg/ratingmath"
+	"github.com/tolyandre/elo-web-service/pkg/settlement"
 )
 
 // newSettlementID mints a server-generated UUIDv7 for settlement rows.
@@ -20,28 +16,13 @@ func newSettlementID() id.ID {
 	return id.NewMonotonic()
 }
 
+// WinExpectation and CalculateNewElo delegate to pkg/settlement — the pure
+// settlement core also links into the offline client's wasm build (ADR-38),
+// so the two implementations cannot drift. The wrappers keep the historical
+// in-package signatures.
 func WinExpectation(currentElo float64, playersScore map[id.ID]float64, startingElo float64,
 	prevElo map[id.ID]float64, elo_const_d float64) float64 {
-
-	var playersCount float64 = float64(len(playersScore))
-	if playersCount == 1 {
-		return 1
-	}
-
-	// Sum over ids in sorted order: float addition is not associative and Go
-	// randomizes map range order, so an unordered sum made multiplayer
-	// settlements irreproducible at the last bits — a full replay drifted from
-	// the stored state by ~1 ULP per multiplayer match, compounding over history.
-	var sum float64 = 0
-	for _, p := range slices.Sorted(maps.Keys(playersScore)) {
-		prev := startingElo
-		if v, ok := prevElo[p]; ok {
-			prev = v
-		}
-		sum += 1 / (1 + math.Pow(10, (prev-currentElo)/elo_const_d))
-	}
-
-	return (sum - 0.5) / (playersCount * (playersCount - 1) / 2)
+	return settlement.WinExpectation(currentElo, playersScore, startingElo, prevElo, elo_const_d)
 }
 
 // NormalizedScore and GetAbsoluteLoserScore live in pkg/ratingmath: the
@@ -50,25 +31,5 @@ func WinExpectation(currentElo float64, playersScore map[id.ID]float64, starting
 
 func CalculateNewElo(previousElo map[id.ID]float64, startingElo float64, score map[id.ID]float64,
 	eloConstK float64, eloConstD float64, winReward float64) map[id.ID]float64 {
-
-	newElo := make(map[id.ID]float64, len(previousElo))
-	maps.Copy(newElo, previousElo)
-
-	absoluteLoserScore := ratingmath.GetAbsoluteLoserScore(score)
-
-	// for every player in this match calculate new elo
-	for pid, sc := range score {
-		// previous elo or starting elo if not present
-		prev := startingElo
-		if v, ok := previousElo[pid]; ok {
-			prev = v
-		}
-
-		norm := ratingmath.NormalizedScore(sc, score, absoluteLoserScore, winReward)
-		expect := WinExpectation(prev, score, startingElo, previousElo, eloConstD)
-
-		delta := eloConstK * (norm - expect)
-		newElo[pid] = prev + delta
-	}
-	return newElo
+	return settlement.CalculateNewElo(previousElo, startingElo, score, eloConstK, eloConstD, winReward)
 }

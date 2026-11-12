@@ -7,6 +7,7 @@ import type {
     Arena,
     ArenaPlayer,
     ArenaSettings,
+    ArenaSettlement,
     FeedEvent,
     FeedPage,
     MatchFilter,
@@ -181,4 +182,19 @@ export type ArenaSettingsDoc = {
 
 export function parseArenaSettings(settings: ArenaSettings): ArenaSettingsDoc {
     return settings as unknown as ArenaSettingsDoc;
+}
+
+/**
+ * One ascending page of the arena's settlement ledger (ADR-38) — the offline
+ * replica's hydration source.
+ */
+export async function listArenaSettlementsPagePromise(
+    id: Base58ID,
+    params: { limit?: number; next?: string } = {},
+): Promise<{ rows: ArenaSettlement[]; next: string | null }> {
+    const query: Record<string, string | number> = {};
+    if (params.limit) query.limit = params.limit;
+    if (params.next) query.next = params.next;
+    const res = await unwrap(client.GET("/arenas/{id}/settlements", { params: { path: { id }, query } }));
+    return { rows: res.data, next: res.next ?? null };
 }

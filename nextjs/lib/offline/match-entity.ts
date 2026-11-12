@@ -125,6 +125,47 @@ function unsetScoreRow(value: number): Match["score"][string] {
     return { ratingStaked: null, ratingEarned: null, score: value, ratingAfter: null };
 }
 
+/** The locally replayed settlement columns for one player (ADR-38). */
+export type LocalSettlementColumns = {
+    ratingStaked: number;
+    ratingEarned: number;
+    ratingAfter: number;
+};
+
+/**
+ * Fills the unset settlement columns of an unsynced display state from the
+ * local replay (ADR-38): pending creates and offline edits get provisional
+ * rating values (marked by the card's pending styling); rows the server
+ * already settled keep their server values, and players outside the arena's
+ * settlement stay null (the card renders nothing for them). No-op without a
+ * settlement — the pre-ADR-38 rendering.
+ */
+export function withLocalSettlement(
+    match: Match,
+    settlement: Record<string, LocalSettlementColumns> | null,
+): Match {
+    if (!settlement) return match;
+    let touched = false;
+    const score = Object.fromEntries(
+        Object.entries(match.score).map(([pid, row]) => {
+            if (row.ratingStaked !== null && row.ratingEarned !== null) return [pid, row];
+            const local = settlement[pid];
+            if (!local) return [pid, row];
+            touched = true;
+            return [
+                pid,
+                {
+                    ...row,
+                    ratingStaked: local.ratingStaked,
+                    ratingEarned: local.ratingEarned,
+                    ratingAfter: local.ratingAfter,
+                },
+            ];
+        }),
+    );
+    return touched ? { ...match, score } : match;
+}
+
 function campList(ids: Base58ID[] | undefined, known: MatchCamp[], helpers?: MatchEntityHelpers): MatchCamp[] {
     if (!ids || ids.length === 0) return [];
     return ids.map((id) => known.find((c) => c.id === id) ?? { id, name: helpers?.campName(String(id)) ?? String(id) });

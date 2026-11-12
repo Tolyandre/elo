@@ -169,6 +169,7 @@ func main() {
 	router.POST("/arenas", append(editorAuth(), strictWrapper.CreateArena)...)
 	router.GET("/arenas/:id", strictWrapper.GetArena)
 	router.GET("/arenas/:id/players", strictWrapper.GetArenaPlayers)
+	router.GET("/arenas/:id/settlements", strictWrapper.ListArenaSettlements)
 	router.GET("/arenas/:id/feed", strictWrapper.ListArenaFeed)
 	router.GET("/feed", strictWrapper.ListHomeFeed)
 	router.PATCH("/arenas/:id", append(editorAuth(), strictWrapper.UpdateArena)...)

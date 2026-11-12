@@ -151,6 +151,14 @@ rows into Dexie, so the preview reads the prior state exactly the way
 WebAssembly (standard Go `GOOS=js GOARCH=wasm`, JSON boundary) stays the
 parity-guaranteed alternative — revisit when either is actually wanted.
 
+**Resolved by ADR-38** (offline ratings): the ledger replica plus the
+`pkg/settlement` WASM build both landed — pending cards and offline edits
+fill their settlement columns from the local replay, and the arena view
+renders offline-recomputed standings. The "no rating values until the
+server settles" rule survives only where the client cannot evaluate an
+arena precisely (stint-based tenant modes, camp/tournament arenas, tag
+filters without tag data).
+
 ### Edit-during-sync races
 
 Editing a pending item while the engine syncs it is safe by construction:

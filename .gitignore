@@ -74,3 +74,7 @@ nextjs/public/sw.js.map
 
 # zcode plans
 .zcode
+
+# Offline settlement engine artifact (built by `make build-wasm`, wired into
+# deploys by nix/wasm.nix — ADR-38)
+/nextjs/public/wasm/

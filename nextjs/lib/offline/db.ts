@@ -9,6 +9,11 @@
 // future home (phase 6 moves them from fetch-land to this DB), matches follow
 // with the feed replica. New tables and indexes join via a bumped version(),
 // never by reshaping an existing store.
+//
+// The ratings replica (ADR-38) mirrors the raw material of the offline
+// settlement replay: the arena's settlement ledger, its match history, the
+// arena/settings documents and the elo-settings time series. The engine
+// (lib/offline/ratings/) replays them through the wasm settlement core.
 
 import Dexie, { type Table } from "dexie";
 import type { OfflineStore, PendingGame, PendingMatch, PendingOp, PendingPlayer } from "./types";
@@ -22,6 +27,64 @@ export type EntityRow = {
 
 export type EntityKind = "player" | "game";
 
+/** One mirrored arena_settlements ledger row (ADR-38) — the server wire shape
+ * plus the arenaId the compound key indexes on (added by the mirror step). */
+export type LedgerRow = {
+    arenaId: string;
+    id: string;
+    player_id: string;
+    date: string; // RFC3339
+    rating_after: number;
+    elo_after: number;
+    discriminator: "match" | "market" | "market_guarantor";
+    match_id?: string | null;
+    market_id?: string | null;
+    elo_staked: number;
+    elo_earned: number;
+    rating_staked: number;
+    rating_earned: number;
+    league?: string | null;
+};
+
+/** One mirrored match: the slim projection the replay and membership need. */
+export type MatchReplicaRow = {
+    id: string;
+    date: string; // RFC3339
+    gameId: string;
+    mode: "competitive" | "coop";
+    scores: Record<string, number>; // Base58 player id → score
+    hasMarkets: boolean;
+};
+
+/** One mirrored arena document (the GET /arenas/{id} response, verbatim). */
+export type ArenaDocRow = {
+    arenaId: string;
+    arena: Record<string, unknown>; // the wire Arena object as returned
+    fetchedAt: string;
+};
+
+/** One mirrored arena players listing (the GET /arenas/{id}/players response). */
+export type ArenaPlayersSnapshotRow = {
+    arenaId: string;
+    players: Record<string, unknown>[]; // the wire ArenaPlayer[] as returned
+    fetchedAt: string;
+};
+
+/** One mirrored elo_settings time-series row (GET /settings/all). */
+export type SettingsHistoryRow = {
+    effective_date: string; // RFC3339 or "-infinity"
+    elo_const_k: number;
+    elo_const_d: number;
+    starting_elo: number;
+    win_reward: number;
+    newbie_league_earned_min: number;
+    newbie_league_earned_max: number;
+    newbie_league_earned_tau: number;
+    newbie_league_goal_gap: number;
+    elite_league_matches_6months: number;
+    elite_league_matches_2months: number;
+};
+
 class OfflineDB extends Dexie {
     games!: Table<PendingGame, string>;
     players!: Table<PendingPlayer, string>;
@@ -34,6 +97,16 @@ class OfflineDB extends Dexie {
     // Edit/delete ops of saved entities (ADR-37 phase 7), keyed by the
     // entity id — one op per entity.
     ops!: Table<PendingOp, string>;
+    // The ratings replica (ADR-38). Settlements key on [arenaId+id] (unique
+    // per arena row) with a [arenaId+date+id] index for the (date, id)
+    // replay order; matches are a global union (rows are shared across
+    // tenants' views); the rest are one row per arena / one row per
+    // effective date.
+    arenaSettlements!: Table<LedgerRow, string>;
+    matchReplica!: Table<MatchReplicaRow, string>;
+    arenaDocs!: Table<ArenaDocRow, string>;
+    arenaPlayers!: Table<ArenaPlayersSnapshotRow, string>;
+    settingsHistory!: Table<SettingsHistoryRow, string>;
 
     constructor() {
         super("elo-offline-v1");
@@ -56,6 +129,19 @@ class OfflineDB extends Dexie {
             entityPlayers: "id",
             entityGames: "id",
             ops: "entityId",
+        });
+        this.version(4).stores({
+            games: "clientId",
+            players: "clientId",
+            matches: "clientId",
+            entityPlayers: "id",
+            entityGames: "id",
+            ops: "entityId",
+            arenaSettlements: "[arenaId+id], [arenaId+date+id]",
+            matchReplica: "id, date",
+            arenaDocs: "arenaId",
+            arenaPlayers: "arenaId",
+            settingsHistory: "effective_date",
         });
     }
 }
@@ -353,4 +439,224 @@ export function subscribeEntities(
         stopped = true;
         subscription.unsubscribe();
     };
+}
+
+// ─── Ratings replica (ADR-38) ─────────────────────────────────────────────────
+//
+// Mirrors the raw material of the offline settlement replay: the arena's
+// settlement ledger, its match history, arena/settings documents and the
+// elo-settings time series. Writes go through the same serialized chain as
+// the queue; reads never throw (the engine degrades to "no offline values").
+
+/**
+ * Replaces one arena's mirrored ledger rows (the settlement endpoint's page
+ * drain). Serialized through the write chain; non-throwing.
+ */
+export function writeArenaSettlements(arenaId: string, rows: LedgerRow[]): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const run = async () => {
+        const d = db();
+        try {
+            await d.transaction("rw", d.arenaSettlements, async () => {
+                await d.arenaSettlements
+                    .where("[arenaId+id]")
+                    .between([arenaId, Dexie.minKey], [arenaId, Dexie.maxKey])
+                    .delete();
+                await d.arenaSettlements.bulkPut(rows.map((r) => ({ ...r, arenaId })));
+            });
+        } catch (err) {
+            console.error("arena settlements replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/**
+ * Merges match rows into the replica (bulkPut union — matches are shared
+ * across tenants' views and never deleted server-side). Non-throwing.
+ */
+export function writeMatchReplica(rows: MatchReplicaRow[]): Promise<void> {
+    if (!isBrowser() || rows.length === 0) return Promise.resolve();
+    const run = async () => {
+        const d = db();
+        try {
+            await d.matchReplica.bulkPut(rows);
+        } catch (err) {
+            console.error("match replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/** Stores one arena document (the arena view's write-through). Non-throwing. */
+export function writeArenaDoc(arena: Record<string, unknown>, arenaId: string): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const row: ArenaDocRow = { arenaId, arena, fetchedAt: new Date().toISOString() };
+    const run = async () => {
+        const d = db();
+        try {
+            await d.arenaDocs.put(row);
+        } catch (err) {
+            console.error("arena doc replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/** Stores one arena players snapshot (the arena view's write-through). */
+export function writeArenaPlayersSnapshot(arenaId: string, players: Record<string, unknown>[]): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const row: ArenaPlayersSnapshotRow = { arenaId, players, fetchedAt: new Date().toISOString() };
+    const run = async () => {
+        const d = db();
+        try {
+            await d.arenaPlayers.put(row);
+        } catch (err) {
+            console.error("arena players snapshot write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/** Replaces the mirrored elo-settings history (GET /settings/all). */
+export function writeSettingsHistory(rows: SettingsHistoryRow[]): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const run = async () => {
+        const d = db();
+        try {
+            await d.transaction("rw", d.settingsHistory, async () => {
+                await replaceAll(d.settingsHistory, rows);
+            });
+        } catch (err) {
+            console.error("settings history replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/** The ratings replica snapshot the engine and providers consume. */
+export type RatingsReplicaSnapshot = {
+    settlements: Map<string, LedgerRow[]>; // per arena, (date, id) ascending
+    matches: MatchReplicaRow[];
+    arenaDocs: Map<string, Record<string, unknown>>;
+    arenaPlayers: Map<string, Record<string, unknown>[]>;
+    settings: SettingsHistoryRow[];
+    ready: boolean;
+};
+
+function emptyRatingsSnapshot(): RatingsReplicaSnapshot {
+    return {
+        settlements: new Map(),
+        matches: [],
+        arenaDocs: new Map(),
+        arenaPlayers: new Map(),
+        settings: [],
+        ready: false,
+    };
+}
+
+async function readRatingsSnapshot(): Promise<RatingsReplicaSnapshot> {
+    const d = db();
+    const [settlements, matches, docs, players, settings] = await Promise.all([
+        d.arenaSettlements.toArray(),
+        d.matchReplica.toArray(),
+        d.arenaDocs.toArray(),
+        d.arenaPlayers.toArray(),
+        d.settingsHistory.toArray(),
+    ]);
+    const byArena = new Map<string, LedgerRow[]>();
+    for (const row of settlements) {
+        const list = byArena.get(row.arenaId);
+        if (list) list.push(row);
+        else byArena.set(row.arenaId, [row]);
+    }
+    // The [arenaId+date+id] index order is what the replay wants; the plain
+    // toArray reads back by primary key, so order per arena here.
+    for (const list of byArena.values()) {
+        list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    }
+    matches.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    return {
+        settlements: byArena,
+        matches,
+        arenaDocs: new Map(docs.map((d) => [d.arenaId, d.arena])),
+        arenaPlayers: new Map(players.map((p) => [p.arenaId, p.players])),
+        settings,
+        ready: true,
+    };
+}
+
+/**
+ * Reads the whole ratings replica once (the provider's initial state).
+ * Never throws — a failed read resolves an empty, ready snapshot.
+ */
+export async function readRatingsReplica(): Promise<RatingsReplicaSnapshot> {
+    if (!isBrowser()) return emptyRatingsSnapshot();
+    try {
+        return await readRatingsSnapshot();
+    } catch (err) {
+        console.error("ratings replica read failed", err);
+        return emptyRatingsSnapshot();
+    }
+}
+
+/**
+ * Subscribes to ratings-replica changes (Dexie liveQuery across the five
+ * tables). The callback receives a fresh snapshot after every committed
+ * write — hydration drains, write-throughs, cross-tab echoes.
+ */
+export function subscribeRatingsReplica(cb: (snapshot: RatingsReplicaSnapshot) => void): () => void {
+    if (!isBrowser()) return () => {};
+    let stopped = false;
+    const subscription = Dexie.liveQuery(readRatingsSnapshot).subscribe({
+        next: (snapshot) => {
+            if (!stopped && snapshot) cb(snapshot);
+        },
+        error: () => {},
+    });
+    return () => {
+        stopped = true;
+        subscription.unsubscribe();
+    };
+}
+
+/** Reads one arena's mirrored players snapshot, or null when none. */
+export async function readArenaPlayersSnapshot(arenaId: string): Promise<Record<string, unknown>[] | null> {
+    if (!isBrowser()) return null;
+    try {
+        const row = await db().arenaPlayers.get(arenaId);
+        return row?.players ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/** Reads one arena's mirrored document, or null when none. */
+export async function readArenaDoc(arenaId: string): Promise<Record<string, unknown> | null> {
+    if (!isBrowser()) return null;
+    try {
+        return (await db().arenaDocs.get(arenaId))?.arena ?? null;
+    } catch {
+        return null;
+    }
 }

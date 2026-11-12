@@ -18,6 +18,7 @@ import (
 	"errors"
 
 	"github.com/tolyandre/elo-web-service/pkg/docregistry"
+	"github.com/tolyandre/elo-web-service/pkg/settlement"
 )
 
 //go:embed *.json
@@ -28,10 +29,12 @@ const Kind = "arena-settings"
 
 // CurrentVersion is the schema_version currently WRITTEN by new code and the
 // version every stored document is upgraded to at startup.
-const CurrentVersion = 2
+const CurrentVersion = settlement.CurrentVersion
 
-// ErrInvalid is returned when a settings document fails validation.
-var ErrInvalid = errors.New("invalid arena settings")
+// ErrInvalid is returned when a settings document fails validation — the
+// same instance pkg/settlement's parse wraps, so errors.Is keeps matching
+// across both layers.
+var ErrInvalid = settlement.ErrInvalid
 
 var reg = docregistry.New("arenasettings", schemasFS, errors.New("unknown arenasettings kind"), ErrInvalid)
 

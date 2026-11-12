@@ -37,6 +37,7 @@ export type MatchFilter = components["schemas"]["MatchFilter"];
 export type ArenaSettings = components["schemas"]["ArenaSettings"];
 export type Arena = components["schemas"]["Arena"];
 export type ArenaPlayer = components["schemas"]["ArenaPlayer"];
+export type ArenaSettlement = components["schemas"]["ArenaSettlement"];
 export type TableSummary = components["schemas"]["TableSummary"];
 export type TableGameState = components["schemas"]["TableGameState"];
 export type TablePlayer = components["schemas"]["TablePlayer"];

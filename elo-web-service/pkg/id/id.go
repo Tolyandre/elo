@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // ID is a canonical UUID string (e.g. 018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f).
@@ -204,30 +203,9 @@ func (id *ID) UnmarshalJSON(b []byte) error {
 }
 
 // Scan implements sql.Scanner so ID works as a scan target for Postgres uuid
-// columns (pgx v5 wraps types implementing sql.Scanner transparently).
-func (id *ID) Scan(src any) error {
-	switch v := src.(type) {
-	case nil:
-		*id = ""
-	case string:
-		*id = ID(v)
-	case []byte:
-		*id = ID(string(v))
-	case [16]byte:
-		*id = ID(formatUUID(v))
-	case uuid.UUID:
-		*id = ID(v.String())
-	case pgtype.UUID:
-		if !v.Valid {
-			*id = ""
-		} else {
-			*id = ID(formatUUID(v.Bytes))
-		}
-	default:
-		return fmt.Errorf("id: cannot scan %T", src)
-	}
-	return nil
-}
+// columns — it lives in scan.go behind a build tag: the offline client's wasm
+// build links this package but never scans from a database, and excluding
+// pgtype there keeps the binary ~1.2 MB smaller.
 
 // Value implements driver.Valuer so ID encodes as its canonical string form.
 func (id ID) Value() (driver.Value, error) {
