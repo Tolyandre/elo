@@ -26,9 +26,18 @@ import type { Base58ID } from "@/lib/id";
 /** Tenant arena openness (ADR-36); the client replica of the tenant list. */
 export type ArenaMembershipMode = "all" | "any_member" | "members_only";
 
-/** The arena flavor the engine can replay. Camp/tournament arenas are
- * link-only (their membership lives in arena_matches, not mirrored) and are
- * not supported offline. */
+/** The stint context of the current tenant (ADR-39): the club ids plus a
+ * membership-at-date probe over the mirrored stints. `isMemberAt` returns
+ * null when the stint mirror is cold (the arena then degrades, as before). */
+export type TenantMembershipContext = {
+    clubIds: string[];
+    isMemberAt: (playerId: string, date: string) => boolean | null;
+};
+
+/** The arena flavor the engine can replay. Every flavor the server settles —
+ * tenant main arenas, filter arenas, camp and tournament arenas — is now
+ * evaluable offline (ADR-39): links ride the match replica rows, tags the
+ * games mirror, stints the club mirror. */
 export type EngineArena = {
     id: string;
     tenantId?: string | null;
@@ -41,6 +50,10 @@ export type EngineArena = {
         game_ids?: string[] | null;
         tag_ids?: string[] | null;
     } | null;
+    /** Camp arena (ADR-27): membership is the explicit match link. */
+    camp?: boolean;
+    /** Tournament arena (ADR-26): membership is the bracket-slot link. */
+    tournamentId?: string | null;
 };
 
 export type EngineInput = {
@@ -54,6 +67,9 @@ export type EngineInput = {
     settings: SettingsHistoryRow[];
     /** gameId → tag ids; null when unknown (tag-filter arenas then degrade). */
     gameTags?: (gameId: string) => string[] | null;
+    /** The current tenant's stint context; stint-based arenas degrade to
+     * replica values while it is cold (ADR-39). */
+    tenantContext?: TenantMembershipContext | null;
     now: Date;
     bridge: WasmBridge | null;
 };
@@ -94,11 +110,15 @@ function replicaRowAsMatch(row: MatchReplicaRow): Match {
         ),
         date: new Date(row.date),
         dateISO: row.date,
+        updated_at: row.date, // the op-overlay never reads the stamp
         has_markets: row.hasMarkets,
         mode: row.mode,
         game_score: null,
         game_won: null,
-        camps: [],
+        camps: (row.campArenaIds ?? []).map((id) => ({ id: id as Base58ID, name: "" })),
+        tournament: row.tournamentId
+            ? ({ id: row.tournamentId as Base58ID, name: "", slot_id: "" as Base58ID } as Match["tournament"])
+            : null,
     };
 }
 
@@ -126,32 +146,76 @@ export function overlayMatchOps(
             mode: effective.mode,
             scores,
             hasMarkets: effective.has_markets,
+            campArenaIds: effective.camps.map((c) => c.id),
+            tournamentId: effective.tournament?.id ?? null,
         });
     }
     return [...byId.values()];
 }
 
 /**
- * Evaluates the arena's membership the way the server's predicates do:
- * tenant arenas (mode `all`) admit every competitive match; filter arenas
- * evaluate the MatchFilter (date window; the game/tag OR-rule — a filter
- * with both lists empty admits every game). Coop never belongs to an arena
- * (ADR-33). Returns null when the arena flavor cannot be evaluated offline.
+ * Evaluates the arena's membership the way the server's predicates do
+ * (migrations' arena_contains_match / tenant_arena_contains_match, ADR-39):
+ * tenant arenas per their openness mode — `all` admits every competitive
+ * match, `any_member`/`members_only` evaluate the stint history at the match
+ * date; filter arenas evaluate the MatchFilter (date window; the game/tag
+ * OR-rule — a filter with both lists empty admits every game); camp and
+ * tournament arenas are link-only, their membership the explicit match link.
+ * Coop never belongs to an arena (ADR-33). Returns null when the flavor
+ * cannot be evaluated offline (cold stint mirror, unknown tags).
  */
 export function arenaMembership(
     arena: EngineArena,
-    match: { date: string; gameId: string; mode: "competitive" | "coop" },
+    match: {
+        date: string;
+        gameId: string;
+        mode: "competitive" | "coop";
+        playerIds?: string[];
+        campArenaIds?: string[];
+        tournamentId?: string | null;
+    },
     gameTags?: (gameId: string) => string[] | null,
+    tenantContext?: TenantMembershipContext | null,
 ): boolean | null {
     if (match.mode === "coop") return false;
     if (arena.tenantId) {
-        // The stint-based openness modes need club-membership history the
-        // client does not mirror (future phase, ADR-38).
-        if (arena.membershipMode !== "all") return null;
-        return true;
+        if (arena.membershipMode === "all" || !arena.membershipMode) return true;
+        // The stint-based openness modes evaluate membership at the match
+        // date against the tenant's clubs' stints — the same probes the SQL
+        // predicate makes. A cold stint mirror degrades the arena.
+        if (!tenantContext || tenantContext.clubIds.length === 0) return null;
+        const playerIds = match.playerIds ?? [];
+        const member = (pid: string): boolean | null => tenantContext.isMemberAt(pid, match.date);
+        if (arena.membershipMode === "any_member") {
+            // At least one participant was a member; friends playing along
+            // accumulate rating in the arena and are listed (ADR-36).
+            let known = false;
+            for (const pid of playerIds) {
+                const m = member(pid);
+                if (m === null) return null;
+                known = true;
+                if (m) return true;
+            }
+            return known ? false : null;
+        }
+        // members_only: every participant was a member (possibly of different
+        // clubs) at the match date.
+        let any = false;
+        for (const pid of playerIds) {
+            const m = member(pid);
+            if (m === null) return null;
+            any = true;
+            if (!m) return false;
+        }
+        return any ? true : null;
     }
+    // Link-only flavors: the explicit arena_matches link, which the match
+    // replica rows carry (ADR-39). Old pre-v6 rows without the fields count
+    // as unlinked — a refresh rewrites them.
+    if (arena.camp) return (match.campArenaIds ?? []).includes(arena.id);
+    if (arena.tournamentId) return match.tournamentId === arena.tournamentId;
     const filter = arena.filter;
-    if (!filter) return null; // link-only flavors (camp/tournament) are not mirrored
+    if (!filter) return null; // neither link nor filter — unplayable shape
     const date = new Date(match.date);
     if (filter.date_from && date < new Date(filter.date_from)) return false;
     if (filter.date_to && date > new Date(filter.date_to)) return false;
@@ -160,9 +224,8 @@ export function arenaMembership(
     if (gameIds.length === 0 && tagIds.length === 0) return true;
     if (gameIds.includes(match.gameId)) return true;
     if (tagIds.length > 0) {
-        // The client's games catalog does not carry tag ids, so a tag-filtered
-        // arena can only be evaluated when the caller supplies the mapping —
-        // otherwise the arena is unsupported (render replica values).
+        // The games mirror carries tag ids (ADR-39); a missing mapping still
+        // degrades (cold games replica).
         const tags = gameTags?.(match.gameId);
         if (!tags) return null;
         if (tags.some((t) => tagIds.includes(t))) return true;
@@ -232,6 +295,14 @@ function runEngineInner(input: EngineInput): EngineResult | null {
     const hasLocalEvents = input.pendingMatches.length > 0 || input.matchOps.length > 0;
     if (!hasLocalEvents) return null;
 
+    // A cold settings mirror is the known cold-replica shape (ADR-39's
+    // hydration fixes it online) — skip quietly instead of surfacing the
+    // wasm core's "no elo settings history" error.
+    if (input.settings.length === 0) {
+        console.info("settlement replay skipped: the elo settings history is not mirrored yet");
+        return null;
+    }
+
     // Effective match set: replica overlayed by ops, plus pending creates.
     const effective = overlayMatchOps(input.matches, input.matchOps);
     for (const pm of input.pendingMatches) {
@@ -242,6 +313,8 @@ function runEngineInner(input: EngineInput): EngineResult | null {
             mode: pm.mode ?? "competitive",
             scores: { ...pm.score },
             hasMarkets: false,
+            campArenaIds: [...(pm.campArenaIds ?? [])],
+            tournamentId: null,
         });
     }
 
@@ -249,7 +322,12 @@ function runEngineInner(input: EngineInput): EngineResult | null {
     // cannot be evaluated at all — degrade for the whole arena.
     const members: WasmReplayMatch[] = [];
     for (const m of effective) {
-        const isIn = arenaMembership(arena, m, input.gameTags);
+        const isIn = arenaMembership(
+            arena,
+            { ...m, playerIds: Object.keys(m.scores) },
+            input.gameTags,
+            input.tenantContext,
+        );
         if (isIn === null) return null;
         if (isIn) members.push({ id: m.id, date: m.date, scores: m.scores });
     }

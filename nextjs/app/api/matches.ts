@@ -12,6 +12,8 @@ export async function getMatchesPagePromise(params: {
     tournament_id?: string;
     /** The display arena's tenant (ADR-36): required — settlement columns from its main arena. */
     tenant: Base58ID;
+    /** Incremental pull cursor (ADR-39): only matches whose updated_at is newer. */
+    updated_since?: string;
     next?: string;
     limit?: number;
 }): Promise<MatchesPage> {
@@ -24,9 +26,13 @@ export async function getMatchesPagePromise(params: {
         club_id?: string;
         tournament_id?: string;
         tenant: string;
+        updated_since?: string;
         next?: string;
         limit?: number;
     } = { tenant };
+    // Like ?tenant=, the cursor token does not carry updated_since — the
+    // incremental filter must ride every continuation request (ADR-39).
+    if (params.updated_since) query.updated_since = params.updated_since;
     if (params.next) {
         // Continuation mode: search params are encoded in the cursor — except
         // the tenant, which the cursor does not carry and every page must

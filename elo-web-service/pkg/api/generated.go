@@ -1225,6 +1225,15 @@ type Arena struct {
 	Settings              ArenaSettings `json:"settings"`
 	SettingsSchemaVersion int           `json:"settings_schema_version"`
 
+	// SettlementsCount Settlement-ledger row count of this arena (ADR-39). Together with settlements_last_date and settlements_last_id it forms the change signal the offline client compares against its stored mirror before re-draining GET /arenas/{id}/settlements. Present in list and detail responses; absent when the row predates the fingerprint columns.
+	SettlementsCount *int `json:"settlements_count,omitempty"`
+
+	// SettlementsLastDate Date column of the arena's newest settlement row (ADR-39); the '-infinity' sentinel when the ledger is empty.
+	SettlementsLastDate *time.Time `json:"settlements_last_date,omitempty"`
+
+	// SettlementsLastId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	SettlementsLastId *Base58ID `json:"settlements_last_id,omitempty"`
+
 	// StaleAt Not null while the arena waits for a background recalculation.
 	StaleAt *time.Time `json:"stale_at,omitempty"`
 
@@ -2082,6 +2091,9 @@ type Match struct {
 
 	// Tournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, by the organizer's attach, or by an explicit edit-time link change (skip_tournament_link on PUT); association-breaking edits (game/roster) are still rejected. The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
 	Tournament *MatchTournament `json:"tournament,omitempty"`
+
+	// UpdatedAt Set at creation and bumped on every change visible through this payload — the row itself, its per-player scores, and its camp / tournament links. The offline replica's incremental cursor key (ADR-39): `?updated_since=` returns only newer rows. Settlement rewrites do not bump it — the settlement ledger carries its own change signal (the arena's settlements fingerprint, ADR-39).
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // MatchCamp A camp arena (ADR-27) a match belongs to
@@ -3111,6 +3123,9 @@ type ListMatchesParams struct {
 
 	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. Continuation requests must pass the same tenant — the cursor token does not carry it. Naming no existing tenant is a 404.
 	Tenant string `form:"tenant" json:"tenant"`
+
+	// UpdatedSince Incremental offline pull (ADR-39): return only matches whose updated_at is strictly newer than this RFC3339 stamp — the client's stored cursor. Continuation requests must pass the same value (the cursor token does not carry it). Combine freely with the other filters; ordering and cursoring are unchanged.
+	UpdatedSince *time.Time `form:"updated_since,omitempty" json:"updated_since,omitempty"`
 
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
@@ -5898,6 +5913,14 @@ func (siw *ServerInterfaceWrapper) ListMatches(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "updated_since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "updated_since", c.Request.URL.Query(), &params.UpdatedSince, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter updated_since: %w", err), http.StatusBadRequest)
 		return
 	}
 

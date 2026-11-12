@@ -184,6 +184,9 @@ replica offline is a future refinement.
 column, a tenant-scoped incremental pull
 (`GET /tenants/{id}/matches?updated_since=`), a `matches` table in Dexie,
 and the feed reading it — which also brings offline feed search.
+(The `updated_at` column and the `?updated_since=` pull landed with
+[ADR-39](39-offline-replica-incremental.md) as the ratings replica's match
+mirror; the feed reading it remains future work.)
 
 ## Consequences
 

@@ -192,6 +192,8 @@ export function pendingMatchToMatch(pm: PendingMatch, helpers?: MatchEntityHelpe
         game_name: "",
         date: new Date(pm.createdAt),
         dateISO: pm.createdAt,
+        // A queued state has no server change stamp yet.
+        updated_at: "",
         score,
         has_markets: false,
         mode: pm.mode ?? "competitive",

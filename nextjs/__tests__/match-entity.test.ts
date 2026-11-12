@@ -37,6 +37,7 @@ function savedMatch(): Match {
         game_name: "Скull King",
         date: new Date("2026-01-05T18:00:00.000Z"),
         dateISO: "2026-01-05T18:00:00.000Z",
+        updated_at: "2026-01-05T18:00:00.000Z",
         score: {
             [P1]: { ratingStaked: -10, ratingEarned: 22, score: 10, ratingAfter: 1012 },
             [P2]: { ratingStaked: -10, ratingEarned: 4, score: 5, ratingAfter: 994 },

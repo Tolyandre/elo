@@ -26,7 +26,13 @@ export const GamesProvider = ({ children }: { children: ReactNode }) => {
   // resolution layer mirrors every successful fetch.
   useEffect(() => {
     if (games.length === 0) return;
-    void writeEntities("game", games.map((g) => ({ id: g.id, name: g.name })));
+    // Games carry their tag ids too — the offline replay's gameTags
+    // mapping (ADR-39).
+    void writeEntities("game", games.map((g) => ({
+      id: g.id,
+      name: g.name,
+      tags: (g.tags ?? []).map((t) => ({ id: t.id, name: t.name })),
+    })));
   }, [games]);
 
   return (

@@ -36,7 +36,8 @@ import { hasPendingWrites, readStore, subscribeStore, writeEntities, writeStore 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useTenantScope } from "../tenantScopeContext";
 import { useTenants } from "../tenantsContext";
-import { hydrateRatingsReplica } from "@/lib/offline/ratings/hydrate";
+import { hydrateRatingsReplica, hydratedAtKey } from "@/lib/offline/ratings/hydrate";
+import { metaGet } from "@/lib/offline/db";
 import { parseSwMessage } from "@/lib/sw-messages";
 import { emitDataChange } from "@/lib/live-data";
 
@@ -46,6 +47,10 @@ export type SubmitMatchResult = { id: string };
 // can fall back to it for legacy pending matches that predate the captured
 // tenantId (ADR-36 phase 7). The OfflineProvider keeps it fresh.
 const tenantFallbackRef: { current: Base58ID | null } = { current: null };
+
+// The replica's mount-time refresh throttle (ADR-39): one incremental refresh
+// per tenant at most every 15 minutes outside of syncs.
+const REFRESH_MIN_INTERVAL_MS = 15 * 60_000;
 
 type  OfflineState = {
     pendingMatches: PendingMatch[];
@@ -533,7 +538,13 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                         void Promise.all([getPlayersPromise(), getGamesPromise()])
                             .then(([players, games]) => {
                                 void writeEntities("player", players.map((p) => ({ id: p.id, name: p.name })));
-                                void writeEntities("game", games.games.map((g) => ({ id: g.id, name: g.name })));
+                                // Games carry their tags — the replay's gameTags
+                                // mapping (ADR-39).
+                                void writeEntities("game", games.games.map((g) => ({
+                                    id: g.id,
+                                    name: g.name,
+                                    tags: (g.tags ?? []).map((t) => ({ id: t.id, name: t.name })),
+                                })));
                             })
                             .catch(() => {});
                         // Arena timelines render useArenaMatches, not the contexts
@@ -563,6 +574,33 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         };
         run();
     }, [invalidateGames, invalidateMatches, invalidatePlayers, invalidateClubs]);
+
+    // The replica's incremental refresh (ADR-39): a mount/navigation/tenant-
+    // switch trigger, throttled per tenant — with the fingerprints and match
+    // cursors an unchanged refresh costs a handful of small list calls, so
+    // the replica stays warm without waiting for the next push.
+    const refreshReplicaThrottled = useCallback(() => {
+        const tenant = tenantsRef.current.find((t) => t.id === tenantFallbackRef.current);
+        if (!tenant) return;
+        void (async () => {
+            try {
+                const last = await metaGet<string>(hydratedAtKey(tenant.id));
+                if (last && Date.now() - Date.parse(last) < REFRESH_MIN_INTERVAL_MS) return;
+                await hydrateRatingsReplica(tenant);
+            } catch {
+                // Best-effort: a failed refresh leaves the mirrors and their
+                // cursors as-is; the next trigger retries.
+            }
+        })();
+    }, []);
+
+    // A tenant switch points the replica at another mirror set — refresh it
+    // (the per-tenant throttle makes a recent switch a no-op).
+    useEffect(() => {
+        if (!loaded || !tenantId) return;
+        refreshReplicaThrottled();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loaded, tenantId]);
 
     // Sync is driven solely by the API health probe below: a fresh `pingApiPromise`
     // success is the single automatic trigger, so we never start a sync while the
@@ -598,6 +636,9 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                 if (pendingCountRef.current > 0 && canEdit) {
                     syncNow();
                 }
+                // The replica refresh rides the same confirmed-online signal
+                // (throttled — a no-op while the last hydration is fresh).
+                refreshReplicaThrottled();
             } else {
                 // Unreachable → keep probing for recovery with growing backoff.
                 delay = Math.min(delay * 1.1, MAX_DELAY);
@@ -623,7 +664,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             document.removeEventListener("visibilitychange", reset);
         };
         // Re-probe immediately on navigation and when new items are queued.
-    }, [loaded, pathname, pendingCount, canEdit, syncNow]);
+    }, [loaded, pathname, pendingCount, canEdit, syncNow, refreshReplicaThrottled]);
 
     const addPendingMatch = useCallback(
         ({ tenantId, gameId, score, campArenaIds, skipTournamentLink, clientId, calculatorKind, calculatorData, mode, playerIds, gameScore, gameWon }: { tenantId?: Base58ID; gameId: Base58ID; score: Record<string, number>; campArenaIds?: Base58ID[]; skipTournamentLink?: boolean; clientId?: Base58ID; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null; mode?: MatchMode; playerIds?: Base58ID[]; gameScore?: number; gameWon?: boolean }) => {

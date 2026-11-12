@@ -82,6 +82,20 @@ func arenaToAPI(a elo.Arena) Arena {
 		out.TenantId = &t
 	}
 	out.StaleAt = a.StaleAt
+	// The settlement-fingerprint triple (ADR-39) rides every read that
+	// computed it (list rows and the detail read); nil on write-path reads.
+	// An empty ledger emits only the zero count — the last-row columns would
+	// carry no information.
+	if a.Settlements != nil {
+		count := int(a.Settlements.Count)
+		out.SettlementsCount = &count
+		if a.Settlements.LastID != "" {
+			lastDate := a.Settlements.LastDate
+			out.SettlementsLastDate = &lastDate
+			lastID := Base58ID(a.Settlements.LastID)
+			out.SettlementsLastId = &lastID
+		}
+	}
 	return out
 }
 
@@ -138,6 +152,9 @@ func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequest
 			return nil, err
 		}
 		out.MatchesCount = &count
+		if err := s.attachArenaFingerprint(ctx, &out); err != nil {
+			return nil, err
+		}
 		data = append(data, out)
 	case request.Params.GameId != nil && *request.Params.GameId != "":
 		arenas, err := s.api.ArenaService.ListArenasForGame(ctx, parseIDParam(*request.Params.GameId))
@@ -151,6 +168,9 @@ func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequest
 				return nil, err
 			}
 			out.MatchesCount = &count
+			if err := s.attachArenaFingerprint(ctx, &out); err != nil {
+				return nil, err
+			}
 			data = append(data, out)
 		}
 	default:
@@ -167,6 +187,25 @@ func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequest
 // this is its single-arena form — a direct count, not a full list re-run).
 func (s *StrictServer) arenaMatchesCount(ctx context.Context, a elo.Arena) (int, error) {
 	return s.api.ArenaService.CountArenaMatches(ctx, a.ID)
+}
+
+// attachArenaFingerprint fills the settlement-fingerprint fields of a
+// by-game/by-tournament list row (the kind-list and detail reads already
+// carry it in arenaToAPI, ADR-39).
+func (s *StrictServer) attachArenaFingerprint(ctx context.Context, out *Arena) error {
+	fp, err := s.api.ArenaService.GetArenaSettlementsFingerprint(ctx, id.ID(out.Id))
+	if err != nil {
+		return err
+	}
+	count := int(fp.Count)
+	out.SettlementsCount = &count
+	if fp.LastID != "" {
+		lastDate := fp.LastDate
+		out.SettlementsLastDate = &lastDate
+		lastID := Base58ID(fp.LastID)
+		out.SettlementsLastId = &lastID
+	}
+	return nil
 }
 
 func (s *StrictServer) CreateArena(ctx context.Context, request CreateArenaRequestObject) (CreateArenaResponseObject, error) {
@@ -600,6 +639,7 @@ func feedMatchRowParts(r *db.ListFeedMatchesWithPlayersRow) matchRowParts {
 	return matchRowParts{
 		MatchID:        r.MatchID,
 		Date:           r.Date.Time,
+		UpdatedAt:      r.UpdatedAt,
 		GameID:         r.GameID,
 		GameName:       r.GameName,
 		CalculatorKind: r.CalculatorKind,

@@ -28,8 +28,11 @@ import { useLocalRatings } from "@/app/offline/ratings/LocalRatingsContext";
 import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import {
     drainArenaSettlements,
+    ensureSettingsHistory,
+    settlementsFingerprintKey,
 } from "@/lib/offline/ratings/hydrate";
 import {
+    metaSet,
     readArenaDoc,
     readArenaPlayersSnapshot,
     writeArenaDoc,
@@ -84,12 +87,27 @@ export function ArenaView() {
   // Ratings replica (ADR-38): every successful fetch writes through (the
   // arena doc + players snapshot seed the offline first paint, the view
   // enters the followed set), and the arena's settlement ledger drains so
-  // the offline replay can run for it.
+  // the offline replay can run for it. The fingerprint store (ADR-39) lets
+  // the hydration skip the next drain while nothing changed, and the
+  // settings-history ensure removes the cold-replica replay degrade without
+  // waiting for a sync.
   useEffect(() => {
     if (data?.notFound || !data?.arena || effectiveId == null) return;
-    void writeArenaDoc(data.arena as unknown as Record<string, unknown>, data.arena.id);
+    const arena = data.arena as unknown as Record<string, unknown>;
+    void writeArenaDoc(arena, data.arena.id);
     void writeArenaPlayersSnapshot(data.arena.id, data.players as unknown as Record<string, unknown>[]);
-    void drainArenaSettlements(effectiveId).catch(() => {});
+    void drainArenaSettlements(effectiveId)
+      .then(() => {
+        if (typeof arena.settlements_count === "number") {
+          void metaSet(settlementsFingerprintKey(data.arena.id), {
+            count: arena.settlements_count,
+            last_date: arena.settlements_last_date ?? null,
+            last_id: arena.settlements_last_id ?? null,
+          });
+        }
+      })
+      .catch(() => {});
+    void ensureSettingsHistory().catch(() => {});
   }, [data, effectiveId]);
 
   // The last mirrored state stands in while the network has nothing (offline

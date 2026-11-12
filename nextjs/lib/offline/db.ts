@@ -19,10 +19,13 @@ import Dexie, { type Table } from "dexie";
 import type { OfflineStore, PendingGame, PendingMatch, PendingOp, PendingPlayer } from "./types";
 import { emptyOfflineStore } from "./types";
 
-/** One mirrored server entity: the minimum the name resolution layer needs. */
+/** One mirrored server entity: the minimum the name resolution layer needs.
+ * Games carry their tag ids too (ADR-39) — the tag-filter arenas' membership
+ * evaluates them the way the server's game_tag probe does. */
 export type EntityRow = {
     id: string;
     name: string;
+    tags?: { id: string; name: string }[];
 };
 
 export type EntityKind = "player" | "game";
@@ -46,7 +49,11 @@ export type LedgerRow = {
     league?: string | null;
 };
 
-/** One mirrored match: the slim projection the replay and membership need. */
+/** One mirrored match: the slim projection the replay and membership need.
+ * Camp/tournament arena membership is the explicit arena_matches link (ADR-27
+ * / ADR-26), so the links ride along (ADR-39). Rows written by older mirrors
+ * lack the link fields — membership treats absent links as "no links" (the
+ * honest cold-replica answer), never as a degrade. */
 export type MatchReplicaRow = {
     id: string;
     date: string; // RFC3339
@@ -54,6 +61,8 @@ export type MatchReplicaRow = {
     mode: "competitive" | "coop";
     scores: Record<string, number>; // Base58 player id → score
     hasMarkets: boolean;
+    campArenaIds?: string[];
+    tournamentId?: string | null;
 };
 
 /** One mirrored arena document (the GET /arenas/{id} response, verbatim). */
@@ -100,6 +109,48 @@ export type MatchDocRow = {
     fetchedAt: string;
 };
 
+// ─── Replica v3 mirrors (ADR-39) ─────────────────────────────────────────────
+//
+// The remaining raw material of the replay and the offline UI: the arenas
+// list (per-kind list responses, verbatim — their docs back the camp and
+// tournament arena replays and the fingerprint skip), the clubs' membership
+// stints (the stint-based openness modes), and the tournaments list.
+
+/** One mirrored arena list row (a GET /arenas?kind=… item, verbatim). */
+export type ArenaListRow = {
+    id: string;
+    kind: "games" | "camps" | "tournaments";
+    arena: Record<string, unknown>; // the wire Arena object as returned
+    fetchedAt: string;
+};
+
+/** One club's mirrored membership stint history (GET /clubs/{id}/members/history). */
+export type ClubStintsRow = {
+    clubId: string;
+    stints: {
+        club_id: string;
+        player_id: string;
+        player_name: string;
+        joined_at: string | null; // null = predates tracking (-infinity)
+        left_at: string | null; // null = active
+    }[];
+    fetchedAt: string;
+};
+
+/** One mirrored tournament (a GET /tournaments item, verbatim). */
+export type TournamentRow = {
+    id: string;
+    tournament: Record<string, unknown>;
+    fetchedAt: string;
+};
+
+/** One sync-state key of the meta table: per-tenant match cursors,
+ * per-arena settlement fingerprints, the last hydration stamp (ADR-39). */
+export type MetaRow = {
+    key: string;
+    value: unknown;
+};
+
 class OfflineDB extends Dexie {
     games!: Table<PendingGame, string>;
     players!: Table<PendingPlayer, string>;
@@ -123,6 +174,11 @@ class OfflineDB extends Dexie {
     arenaPlayers!: Table<ArenaPlayersSnapshotRow, string>;
     settingsHistory!: Table<SettingsHistoryRow, string>;
     matchDocs!: Table<MatchDocRow, string>;
+    // The replica v3 mirrors + sync state (ADR-39).
+    arenasList!: Table<ArenaListRow, string>;
+    clubStints!: Table<ClubStintsRow, string>;
+    tournaments!: Table<TournamentRow, string>;
+    meta!: Table<MetaRow, string>;
 
     constructor() {
         super("elo-offline-v1");
@@ -172,6 +228,24 @@ class OfflineDB extends Dexie {
             arenaPlayers: "arenaId",
             settingsHistory: "effective_date",
             matchDocs: "matchId",
+        });
+        this.version(6).stores({
+            games: "clientId",
+            players: "clientId",
+            matches: "clientId",
+            entityPlayers: "id",
+            entityGames: "id",
+            ops: "entityId",
+            arenaSettlements: "[arenaId+id], [arenaId+date+id]",
+            matchReplica: "id, date",
+            arenaDocs: "arenaId",
+            arenaPlayers: "arenaId",
+            settingsHistory: "effective_date",
+            matchDocs: "matchId",
+            arenasList: "id, kind",
+            clubStints: "clubId",
+            tournaments: "id",
+            meta: "key",
         });
     }
 }
@@ -631,6 +705,177 @@ export function writeSettingsHistory(rows: SettingsHistoryRow[]): Promise<void> 
             });
         } catch (err) {
             console.error("settings history replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+// ─── Replica v3 mirrors (ADR-39) ─────────────────────────────────────────────
+
+/** Replaces one kind of the mirrored arenas list (wholesale per kind). */
+export function writeArenasList(
+    kind: ArenaListRow["kind"],
+    arenas: Record<string, unknown>[],
+): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const run = async () => {
+        const d = db();
+        try {
+            await d.transaction("rw", d.arenasList, async () => {
+                await d.arenasList.where("kind").equals(kind).delete();
+                await d.arenasList.bulkPut(
+                    arenas.map((a) => ({
+                        id: String(a.id),
+                        kind,
+                        arena: a,
+                        fetchedAt: new Date().toISOString(),
+                    })),
+                );
+            });
+        } catch (err) {
+            console.error("arenas list replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/** Reads the mirrored arenas list of one kind. Never throws — empty on failure. */
+export async function readArenasList(kind: ArenaListRow["kind"]): Promise<Record<string, unknown>[]> {
+    if (!isBrowser()) return [];
+    try {
+        const rows = await db().arenasList.where("kind").equals(kind).toArray();
+        return rows.map((r) => r.arena);
+    } catch {
+        return [];
+    }
+}
+
+/** Stores one club's stint history (the mirror step's per-club write). */
+export function writeClubStints(clubId: string, stints: ClubStintsRow["stints"]): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const row: ClubStintsRow = { clubId, stints, fetchedAt: new Date().toISOString() };
+    const run = async () => {
+        const d = db();
+        try {
+            await d.clubStints.put(row);
+        } catch (err) {
+            console.error("club stints replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/** Reads the mirrored stint history of the given clubs. Never throws. */
+export async function readClubStints(clubIds: string[]): Promise<Map<string, ClubStintsRow["stints"]>> {
+    const out = new Map<string, ClubStintsRow["stints"]>();
+    if (!isBrowser() || clubIds.length === 0) return out;
+    try {
+        const rows = await db().clubStints.bulkGet(clubIds);
+        for (const row of rows) if (row) out.set(row.clubId, row.stints);
+    } catch (err) {
+        console.error("club stints replica read failed", err);
+    }
+    return out;
+}
+
+/** Replaces the mirrored tournaments list. */
+export function writeTournaments(items: Record<string, unknown>[]): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const run = async () => {
+        const d = db();
+        try {
+            await d.transaction("rw", d.tournaments, async () => {
+                await replaceAll(d.tournaments, items.map((t) => ({ id: String(t.id), tournament: t, fetchedAt: new Date().toISOString() })));
+            });
+        } catch (err) {
+            console.error("tournaments replica write failed", err);
+        }
+    };
+    pendingWrites++;
+    writeChain = writeChain.then(run).finally(() => {
+        pendingWrites--;
+    });
+    return writeChain;
+}
+
+/**
+ * Subscribes to the games mirror with tags (Dexie liveQuery) — the replay's
+ * gameTags mapping source (ADR-39). The callback receives gameId → tag ids.
+ */
+export function subscribeGameTags(cb: (tags: Map<string, string[]>) => void): () => void {
+    if (!isBrowser()) return () => {};
+    let stopped = false;
+    const subscription = Dexie.liveQuery(async () => {
+        const games = await db().entityGames.toArray();
+        return new Map(games.map((g) => [g.id, (g.tags ?? []).map((t) => t.id)]));
+    }).subscribe({
+        next: (map) => {
+            if (!stopped && map) cb(map);
+        },
+        error: () => {},
+    });
+    return () => {
+        stopped = true;
+        subscription.unsubscribe();
+    };
+}
+
+/**
+ * Subscribes to the clubs' stint mirror (Dexie liveQuery) — the replay's
+ * stint-based membership source (ADR-39).
+ */
+export function subscribeClubStints(cb: (rows: ClubStintsRow[]) => void): () => void {
+    if (!isBrowser()) return () => {};
+    let stopped = false;
+    const subscription = Dexie.liveQuery(async () => db().clubStints.toArray()).subscribe({
+        next: (rows) => {
+            if (!stopped && rows) cb(rows);
+        },
+        error: () => {},
+    });
+    return () => {
+        stopped = true;
+        subscription.unsubscribe();
+    };
+}
+
+// ─── Sync-state meta (ADR-39) ────────────────────────────────────────────────
+//
+// The incremental pulls' cursors and fingerprints: per-tenant match stamps,
+// per-arena settlement fingerprints, the last-hydration stamp. Serialized
+// through the write chain so a fingerprint can never land before the
+// settlement rows it describes.
+
+export async function metaGet<T>(key: string): Promise<T | null> {
+    if (!isBrowser()) return null;
+    try {
+        const row = await db().meta.get(key);
+        return (row?.value as T) ?? null;
+    } catch {
+        return null;
+    }
+}
+
+export function metaSet(key: string, value: unknown): Promise<void> {
+    if (!isBrowser()) return Promise.resolve();
+    const run = async () => {
+        const d = db();
+        try {
+            await d.meta.put({ key, value });
+        } catch (err) {
+            console.error("meta write failed", err);
         }
     };
     pendingWrites++;

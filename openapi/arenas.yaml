@@ -526,6 +526,24 @@ Arena:
     matches_count:
       type: integer
       description: Number of matches meeting the arena's filter, or linked to the camp (list responses only).
+    settlements_count:
+      type: integer
+      description: >-
+        Settlement-ledger row count of this arena (ADR-39). Together with
+        settlements_last_date and settlements_last_id it forms the change
+        signal the offline client compares against its stored mirror before
+        re-draining GET /arenas/{id}/settlements. Present in list and detail
+        responses; absent when the row predates the fingerprint columns.
+    settlements_last_date:
+      type: string
+      format: date-time
+      description: Date column of the arena's newest settlement row (ADR-39); the '-infinity' sentinel when the ledger is empty.
+    settlements_last_id:
+      $ref: './common.yaml#/Base58ID'
+      description: >-
+        Id of the arena's newest settlement row (ADR-39). Every write inserts
+        fresh ids, so even a recalculation that rewrites identical rows
+        changes the triple; the zero-uuid sentinel when the ledger is empty.
   required: [id, name, camp, filter, settings, settings_schema_version]
 
 ArenaInput:

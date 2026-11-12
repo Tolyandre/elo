@@ -134,4 +134,9 @@ the 4s NetworkFirst wait disappears for the players and medals tabs.
   values; the server's ledger remains the sole source of persisted rows.
 - Future: club-stint replication, a change-feed cursor for incremental
   re-mirroring (the audit log is the natural backbone), snapshot+tail
-  partitioning if history grows, offline player stats pages.
+  partitioning if history grows, offline player stats pages. (The stint
+  replication and the incremental re-mirroring landed with
+  [ADR-39](39-offline-replica-incremental.md) — via `matches.updated_at`
+  cursors and settlement-fingerprint skips rather than an audit change
+  feed, which covers neither markets nor recalculations; snapshot+tail
+  partitioning and offline player stats pages remain future work.)

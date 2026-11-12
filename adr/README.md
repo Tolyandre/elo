@@ -42,3 +42,4 @@ ADRs are numbered sequentially; the highest numbers describe the current behavio
 | [36](36-tenants.md) | Tenants (communities): a separate entity owning a main arena, openness settings and one or many clubs; clubs stay player grouping with membership stints |
 | [37](37-offline-v2.md) | Offline mode v2: Dexie-backed local replica, edit ops with field-level three-way merge, silent duplicate-name adoption, the /offline queue page; the match as a client-side entity, edits always queue (online included), advisory client-side Elo preview |
 | [38](38-offline-ratings.md) | Offline ratings: the pure settlement core compiled to WASM, the arena ledger replica in Dexie, client-side replay with provisional overlays, offline-first arena view |
+| [39](39-offline-replica-incremental.md) | Offline replica v3: complete replay inputs (stints, arena links, tags), incremental re-mirroring via `matches.updated_at` cursors and settlement-fingerprint skips, robust hydration triggers |

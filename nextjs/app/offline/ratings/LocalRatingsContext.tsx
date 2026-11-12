@@ -22,10 +22,21 @@ import {
     type WasmArenaStanding,
     type WasmBridge,
 } from "@/lib/offline/ratings/wasm-client";
-import { runEngine, type EngineArena, type EngineResult } from "@/lib/offline/ratings/engine";
+import {
+    runEngine,
+    type EngineArena,
+    type EngineResult,
+    type TenantMembershipContext,
+} from "@/lib/offline/ratings/engine";
+import {
+    ensureSettingsHistory,
+} from "@/lib/offline/ratings/hydrate";
 import {
     readRatingsReplica,
+    subscribeClubStints,
+    subscribeGameTags,
     subscribeRatingsReplica,
+    type ClubStintsRow,
     type RatingsReplicaSnapshot,
 } from "@/lib/offline/db";
 
@@ -92,6 +103,8 @@ function arenaFromDoc(doc: Record<string, unknown>): EngineArena | null {
         settings,
         settingsVersion: version,
         filter,
+        camp: doc["camp"] === true,
+        tournamentId: typeof doc["tournament_id"] === "string" ? (doc["tournament_id"] as string) : null,
     };
 }
 
@@ -116,6 +129,8 @@ export const LocalRatingsProvider = ({ children }: { children: ReactNode }) => {
     const [replica, setReplica] = useState<RatingsReplicaSnapshot>(emptyReplica);
     const [bridge, setBridge] = useState<WasmBridge | null>(null);
     const [engineReady, setEngineReady] = useState(false);
+    const [gameTags, setGameTags] = useState<Map<string, string[]>>(new Map());
+    const [stintRows, setStintRows] = useState<ClubStintsRow[]>([]);
 
     useEffect(() => {
         let stopped = false;
@@ -143,6 +158,24 @@ export const LocalRatingsProvider = ({ children }: { children: ReactNode }) => {
         };
     }, []);
 
+    // The replay's tag mapping comes from the games mirror (ADR-39).
+    useEffect(() => subscribeGameTags((tags) => setGameTags(tags)), []);
+
+    // The stint mirror backs the stint-based openness modes (ADR-39).
+    useEffect(() => subscribeClubStints((rows) => setStintRows(rows)), []);
+
+    // The cold-replica fix for the "no elo settings history" degrade (ADR-39):
+    // a replica without a settings series mirrors it right away when online —
+    // the replay must not wait for the next post-sync hydration.
+    useEffect(() => {
+        if (!replica.ready || replica.settings.length > 0) return;
+        if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+        void ensureSettingsHistory().catch(() => {
+            // Offline or a failed fetch — the replay degrades quietly and the
+            // next hydration retries.
+        });
+    }, [replica.ready, replica.settings.length]);
+
     const resultsByArena = useMemo(() => {
         const map = new Map<string, EngineResult>();
         if (!bridge) return map;
@@ -150,9 +183,9 @@ export const LocalRatingsProvider = ({ children }: { children: ReactNode }) => {
         if (pendingMatches.length === 0 && matchOps.length === 0) return map;
 
         // Candidate arenas: the tenants' main arenas (their settings doc must
-        // have been mirrored — hydrateRatingsReplica fetches it) plus every
-        // arena the user has viewed. Each candidate degrades independently: a
-        // malformed mirrored document or a failed replay must cost one arena's
+        // have been mirrored — the hydration fetches it) plus every arena the
+        // user has viewed. Each candidate degrades independently: a malformed
+        // mirrored document or a failed replay must cost one arena's
         // provisional values, never the whole render.
         const candidates = new Map<string, EngineArena>();
         for (const t of tenants) {
@@ -167,6 +200,35 @@ export const LocalRatingsProvider = ({ children }: { children: ReactNode }) => {
             }
         }
 
+        // The stint probe of the current tenants' clubs: membership at the
+        // match date against any stint of any club — the SQL predicate's
+        // probes (joined_at <= date, open or left_at > date; null joined_at
+        // is the -infinity backfill). Only mirrored clubs are consulted; a
+        // tenant whose clubs lack the mirror degrades via null.
+        const stintContexts = new Map<string, TenantMembershipContext>();
+        for (const t of tenants) {
+            if (!t.club_ids?.length) continue;
+            const byClub = new Map(stintRows.map((r) => [r.clubId, r.stints]));
+            const rows = t.club_ids.map((cid) => byClub.get(cid));
+            // Any club without a mirror row means an incomplete membership
+            // picture — a wrong exclusion would be worse than a degrade.
+            if (rows.some((r) => r === undefined)) continue;
+            const stints = rows.filter((r): r is NonNullable<(typeof rows)[number]> => r !== undefined).flat();
+            stintContexts.set(t.id, {
+                clubIds: t.club_ids,
+                isMemberAt: (playerId, date) => {
+                    const at = Date.parse(date);
+                    for (const s of stints) {
+                        if (s.player_id !== playerId) continue;
+                        const joined = s.joined_at ? Date.parse(s.joined_at) : Number.NEGATIVE_INFINITY;
+                        const left = s.left_at ? Date.parse(s.left_at) : Number.POSITIVE_INFINITY;
+                        if (joined <= at && at < left) return true;
+                    }
+                    return false;
+                },
+            });
+        }
+
         for (const [arenaId, arena] of candidates) {
             const result = runEngine({
                 arena,
@@ -175,16 +237,15 @@ export const LocalRatingsProvider = ({ children }: { children: ReactNode }) => {
                 matchOps,
                 marketRows: replica.settlements.get(arenaId) ?? [],
                 settings: replica.settings,
-                // The client's games catalog carries no tag ids; tag-filtered
-                // arenas degrade to the replica (engine returns null).
-                gameTags: () => null,
+                gameTags: (gameId) => gameTags.get(gameId) ?? null,
+                tenantContext: arena.tenantId ? stintContexts.get(arena.tenantId) ?? null : null,
                 now: new Date(),
                 bridge,
             });
             if (result) map.set(arenaId, result);
         }
         return map;
-    }, [bridge, replica, pendingMatches, ops, tenants]);
+    }, [bridge, replica, pendingMatches, ops, tenants, gameTags, stintRows]);
 
     const value = useMemo<LocalRatingsState>(() => {
         const getMatchSettlement = (

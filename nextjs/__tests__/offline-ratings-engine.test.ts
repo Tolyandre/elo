@@ -3,8 +3,15 @@
 // settings/market conversion, output shaping — against a fake bridge. The
 // wasm math itself is pinned by the golden parity suite
 // (settlement-wasm.test.ts).
-import { describe, expect, it } from "vitest";
-import { arenaMembership, overlayMatchOps, runEngine, type EngineArena, type EngineInput } from "@/lib/offline/ratings/engine";
+import { describe, expect, it, vi } from "vitest";
+import {
+    arenaMembership,
+    overlayMatchOps,
+    runEngine,
+    type EngineArena,
+    type EngineInput,
+    type TenantMembershipContext,
+} from "@/lib/offline/ratings/engine";
 import type { WasmBridge, WasmReplayInput, WasmReplayOutput } from "@/lib/offline/ratings/wasm-client";
 import type { LedgerRow, MatchReplicaRow, SettingsHistoryRow } from "@/lib/offline/db";
 import type { PendingMatch, PendingOp } from "@/lib/offline/types";
@@ -301,6 +308,119 @@ describe("arenaMembership", () => {
 
     it("reports stint-based modes as unsupported (null)", () => {
         expect(arenaMembership(tenantArena({ membershipMode: "members_only" }), { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive" })).toBeNull();
+    });
+
+    // ── ADR-39: stint-based membership from the mirrored club stints ─────────
+
+    type Stint = { player_id: string; joined_at: string | null; left_at: string | null };
+    const stintContext = (stints: Stint[]): TenantMembershipContext => ({
+        clubIds: ["club-1"],
+        isMemberAt: (playerId, date) => {
+            const at = Date.parse(date);
+            for (const s of stints) {
+                if (s.player_id !== playerId) continue;
+                const joined = s.joined_at ? Date.parse(s.joined_at) : Number.NEGATIVE_INFINITY;
+                const left = s.left_at ? Date.parse(s.left_at) : Number.POSITIVE_INFINITY;
+                if (joined <= at && at < left) return true;
+            }
+            return false;
+        },
+    });
+    const STINTS: Stint[] = [
+        { player_id: "p1", joined_at: "2020-01-01T00:00:00Z", left_at: null },
+        { player_id: "p2", joined_at: "2026-06-01T00:00:00Z", left_at: "2026-06-05T00:00:00Z" },
+    ];
+
+    it("any_member: admits when at least one participant was a member at the match date", () => {
+        const arena = tenantArena({ membershipMode: "any_member" });
+        const ctx = stintContext(STINTS);
+        // p2's stint covers June 1st (joined) but not June 6th (left); p1 always.
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p2", "p9"] }, undefined, ctx)).toBe(true);
+        expect(arenaMembership(arena, { date: "2026-06-06T10:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p2", "p9"] }, undefined, ctx)).toBe(false);
+        expect(arenaMembership(arena, { date: "2026-06-06T10:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p1", "p9"] }, undefined, ctx)).toBe(true);
+    });
+
+    it("members_only: demands every participant be a member at the match date", () => {
+        const arena = tenantArena({ membershipMode: "members_only" });
+        const ctx = stintContext(STINTS);
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p1", "p2"] }, undefined, ctx)).toBe(true);
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p1", "p9"] }, undefined, ctx)).toBe(false);
+    });
+
+    it("honors the -infinity backfill (joined_at null) and the left_at boundary", () => {
+        const arena = tenantArena({ membershipMode: "any_member" });
+        const ctx = stintContext([{ player_id: "p1", joined_at: null, left_at: null }]);
+        expect(arenaMembership(arena, { date: "2001-01-01T00:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p1"] }, undefined, ctx)).toBe(true);
+        // left_at is exclusive: a match at exactly left_at is already outside.
+        const closing = stintContext([{ player_id: "p1", joined_at: "2020-01-01T00:00:00Z", left_at: "2026-06-05T00:00:00Z" }]);
+        expect(arenaMembership(arena, { date: "2026-06-05T00:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p1"] }, undefined, closing)).toBe(false);
+        expect(arenaMembership(arena, { date: "2026-06-04T23:59:59Z", gameId: "g", mode: "competitive", playerIds: ["p1"] }, undefined, closing)).toBe(true);
+    });
+
+    it("degrades stint-based arenas while the stint mirror is cold", () => {
+        const arena = tenantArena({ membershipMode: "any_member" });
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p1"] })).toBeNull();
+        // An empty club list is equally unevaluable.
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", playerIds: ["p1"] }, undefined, { clubIds: [], isMemberAt: () => false })).toBeNull();
+    });
+
+    it("replays a stint-based tenant arena when the mirror is warm", () => {
+        const { bridge, captured } = capturingBridge();
+        const result = runEngine(
+            baseInput({
+                bridge,
+                arena: tenantArena({ membershipMode: "any_member" }),
+                pendingMatches: [pendingMatch("pm1", { p1: 3, p2: 1 })],
+                tenantContext: stintContext(STINTS),
+            }),
+        );
+        expect(result).not.toBeNull();
+        expect(captured[0].matches.map((m) => m.id)).toEqual(["pm1"]);
+    });
+
+    it("skips the replay quietly while the settings history is not mirrored", () => {
+        const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+        const { bridge, captured } = capturingBridge();
+        const result = runEngine(baseInput({ bridge, settings: [], pendingMatches: [pendingMatch("pm1", { p1: 3, p2: 1 })] }));
+        expect(result).toBeNull();
+        expect(captured).toHaveLength(0);
+        expect(errorSpy).not.toHaveBeenCalled();
+        expect(infoSpy).toHaveBeenCalled();
+        errorSpy.mockRestore();
+        infoSpy.mockRestore();
+    });
+
+    // ── ADR-39: link-only flavors via the match replica's links ──────────────
+
+    it("camp arenas admit exactly their linked matches", () => {
+        const arena = tenantArena({ tenantId: null, membershipMode: null, filter: null, camp: true, id: "camp-1" });
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", campArenaIds: ["camp-1"] })).toBe(true);
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", campArenaIds: ["camp-2"] })).toBe(false);
+        // Old pre-v6 rows carry no links; a refresh rewrites them (unlinked).
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive" })).toBe(false);
+    });
+
+    it("tournament arenas admit exactly their bracket-linked matches", () => {
+        const arena = tenantArena({ tenantId: null, membershipMode: null, filter: null, tournamentId: "t-1" });
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", tournamentId: "t-1" })).toBe(true);
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", tournamentId: "t-2" })).toBe(false);
+        expect(arenaMembership(arena, { date: "2026-06-01T10:00:00Z", gameId: "g", mode: "competitive", tournamentId: null })).toBe(false);
+    });
+
+    it("replays a viewed camp arena from the replica links", () => {
+        const { bridge, captured } = capturingBridge();
+        const result = runEngine(
+            baseInput({
+                bridge,
+                arena: { ...tenantArena({ tenantId: null, membershipMode: null, filter: null, camp: true }), id: "camp-1" },
+                matches: [{ ...replicaRow("m1", "2026-06-01T10:00:00Z", { p1: 10, p2: 5 }), campArenaIds: ["camp-1"] }],
+                // A pending offline match carries its camp links from the form.
+                pendingMatches: [{ ...pendingMatch("pm1", { p1: 3, p2: 1 }), campArenaIds: ["camp-1" as Base58ID] }],
+            }),
+        );
+        expect(result).not.toBeNull();
+        expect(captured[0].matches.map((m) => m.id)).toEqual(["m1", "pm1"]);
     });
 
     it("applies an empty filter to every game", () => {

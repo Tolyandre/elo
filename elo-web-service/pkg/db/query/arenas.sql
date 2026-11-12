@@ -74,10 +74,31 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
       END)
-       ) AS matches_count
+       ) AS matches_count,
+       -- Settlement-fingerprint columns (ADR-39): the offline client skips a
+       -- ledger re-drain when its stored (count, last_date, last_id) triple
+       -- matches. Every write path inserts fresh UUIDv7 ids, so any append
+       -- or recalculation re-insert changes the triple, and appends with
+       -- older dates (backdated offline matches) change the count. The
+       -- count is a scalar subquery (always a row); the newest row's
+       -- (date, id) come from a LATERAL LIMIT 1 — NULL for an empty ledger,
+       -- which the scan targets tolerate. All reads ride the
+       -- arena_settlements_replay_idx.
+       (
+           SELECT COUNT(*) FROM arena_settlements s WHERE s.arena_id = a.id
+       ) AS settlements_count,
+       fp.settlements_last_date, fp.settlements_last_id
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
 LEFT JOIN tenants t ON t.id = a.tenant_id
+LEFT JOIN LATERAL (
+    SELECT s.date AS settlements_last_date,
+           s.id AS settlements_last_id
+    FROM arena_settlements s
+    WHERE s.arena_id = a.id
+    ORDER BY s.date DESC, s.id DESC
+    LIMIT 1
+) fp ON true
 WHERE (
     sqlc.narg('kind')::text IS NULL
     OR (sqlc.narg('kind')::text = 'tournaments' AND a.tournament_id IS NOT NULL)
@@ -111,6 +132,22 @@ WHERE (CASE WHEN a.tenant_id IS NOT NULL
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
       END);
+
+-- name: GetArenaSettlementsFingerprint :many
+-- The settlement-fingerprint triple of one arena (ADR-39) — the same columns
+-- ListArenas appends, for the single-arena detail response. Deliberately not
+-- folded into the shared GetArena projection: the 16-column list is asserted
+-- field-identical across six row structs (pkg/elo/arena_rows_test.go). The
+-- window count rides the same scan as the newest-row read; :many (never
+-- more than one row) lets an empty ledger come back as an empty result the
+-- caller maps to the empty fingerprint — no NULLs anywhere.
+SELECT COUNT(*) OVER () AS settlements_count,
+       s.date AS settlements_last_date,
+       s.id AS settlements_last_id
+FROM arena_settlements s
+WHERE s.arena_id = $1
+ORDER BY s.date DESC, s.id DESC
+LIMIT 1;
 
 -- name: ListArenasForGame :many
 -- Arenas whose filter includes game @game_id or one of its tags, plus
@@ -593,6 +630,7 @@ LIMIT sqlc.arg('limit')::int4;
 SELECT
     m.id AS match_id,
     m.date,
+    m.updated_at,
     g.id AS game_id,
     g.name AS game_name,
     m.calculator_kind AS calculator_kind,

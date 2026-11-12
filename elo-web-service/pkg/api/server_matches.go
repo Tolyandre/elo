@@ -22,6 +22,14 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	var tournamentID *string
 	var noClub bool
 	var cursorDate pgtype.Timestamptz
+	// Incremental offline pull (ADR-39): only rows whose updated_at is newer
+	// than the client's stored stamp. Like ?tenant=, the cursor token does not
+	// carry it — continuation requests must pass the same value. The generated
+	// param is already a parsed *time.Time (nil when absent).
+	var updatedSince pgtype.Timestamptz
+	if params.UpdatedSince != nil {
+		updatedSince = pgtype.Timestamptz{Time: *params.UpdatedSince, Valid: true}
+	}
 
 	if params.Next != nil && *params.Next != "" {
 		var err error
@@ -80,6 +88,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		NoClub:       pgtype.Bool{Bool: noClub, Valid: noClub},
 		TournamentID: idPtr(tournamentID),
 		CursorDate:   cursorDate,
+		UpdatedSince: updatedSince,
 		Limit:        limit,
 	})
 	if err != nil {
@@ -111,6 +120,7 @@ func listMatchRowParts(r *db.ListMatchesWithPlayersPaginatedRow) matchRowParts {
 	return matchRowParts{
 		MatchID:        r.MatchID,
 		Date:           r.Date.Time,
+		UpdatedAt:      r.UpdatedAt,
 		GameID:         r.GameID,
 		GameName:       r.GameName,
 		CalculatorKind: r.CalculatorKind,
@@ -294,6 +304,7 @@ func detailMatchRowParts(r *db.GetMatchWithPlayersRow) matchRowParts {
 	return matchRowParts{
 		MatchID:        r.MatchID,
 		Date:           r.Date.Time,
+		UpdatedAt:      r.UpdatedAt,
 		GameID:         r.GameID,
 		GameName:       r.GameName,
 		CalculatorKind: r.CalculatorKind,
@@ -340,6 +351,7 @@ func (s *StrictServer) matchesToAPI(ctx context.Context, matchesMap map[id.ID]*t
 			GameId:     m.GameId,
 			GameName:   m.GameName,
 			Date:       m.Date,
+			UpdatedAt:  m.UpdatedAt,
 			Score:      score,
 			HasMarkets: m.HasMarkets,
 			Mode:       MatchesMatchMode(m.Mode),

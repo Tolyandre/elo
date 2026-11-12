@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -30,7 +31,7 @@ const createMatch = `-- name: CreateMatch :one
 INSERT INTO matches (id, date, game_id, calculator_kind, calculator_schema_version, calculator_data, mode, game_score, game_won)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
-RETURNING id, date, game_id, calculator_kind, calculator_schema_version, calculator_data, mode, game_score, game_won
+RETURNING id, date, game_id, calculator_kind, calculator_schema_version, calculator_data, mode, game_score, game_won, updated_at
 `
 
 type CreateMatchParams struct {
@@ -68,6 +69,7 @@ func (q *Queries) CreateMatch(ctx context.Context, arg CreateMatchParams) (Match
 		&i.Mode,
 		&i.GameScore,
 		&i.GameWon,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -114,7 +116,7 @@ func (q *Queries) GetCountMatchesByGame(ctx context.Context, gameID id.ID) (int6
 }
 
 const getMatch = `-- name: GetMatch :one
-SELECT id, date, game_id, calculator_kind, calculator_schema_version, calculator_data, mode, game_score, game_won FROM matches
+SELECT id, date, game_id, calculator_kind, calculator_schema_version, calculator_data, mode, game_score, game_won, updated_at FROM matches
 WHERE id = $1
 FOR UPDATE
 `
@@ -132,6 +134,7 @@ func (q *Queries) GetMatch(ctx context.Context, argID id.ID) (Match, error) {
 		&i.Mode,
 		&i.GameScore,
 		&i.GameWon,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -209,6 +212,7 @@ SELECT
     m.mode AS mode,
     m.game_score AS game_score,
     m.game_won AS game_won,
+    m.updated_at,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -251,6 +255,7 @@ type GetMatchWithPlayersRow struct {
 	Mode           string             `json:"mode"`
 	GameScore      pgtype.Float8      `json:"game_score"`
 	GameWon        pgtype.Bool        `json:"game_won"`
+	UpdatedAt      time.Time          `json:"updated_at"`
 	PlayerID       id.ID              `json:"player_id"`
 	PlayerName     string             `json:"player_name"`
 	Score          float64            `json:"score"`
@@ -281,6 +286,7 @@ func (q *Queries) GetMatchWithPlayers(ctx context.Context, arg GetMatchWithPlaye
 			&i.Mode,
 			&i.GameScore,
 			&i.GameWon,
+			&i.UpdatedAt,
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
@@ -300,7 +306,7 @@ func (q *Queries) GetMatchWithPlayers(ctx context.Context, arg GetMatchWithPlaye
 }
 
 const getMatchesFromDate = `-- name: GetMatchesFromDate :many
-SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data, m.mode, m.game_score, m.game_won
+SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data, m.mode, m.game_score, m.game_won, m.updated_at
 FROM matches m
 WHERE m.date >= $1
 ORDER BY m.date ASC, m.id ASC
@@ -325,6 +331,7 @@ func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestampt
 			&i.Mode,
 			&i.GameScore,
 			&i.GameWon,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -338,7 +345,7 @@ func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestampt
 
 const listMatchesWithPlayersPaginated = `-- name: ListMatchesWithPlayersPaginated :many
 WITH paginated_matches AS (
-    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind, m.mode, m.game_score, m.game_won
+    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind, m.mode, m.game_score, m.game_won, m.updated_at
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE
@@ -348,17 +355,24 @@ WITH paginated_matches AS (
             $4::timestamptz IS NULL
             OR m.date < $4::timestamptz
         )
+        -- Incremental offline pull (ADR-39): only rows changed after the
+        -- client's stored stamp. Continuation requests must pass the same
+        -- value — like ?tenant=, the cursor token does not carry it.
         AND (
-            $5::uuid IS NULL
+            $5::timestamptz IS NULL
+            OR m.updated_at > $5::timestamptz
+        )
+        AND (
+            $6::uuid IS NULL
             OR EXISTS (
                 SELECT 1 FROM player_club_membership pcm
-                WHERE pcm.club_id = $5::uuid
+                WHERE pcm.club_id = $6::uuid
                 AND pcm.left_at IS NULL
                 AND pcm.player_id = ms.player_id
             )
         )
         AND (
-            $6::bool IS NOT TRUE
+            $7::bool IS NOT TRUE
             OR NOT EXISTS (
                 SELECT 1 FROM player_club_membership pcm2
                 WHERE pcm2.player_id = ms.player_id
@@ -366,18 +380,18 @@ WITH paginated_matches AS (
             )
         )
         AND (
-            $7::uuid IS NULL
+            $8::uuid IS NULL
             OR EXISTS (
                 SELECT 1
                 FROM tournament_slot_matches tsm
                 JOIN tournament_slots ts ON ts.id = tsm.slot_id
                 JOIN tournament_rounds tr ON tr.id = ts.round_id
-                WHERE tr.tournament_id = $7::uuid
+                WHERE tr.tournament_id = $8::uuid
                 AND tsm.match_id = m.id
             )
         )
     ORDER BY m.date DESC, m.id DESC
-    LIMIT $8::int4
+    LIMIT $9::int4
 )
 SELECT
     pm.id AS match_id,
@@ -388,6 +402,7 @@ SELECT
     pm.mode AS mode,
     pm.game_score AS game_score,
     pm.game_won AS game_won,
+    pm.updated_at,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -420,6 +435,7 @@ type ListMatchesWithPlayersPaginatedParams struct {
 	GameID       *id.ID             `json:"game_id"`
 	PlayerID     *id.ID             `json:"player_id"`
 	CursorDate   pgtype.Timestamptz `json:"cursor_date"`
+	UpdatedSince pgtype.Timestamptz `json:"updated_since"`
 	ClubID       *id.ID             `json:"club_id"`
 	NoClub       pgtype.Bool        `json:"no_club"`
 	TournamentID *id.ID             `json:"tournament_id"`
@@ -435,6 +451,7 @@ type ListMatchesWithPlayersPaginatedRow struct {
 	Mode           string             `json:"mode"`
 	GameScore      pgtype.Float8      `json:"game_score"`
 	GameWon        pgtype.Bool        `json:"game_won"`
+	UpdatedAt      time.Time          `json:"updated_at"`
 	PlayerID       id.ID              `json:"player_id"`
 	PlayerName     string             `json:"player_name"`
 	Score          float64            `json:"score"`
@@ -454,6 +471,7 @@ func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListM
 		arg.GameID,
 		arg.PlayerID,
 		arg.CursorDate,
+		arg.UpdatedSince,
 		arg.ClubID,
 		arg.NoClub,
 		arg.TournamentID,
@@ -475,6 +493,7 @@ func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListM
 			&i.Mode,
 			&i.GameScore,
 			&i.GameWon,
+			&i.UpdatedAt,
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
