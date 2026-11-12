@@ -19,7 +19,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
-import { MatchEntity } from "@/lib/offline/match-entity";
+import { useTenantScope } from "@/app/tenantScopeContext";
+import { useLocalRatings } from "@/app/offline/ratings/LocalRatingsContext";
+import { MatchEntity, withLocalSettlement } from "@/lib/offline/match-entity";
 import type { PendingOp } from "@/lib/offline/types";
 import { useOpNameHelpers } from "@/hooks/useOpNameHelpers";
 import type { ArenaMatchFilters } from "./use-arena-feed";
@@ -217,17 +219,26 @@ export function ArenaFeedTab({
 /**
  * A feed match event with a queued offline edit (ADR-37): the entity overlays
  * the op on the server read — the same display state the match view page and
- * the /offline queue show — plus the unsynced chip and the dashed border (no
- * rating values until the server re-settles). Its own component so the hooks
- * stay unconditional (plain events render the plain MatchCard).
+ * the /offline queue show — plus the unsynced chip and the dashed border. The
+ * op overlay nulls the settlement columns (they describe the pre-edit match),
+ * so the fill comes from the local replay (ADR-38) — the same provisional
+ * values the match view page shows. Its own component so the hooks stay
+ * unconditional (plain events render the plain MatchCard).
  */
 function FeedMatchCard({ match, op, roundToInteger }: { match: Match; op: PendingOp; roundToInteger: boolean }) {
     const helpers = useOpNameHelpers();
+    const { tenantId } = useTenantScope();
+    const { getMatchSettlement } = useLocalRatings();
     const entity = useMemo(() => MatchEntity.resolve(match.id, { saved: match, op }), [match, op]);
     const view = useMemo(() => entity?.effective(helpers) ?? match, [entity, helpers, match]);
+    const localSettlement = useMemo(
+        () => getMatchSettlement(match.id, tenantId),
+        [match.id, tenantId, getMatchSettlement],
+    );
+    const settledView = useMemo(() => withLocalSettlement(view, localSettlement), [view, localSettlement]);
     return (
         <MatchCard
-            match={view}
+            match={settledView}
             pending
             syncStatus={op.status}
             syncError={op.error}
