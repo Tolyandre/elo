@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Base58ID } from "@/lib/id";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
@@ -130,6 +130,12 @@ export function MatchForm({
     const [gameWonError, setGameWonError] = useState(false);
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    // Latched for this form instance once a submission starts. The queue write
+    // behind submitMatch resolves in milliseconds while the navigation away
+    // takes longer — resetting the busy state right after the write would let
+    // a fast second click queue a second match under a freshly minted id
+    // (every submitMatch call creates a new pending entry).
+    const submittedRef = useRef(false);
     const router = useRouter();
 
     // After a queued edit lands, the sync invalidates the contexts itself —
@@ -353,7 +359,7 @@ export function MatchForm({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (submitting) return;
+        if (submitting || submittedRef.current) return;
         if (!selectedGameId) return;
         if (participants.length === 0) return;
         // Проверка ошибок
@@ -394,6 +400,7 @@ export function MatchForm({
               }
             : {};
 
+        submittedRef.current = true;
         setSubmitting(true);
         try {
             if (editSaved) {
@@ -401,6 +408,7 @@ export function MatchForm({
                 // the server rejects it when the match would drop out of the
                 // tenant's feed. The edit page only renders under a tenant.
                 if (!tenant) {
+                    submittedRef.current = false;
                     setSubmitting(false);
                     setBottomErrorMessage("Выберите сообщество");
                     return;
@@ -470,14 +478,19 @@ export function MatchForm({
             // with the ratings.
             router.push(tenant ? `/?tenant=${tenant.id}&tab=feed` : `/?tab=feed`);
         } catch (err) {
+            // The create path is the only one that can actually fail here
+            // (the edit paths are local queue writes): release the latch so
+            // the user can retry. On the success paths the latch stays and
+            // the navigation unmounts the form — the busy state must not
+            // reset before that, or a fast second click re-submits.
+            submittedRef.current = false;
+            setSubmitting(false);
             setSuccess(false);
             if (err instanceof Error) {
                 setBottomErrorMessage(err.message);
             } else {
                 setBottomErrorMessage(String(err));
             }
-        } finally {
-            setSubmitting(false);
         }
     };
 

@@ -145,6 +145,9 @@ function renderForm() {
             Array.from(container.querySelectorAll("button")).find((b) =>
                 b.textContent?.includes("Сохранить результат"),
             ) as HTMLButtonElement,
+        // Stable across the busy-state label change («Сохранение...»).
+        submitControl: () =>
+            container.querySelector('button[type="submit"]') as HTMLButtonElement,
         text: () => container.textContent ?? "",
         unmount() {
             act(() => {
@@ -228,6 +231,26 @@ describe("MatchForm tenant membership rules, create mode (ADR-36)", () => {
         expect(view.byTestId("allowed").textContent).toBe("all");
         expect(view.text()).not.toContain("только своих участников");
         expect(view.submitButton().disabled).toBe(false);
+        view.submit();
+        await act(async () => {});
+        expect(mocks.submitMatch).toHaveBeenCalledTimes(1);
+        view.unmount();
+    });
+
+    it("a fast second submit inside the navigation window does not queue a duplicate", async () => {
+        const view = renderForm();
+        act(() => {
+            view.byTestId("pick-game").click();
+            view.byTestId("pick-guests").click();
+        });
+        // The first submit resolves in milliseconds — submitMatch only queues
+        // the match into IndexedDB, minting a fresh id — while the navigation
+        // to the feed is still pending. The busy state must hold past the
+        // queue write so the extra click cannot start a second submission.
+        view.submit();
+        await act(async () => {});
+        expect(mocks.submitMatch).toHaveBeenCalledTimes(1);
+        expect(view.submitControl().disabled).toBe(true);
         view.submit();
         await act(async () => {});
         expect(mocks.submitMatch).toHaveBeenCalledTimes(1);
