@@ -78,15 +78,6 @@ jobs:
         # binaries come via optionalDependencies). pnpm-workspace.yaml's
         # onlyBuiltDependencies still governs the real (Nix) build.
         run: pnpm --dir ./nextjs install --frozen-lockfile --ignore-scripts
-      - name: Setup Go for the settlement wasm
-        # The wasm parity suite (__tests__/settlement-wasm.test.ts) replays the
-        # golden fixtures through the actual binary; build it before the tests
-        # (the artifact itself is gitignored — ADR-38).
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: elo-web-service/go.mod
-      - name: Build settlement wasm
-        run: make build-wasm
       - name: Lint
         run: pnpm --dir ./nextjs lint
       - name: Type-check

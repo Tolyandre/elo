@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-migrate dev-logs backend-run frontend-run integration-test integration-test-one decode-id db-market copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api build-wasm golden test
+.PHONY: dev-up dev-down dev-migrate dev-logs backend-run frontend-run integration-test integration-test-one decode-id db-market copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api test
 
 ## Regenerate Go server code from openapi/openapi.yaml
 generate-go-api:
@@ -99,21 +99,6 @@ integration-test-one:
 ##   make decode-id ID=4kRhVeNBDGBSMYcmWf7NxB
 decode-id:
 	cd elo-web-service && CGO_ENABLED=0 go run ./cmd/decodeid $(ID)
-
-## Build the offline settlement engine (pkg/settlement) to WebAssembly for the
-## frontend (ADR-38): writes nextjs/public/wasm/settlement.wasm + the Go
-## wasm_exec.js runtime (both gitignored; nix/wasm.nix builds the same
-## artifact for deploys). Run wrapped in the devenv shell.
-build-wasm:
-	cd elo-web-service && CGO_ENABLED=0 GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o ../nextjs/public/wasm/settlement.wasm ./cmd/settlementwasm
-	cd elo-web-service && cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" ../nextjs/public/wasm/wasm_exec.js
-
-## Regenerate the golden settlement fixtures (nextjs/__tests__/fixtures/
-## settlement-golden.json) that the frontend's wasm parity test replays
-## (ADR-38). Commit the regenerated file together with the math change.
-## Also runs on every `go test ./pkg/settlement/` as a drift check.
-golden:
-	ELO_UPDATE_GOLDEN=1 go test -C elo-web-service ./pkg/settlement/ -run TestGoldenFixtures -v
 
 ## Dump one market's full row set (market, outcomes, guarantee wagers,
 ## guarantor pairs, bets, settlement rows) from the local compose postgres in

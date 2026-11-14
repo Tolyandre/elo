@@ -37,7 +37,6 @@ export type MatchFilter = components["schemas"]["MatchFilter"];
 export type ArenaSettings = components["schemas"]["ArenaSettings"];
 export type Arena = components["schemas"]["Arena"];
 export type ArenaPlayer = components["schemas"]["ArenaPlayer"];
-export type ArenaSettlement = components["schemas"]["ArenaSettlement"];
 export type TableSummary = components["schemas"]["TableSummary"];
 export type TableGameState = components["schemas"]["TableGameState"];
 export type TablePlayer = components["schemas"]["TablePlayer"];
@@ -106,14 +105,6 @@ export type Match = {
      * stored instant and the audit log reports a change nobody made.
      */
     dateISO: string | null;
-    /**
-     * Server change stamp (ADR-39): bumped on every change visible through
-     * this payload — the row itself, its per-player scores, and its camp /
-     * tournament links. The offline replica's incremental cursor key.
-     * Settlement rewrites do not bump it; the ledger carries its own
-     * fingerprint signal (ADR-39).
-     */
-    updated_at: string;
     score: Record<string, PlayerScore>;
     has_markets: boolean;
     /**
@@ -175,7 +166,6 @@ export function mapMatch(m: components["schemas"]["Match"]): Match {
         ),
         date: m.date ? new Date(m.date) : null,
         dateISO: m.date ?? null,
-        updated_at: m.updated_at,
         has_markets: m.has_markets,
         mode: m.mode,
         game_score: m.game_score ?? null,

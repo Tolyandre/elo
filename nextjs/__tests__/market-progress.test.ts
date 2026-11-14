@@ -32,7 +32,6 @@ function makeMatch(id: string, date: string, scores: Record<string, number>): Ma
         ),
         date: new Date(date),
         dateISO: date,
-        updated_at: date,
         has_markets: false,
         mode: "competitive",
         game_score: null,

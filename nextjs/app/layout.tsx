@@ -18,7 +18,6 @@ import { TagsProvider } from "./tagsContext";
 import { CampsProvider } from "./arenas/campsContext";
 import { TournamentsProvider } from "./tournaments/tournamentsContext";
 import { OfflineProvider } from "./offline/OfflineContext";
-import { LocalRatingsProvider } from "./offline/ratings/LocalRatingsContext";
 import { SwUpdateReloader } from "@/components/sw-update-reloader";
 import { RootRscPayloadRewrite } from "@/components/root-rsc-payload-rewrite";
 import { EnvBanner } from "@/components/env-banner";
@@ -76,7 +75,6 @@ export default function RootLayout({
             <MatchesProvider>
               <PlayersProvider>
                 <OfflineProvider>
-                <LocalRatingsProvider>
                 {/* suppressHydrationWarning: browser extensions (Grammarly,
                     dark-mode helpers, ...) inject attributes on <body> before
                     hydration; React ignores them anyway, so don't warn. */}
@@ -121,7 +119,6 @@ export default function RootLayout({
                     </div>
                   </ThemeProvider>
                 </body>
-                </LocalRatingsProvider>
                 </OfflineProvider>
               </PlayersProvider>
             </MatchesProvider>

@@ -11,7 +11,7 @@
 // plain ESM; the imported .ts helpers ride Node's native type stripping
 // (Node ≥ 22.18 — the pinned CI/Nix toolchain is Node 24).
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { serwist } from "@serwist/next/config";
 import { PAGES } from "./lib/offline/routes.ts";
@@ -23,19 +23,6 @@ export default serwist.withNextConfig((nextConfig) => {
   // Versions precached pages per deploy: a new GITHUB_SHA (set by the Pages
   // workflow and the Nix build) invalidates old HTML.
   const revision = process.env.GITHUB_SHA ?? "dev";
-
-  // The settlement engine (ADR-38): precached with a content-hash revision —
-  // the page fetches the 4 MB module on every load anyway, and a deploy
-  // re-downloads it only when the engine actually changed. Guarded on the
-  // file's presence: a bare local build without `make build-wasm` must still
-  // produce an installable worker (a precache entry for a missing URL would
-  // fail the install).
-  const wasmPrecacheEntries = existsSync("public/wasm/settlement.wasm")
-    ? ["settlement.wasm", "wasm_exec.js"].map((file) => ({
-        url: `${basePath}/wasm/${file}`,
-        revision: createHash("md5").update(readFileSync(`public/wasm/${file}`)).digest("hex"),
-      }))
-    : [];
 
   // Normalized the way @serwist/next does it internally (no leading slash,
   // trailing slash) so the glob patterns below match its conventions.
@@ -76,8 +63,8 @@ export default serwist.withNextConfig((nextConfig) => {
       // navigation offline dies on the framework error page once the runtime
       // cache misses (the router's _rsc token changes every build). Served for
       // any query string — the precache matches by pathname — so the router's
-      // cache-busting token never matters. Content-hashed like the wasm: a
-      // payload the build did not change is not re-downloaded.
+      // cache-busting token never matters. Content-hashed: a payload the
+      // build did not change is not re-downloaded.
       ...PAGES.flatMap((p) =>
         segmentedPayloadUrlsForRoute(p, basePath, "out").map((url) => ({
           url,
@@ -86,7 +73,6 @@ export default serwist.withNextConfig((nextConfig) => {
             .digest("hex"),
         })),
       ),
-      ...wasmPrecacheEntries,
     ],
     esbuildOptions: {
       // webpack's InjectManifest used to inline these constants into the
