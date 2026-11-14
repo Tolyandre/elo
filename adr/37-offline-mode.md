@@ -1,5 +1,11 @@
 # Offline mode v2: local replica, field-level merge, queue management page
 
+Supersedes the offline-write parts of ADR-16. This is the single record of
+the offline design; the interim ADR-38 (offline ratings via a wasm
+settlement engine) and ADR-39 (incremental replica mirroring) were
+implemented on the same branch and then reverted — see §"Scope: no offline
+elo calculation" for the decision.
+
 ## Problem
 
 ADR-16 made creates idempotent (client-final ids, upsert-on-id sync), but the
@@ -33,22 +39,52 @@ Evolve the existing engine (ADR-16's id model is kept whole); adopt Dexie
 duplicate-name conflicts auto-adopt; and concentrate all queue repair in a
 new `/offline` page.
 
+### Scope: entity CRUD, not offline elo
+
+Offline covers **adding, editing and removing entities** — players, games,
+matches (creates, saved-entity edits, deletes) — and nothing more. Rating
+surfaces (arena standings, settlement columns, rating histories) stay
+online-only reads. In particular there is **no offline elo calculation**:
+a settlement replay was built once (ADR-38: the pure `pkg/settlement` core
+compiled to WebAssembly, fed from a Dexie replica of the settlement ledger,
+match history and elo-settings series, incrementally re-mirrored per
+ADR-39) and then reverted. Two costs decided it: the server settlement
+logic had to be ported and kept bit-identical in a wasm build the client
+ships, and the replica duplicated the settlement data — a second source of
+truth that had to be hydrated, fingerprinted and versioned. Offline
+validated rating values were judged not worth that standing cost; unsynced
+state renders no rating values at all (the card hides the settlement
+columns until the server settles), so a wrong preview can never show.
+
+What deliberately remains from that episode: the pure `pkg/settlement` core
+(the server's live settlement math runs through it), the match-document
+mirror (below), and the PWA service-worker plumbing hardened on the way.
+
+**Validation stays split.** The client validates before queueing (calculator
+scoring, form guards, duplicate-name pre-checks, three-way merge conflict
+detection) — a queued item must not be garbage the sync discovers days
+later — but the server stays authoritative: every write is validated by the
+same handlers a direct online call would hit, and a client-side reject
+never waives a server-side one.
+
 ### Storage: Dexie, not a sync framework
 
 RxDB, ElectricSQL, PowerSync, Zero/Replicache were evaluated: all require a
 server-side sync component alongside the Go+Postgres backend or a rewrite of
 the push/pull protocol — and none provide what is actually hard here
-(field-level merge UX, offline Elo chaining). The bespoke engine's tested
-assets (id-finality, merge-over-live-store persistence, createdAt ordering)
-are kept. Dexie (~30 KB) contributes the pieces genuinely worth borrowing:
-IndexedDB storage (localStorage will not hold a future matches replica),
-live queries (killing the `invalidate()` refetch sprawl), and cross-tab
-consistency (replacing the `storage`-event adoption code).
+(field-level merge UX). The bespoke engine's tested assets (id-finality,
+merge-over-live-store persistence, createdAt ordering) are kept. Dexie
+(~30 KB) contributes the pieces genuinely worth borrowing: IndexedDB
+storage, live queries (killing the `invalidate()` refetch sprawl), and
+cross-tab consistency (replacing the `storage`-event adoption code).
 
-Tables: `entities` (server mirror: players, games — matches later),
-`pending` (creates, migrated from `offline-pending-v1`), `ops` (edits and
-deletes of saved entities), `meta` (sync cursors, snapshots). One-time
-migration on load; `sync.ts` stays a pure, DI'd engine.
+Tables: `games`/`players`/`matches` (pending creates, migrated from the
+legacy `offline-pending-v1` localStorage blob), `entityPlayers`/
+`entityGames` (the name-resolution replica), `ops` (edits and deletes of
+saved entities), `matchDocs` (the match-document mirror, below). One-time
+migration on load; `sync.ts` stays a pure, DI'd engine. Schema changes —
+including deletions of dropped features' tables — join via a bumped
+`version()`, never by reshaping an existing store.
 
 ### `/offline` page is the conflict surface
 
@@ -136,28 +172,34 @@ the ops in the same spirit (pending → **ops** → live lists → replica →
 fallback), so a renamed player or game resolves to the queued name
 everywhere.
 
+### The match-document mirror: offline view/edit of saved matches
+
+Editing a saved match offline needs the match's full document — the slim
+list rows omit `calculator_data` (potentially large JSONB), and a prefill
+from a partial row could read camps as empty and wipe them server-side on
+submit. So the tenant-scoped detail response is written through to the
+`matchDocs` Dexie table per opened match (the view page's detail fetch and
+list-row write-throughs; a list row never overwrites an existing full
+mirror). Offline, the view and edit pages fall back to that mirror; a
+match that was never opened online stays online-only by design — the form
+says so instead of risking a destructive prefill. The mirror is plain
+write-through of reads the pages already make: no extra fetches, no
+incremental pull, no sync state.
+
 ### Deferred: client-side Elo preview and WASM parity
 
 An offline settlement preview was built once as a TS mirror of the server
 formulas fed from per-player rating histories; it was removed again — the
 prior state it needs (each player's latest settlement strictly before the
 match in `(date, match_id)` order, market settlements included) is not
-reliably available offline, and a wrong preview is worse than none. Until
-it returns, unsynced state renders no rating values at all: the card hides
-the settlement columns until the server settles. The eventual shape is a
-settlement-ledger replica — mirror the main arena's `arena_settlements`
-rows into Dexie, so the preview reads the prior state exactly the way
-`GetPlayerLatestArenaEloBeforeMatch` does. Compiling `pkg/elo` to
-WebAssembly (standard Go `GOOS=js GOARCH=wasm`, JSON boundary) stays the
-parity-guaranteed alternative — revisit when either is actually wanted.
-
-**Resolved by ADR-38** (offline ratings): the ledger replica plus the
-`pkg/settlement` WASM build both landed — pending cards and offline edits
-fill their settlement columns from the local replay, and the arena view
-renders offline-recomputed standings. The "no rating values until the
-server settles" rule survives only where the client cannot evaluate an
-arena precisely (stint-based tenant modes, camp/tournament arenas, tag
-filters without tag data).
+reliably available offline, and a wrong preview is worse than none. The
+fuller attempt — the wasm settlement engine plus the ledger/match/settings
+replica of the reverted ADR-38/39 — landed and was rolled back for the
+standing costs named in §Scope. Both roads are documented here so the next
+attempt starts from the right question: is validated offline elo worth a
+parity-guaranteed engine build and a duplicated settlement dataset, or is
+the honest answer "unsynced matches show no rating values"? Until that
+changes, the settlement columns stay hidden until the server settles.
 
 ### Edit-during-sync races
 
@@ -180,13 +222,13 @@ Providers keep their fetch pipelines (tenant-scoped ranks and list shapes
 are consumed in too many places to swap); feeding provider lists from the
 replica offline is a future refinement.
 
-**Matches replica is future work** (not built here): needs an `updated_at`
-column, a tenant-scoped incremental pull
-(`GET /tenants/{id}/matches?updated_since=`), a `matches` table in Dexie,
-and the feed reading it — which also brings offline feed search.
-(The `updated_at` column and the `?updated_since=` pull landed with
-[ADR-39](39-offline-replica-incremental.md) as the ratings replica's match
-mirror; the feed reading it remains future work.)
+**Matches replica is future work** (not built here): a slim Dexie table of
+match rows plus an incremental pull (`updated_at` column +
+`?updated_since=`) was built for the reverted ratings replica and rolled
+back with it — the incremental cursor machinery existed solely to feed the
+settlement replay. Revisit only together with offline feed search or a
+future offline ratings attempt; the entity-CRUD scope does not need it
+(matchDocs covers editing, the /offline page covers the queue).
 
 ## Consequences
 
@@ -200,6 +242,10 @@ mirror; the feed reading it remains future work.)
 - `players_name_unique` stays global: two genuinely different same-named
   players merge irreversibly. Accepted — the camp scenario dominates, and
   the merge is silent by design.
+- Rating columns stay empty for unsynced state — pending creates, offline
+  edits and never-mirrored matches show no elo until the server settles.
+  Accepted: a provisional value computed client-side was the reverted
+  feature, and a wrong number is worse than none.
 
 ## References
 
@@ -208,3 +254,6 @@ mirror; the feed reading it remains future work.)
 - ADR-16 — offline-first writes; superseded in parts: storage moves from
   localStorage to Dexie, duplicate names auto-adopt instead of manual
   repair, cross-tab consistency moves into Dexie.
+- ADR-38 / ADR-39 (reverted, unmerged) — the offline ratings attempt; their
+  decisions are intentionally absent, their lessons live in §Scope and
+  §Deferred.
