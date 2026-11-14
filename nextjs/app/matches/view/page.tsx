@@ -253,11 +253,15 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
 
   if (!match || !view) return <NotFound />;
 
-  // A competitive match the current community's main arena does not admit
-  // (its openness rule, evaluated at the match date) has no settlement there:
-  // the rating columns are null and the card hides them instead of showing
-  // zeros that would suggest a played-out rating change.
-  const settled = matchSettled(view);
+  // Whether the match belongs to this community is a property of the server
+  // read: the tenant's main arena either settled it (its openness rule
+  // admitted the match at its date) or left the rating columns null — the
+  // card hides them instead of showing zeros that would suggest a
+  // played-out rating change. The queued-edit overlay must not feed this
+  // check: it nulls the settlement columns by design (no rating values for
+  // unsynced state), and reading it here would claim «не относится к
+  // сообществу» for every offline-edited match until its sync lands.
+  const settled = matchSettled(match);
 
   return (
     <PageContainer width="narrow">
