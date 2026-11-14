@@ -200,14 +200,6 @@ type Querier interface {
 	// Row-locked variant used by the recalculation updater: concurrent dirty marks
 	// queue behind the lock and apply after the recalculation commits.
 	GetArenaForUpdate(ctx context.Context, argID id.ID) (GetArenaForUpdateRow, error)
-	// The settlement-fingerprint triple of one arena (ADR-39) — the same columns
-	// ListArenas appends, for the single-arena detail response. Deliberately not
-	// folded into the shared GetArena projection: the 16-column list is asserted
-	// field-identical across six row structs (pkg/elo/arena_rows_test.go). The
-	// window count rides the same scan as the newest-row read; :many (never
-	// more than one row) lets an empty ledger come back as an empty result the
-	// caller maps to the empty fingerprint — no NULLs anywhere.
-	GetArenaSettlementsFingerprint(ctx context.Context, arenaID id.ID) ([]GetArenaSettlementsFingerprintRow, error)
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID id.ID) ([]GetBetsAggregatedByOutcomeRow, error)
 	// Per-buy rows (each carries the shares bought and the maker fee charged) used
 	// by share settlement.
@@ -397,11 +389,6 @@ type Querier interface {
 	// per-player lateral then degrades into per-match probes of match_scores
 	// (~3s for a 100-player arena); the aggregate shape is estimate-insensitive.
 	ListArenaPlayersAt(ctx context.Context, arg ListArenaPlayersAtParams) ([]ListArenaPlayersAtRow, error)
-	// Ascending keyset page of one arena's settlement ledger (ADR-38): the
-	// offline client mirrors the chain to replay ratings locally. Ordered by the
-	// replay index (arena_id, date, id); the cursor is the last row's (date, id),
-	// so a page boundary never splits or skips same-date rows.
-	ListArenaSettlementsByArena(ctx context.Context, arg ListArenaSettlementsByArenaParams) ([]ListArenaSettlementsByArenaRow, error)
 	// kind narrows the list for the /arenas page tabs: 'games' returns every
 	// user-managed arena except camps and the global one (the main page, not a
 	// list entry); 'camps' returns only camp arenas; 'tournaments' returns only

@@ -200,7 +200,6 @@ type matchJson struct {
 	GameId         id.ID                     `json:"game_id"`
 	GameName       string                    `json:"game_name"`
 	Date           time.Time                 `json:"date"`
-	UpdatedAt      time.Time                 `json:"updated_at"`
 	Players        map[id.ID]matchPlayerJson `json:"score"`
 	HasMarkets     bool                      `json:"has_markets"`
 	Mode           string                    `json:"mode"`
@@ -319,7 +318,6 @@ type tempMatch struct {
 	GameId         id.ID
 	GameName       string
 	Date           time.Time
-	UpdatedAt      time.Time
 	Players        map[id.ID]matchPlayerJson
 	HasMarkets     bool
 	Mode           string
@@ -340,7 +338,6 @@ func buildMatchesResponse(matchesMap map[id.ID]*tempMatch, order []id.ID) []matc
 			GameId:         tm.GameId,
 			GameName:       tm.GameName,
 			Date:           tm.Date,
-			UpdatedAt:      tm.UpdatedAt,
 			Players:        make(map[id.ID]matchPlayerJson, len(tm.Players)),
 			HasMarkets:     tm.HasMarkets,
 			Mode:           tm.Mode,
@@ -363,7 +360,6 @@ func buildMatchesResponse(matchesMap map[id.ID]*tempMatch, order []id.ID) []matc
 type matchRowParts struct {
 	MatchID        id.ID
 	Date           time.Time
-	UpdatedAt      time.Time
 	GameID         id.ID
 	GameName       string
 	CalculatorKind pgtype.Text
@@ -394,7 +390,6 @@ func groupMatchRows[R any](rows []R, part func(*R) matchRowParts) (map[id.ID]*te
 				GameId:         p.GameID,
 				GameName:       p.GameName,
 				Date:           p.Date,
-				UpdatedAt:      p.UpdatedAt,
 				Players:        make(map[id.ID]matchPlayerJson),
 				HasMarkets:     p.HasMarkets,
 				Mode:           p.Mode,

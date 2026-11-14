@@ -3,16 +3,14 @@ package settlement
 import "math"
 
 // expDeterministic is the portable (pure-Go) implementation of math.Exp,
-// vendored from the Go standard library (src/math/exp.go, BSD license) so
-// every build target — the amd64 server and the js/wasm client (ADR-38) —
-// computes the identical double.
+// vendored from the Go standard library (src/math/exp.go, BSD license).
 //
 // Why a copy: math.Exp has an assembly implementation on some platforms
 // (exp_amd64.s) whose results differ from the portable fallback by one ULP
 // for some inputs, and the catch-up scaling below is exponential in the
-// elo−rating gap. A 1-ULP divergence between server and client would break
-// the bit-exact parity the golden fixtures pin (nextjs/__tests__/fixtures/
-// settlement-golden.json), so the settlement core must not call math.Exp.
+// elo−rating gap. Pinning the portable implementation keeps every settlement
+// reproducible bit-for-bit regardless of the build target — switching to
+// math.Exp mid-stream would nudge already-stored ratings' continuation.
 // math.Pow is portable everywhere and stays direct.
 
 func expDeterministic(x float64) float64 {

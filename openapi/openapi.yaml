@@ -272,8 +272,6 @@ paths:
     $ref: './arenas.yaml#/ArenaItem'
   /arenas/{id}/players:
     $ref: './arenas.yaml#/ArenaPlayersPath'
-  /arenas/{id}/settlements:
-    $ref: './arenas.yaml#/ArenaSettlementsPath'
   /arenas/{id}/feed:
     $ref: './arenas.yaml#/ArenaFeedPath'
 

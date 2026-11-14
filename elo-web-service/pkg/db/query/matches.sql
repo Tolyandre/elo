@@ -26,7 +26,7 @@ DELETE FROM matches;
 -- tenant main arena, ADR-36; the global arena until the frontend carries
 -- ?tenant=). The club_id / no_club filters stay club-level grouping filters.
 WITH paginated_matches AS (
-    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind, m.mode, m.game_score, m.game_won, m.updated_at
+    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind, m.mode, m.game_score, m.game_won
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE
@@ -35,13 +35,6 @@ WITH paginated_matches AS (
         AND (
             sqlc.narg('cursor_date')::timestamptz IS NULL
             OR m.date < sqlc.narg('cursor_date')::timestamptz
-        )
-        -- Incremental offline pull (ADR-39): only rows changed after the
-        -- client's stored stamp. Continuation requests must pass the same
-        -- value — like ?tenant=, the cursor token does not carry it.
-        AND (
-            sqlc.narg('updated_since')::timestamptz IS NULL
-            OR m.updated_at > sqlc.narg('updated_since')::timestamptz
         )
         AND (
             sqlc.narg('club_id')::uuid IS NULL
@@ -83,7 +76,6 @@ SELECT
     pm.mode AS mode,
     pm.game_score AS game_score,
     pm.game_won AS game_won,
-    pm.updated_at,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -123,7 +115,6 @@ SELECT
     m.mode AS mode,
     m.game_score AS game_score,
     m.game_won AS game_won,
-    m.updated_at,
     p.id AS player_id,
     p.name AS player_name,
     s.score,

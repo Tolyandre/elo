@@ -230,54 +230,6 @@ ArenaPlayersPath:
             schema:
               $ref: './common.yaml#/ApiError'
 
-ArenaSettlementsPath:
-  get:
-    operationId: ListArenaSettlements
-    tags: [arenas]
-    summary: One arena's settlement ledger, ascending, cursor-paginated (ADR-38)
-    description: >-
-      The arena_settlements rows in replay event order — (date, id) ascending.
-      The offline client mirrors the ledger to replay ratings locally; market
-      settlements ride along as frozen rows (discriminator market /
-      market_guarantor).
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: limit
-        in: query
-        schema:
-          type: integer
-          default: 1000
-          maximum: 5000
-        description: Page size (1..5000)
-      - name: next
-        in: query
-        schema:
-          type: string
-        description: Cursor token from the previous page's "next" field
-    responses:
-      "200":
-        description: One ascending page of settlement rows
-        content:
-          application/json:
-            schema:
-              $ref: '#/ArenaSettlementsPage'
-      "400":
-        description: Bad request (invalid cursor or limit)
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-      "404":
-        description: Arena not found
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-
 ArenaFeedPath:
   get:
     operationId: ListArenaFeed
@@ -526,24 +478,6 @@ Arena:
     matches_count:
       type: integer
       description: Number of matches meeting the arena's filter, or linked to the camp (list responses only).
-    settlements_count:
-      type: integer
-      description: >-
-        Settlement-ledger row count of this arena (ADR-39). Together with
-        settlements_last_date and settlements_last_id it forms the change
-        signal the offline client compares against its stored mirror before
-        re-draining GET /arenas/{id}/settlements. Present in list and detail
-        responses; absent when the row predates the fingerprint columns.
-    settlements_last_date:
-      type: string
-      format: date-time
-      description: Date column of the arena's newest settlement row (ADR-39); the '-infinity' sentinel when the ledger is empty.
-    settlements_last_id:
-      $ref: './common.yaml#/Base58ID'
-      description: >-
-        Id of the arena's newest settlement row (ADR-39). Every write inserts
-        fresh ids, so even a recalculation that rewrites identical rows
-        changes the triple; the zero-uuid sentinel when the ledger is empty.
   required: [id, name, camp, filter, settings, settings_schema_version]
 
 ArenaInput:
@@ -656,68 +590,6 @@ ArenaRankPoint:
       type: integer
       nullable: true
   required: [rating, league, rank]
-
-ArenaSettlement:
-  type: object
-  description: One arena_settlements ledger row (ADR-38) — a match or market
-    settlement of one player in one arena. Match rows carry match_id; market
-    rows carry market_id and are frozen constants for the offline replay.
-  properties:
-    id:
-      $ref: './common.yaml#/Base58ID'
-    player_id:
-      $ref: './common.yaml#/Base58ID'
-    date:
-      type: string
-      format: date-time
-    rating_after:
-      type: number
-      format: double
-    elo_after:
-      type: number
-      format: double
-    discriminator:
-      type: string
-      enum: [match, market, market_guarantor]
-    match_id:
-      allOf:
-        - $ref: './common.yaml#/Base58ID'
-      nullable: true
-    market_id:
-      allOf:
-        - $ref: './common.yaml#/Base58ID'
-      nullable: true
-    elo_staked:
-      type: number
-      format: double
-    elo_earned:
-      type: number
-      format: double
-    rating_staked:
-      type: number
-      format: double
-    rating_earned:
-      type: number
-      format: double
-    league:
-      type: string
-      nullable: true
-  required: [id, player_id, date, rating_after, elo_after, discriminator, elo_staked, elo_earned, rating_staked, rating_earned]
-
-ArenaSettlementsPage:
-  type: object
-  properties:
-    status:
-      type: string
-    data:
-      type: array
-      items:
-        $ref: '#/ArenaSettlement'
-    next:
-      type: string
-      nullable: true
-      description: Cursor token for the next page; null if no more pages
-  required: [status, data]
 
 ArenaPlayersList:
   type: object

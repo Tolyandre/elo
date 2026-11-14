@@ -1,8 +1,8 @@
 // Package arenasettings validates arena settings documents against the
 // versioned JSON Schemas and migrates stored documents between versions.
-// The pure types and their parse live in pkg/settlement (the offline wasm
-// build links that package and must not pull the schema registry in this
-// file); the names below are aliases kept for the historical call sites.
+// The pure types and their parse live in pkg/settlement (which must stay
+// free of the schema registry); the names below are aliases kept for the
+// historical call sites.
 package arenasettings
 
 import (

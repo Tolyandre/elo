@@ -196,17 +196,6 @@ MatchesCollection:
           reads are tenant-scoped, there is no global default. Continuation
           requests must pass the same tenant — the cursor token does not carry
           it. Naming no existing tenant is a 404.
-      - name: updated_since
-        in: query
-        schema:
-          type: string
-          format: date-time
-        description: >-
-          Incremental offline pull (ADR-39): return only matches whose
-          updated_at is strictly newer than this RFC3339 stamp — the client's
-          stored cursor. Continuation requests must pass the same value (the
-          cursor token does not carry it). Combine freely with the other
-          filters; ordering and cursoring are unchanged.
       - name: next
         in: query
         schema:
@@ -556,16 +545,6 @@ Match:
     date:
       type: string
       format: date-time
-    updated_at:
-      type: string
-      format: date-time
-      description: >-
-        Set at creation and bumped on every change visible through this
-        payload — the row itself, its per-player scores, and its camp /
-        tournament links. The offline replica's incremental cursor key
-        (ADR-39): `?updated_since=` returns only newer rows. Settlement
-        rewrites do not bump it — the settlement ledger carries its own
-        change signal (the arena's settlements fingerprint, ADR-39).
     score:
       type: object
       additionalProperties:
@@ -612,7 +591,7 @@ Match:
         Intermediate calculator state. Present only when calculator_kind is
         non-null. Opaque at the OpenAPI layer; see pkg/calculator for the
         per-kind JSON Schemas.
-  required: [id, game_id, game_name, date, updated_at, score, has_markets, mode]
+  required: [id, game_id, game_name, date, score, has_markets, mode]
 
 MatchMode:
   type: string

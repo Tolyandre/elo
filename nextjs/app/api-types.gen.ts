@@ -326,26 +326,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/arenas/{id}/settlements": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * One arena's settlement ledger, ascending, cursor-paginated (ADR-38)
-         * @description The arena_settlements rows in replay event order — (date, id) ascending. The offline client mirrors the ledger to replay ratings locally; market settlements ride along as frozen rows (discriminator market / market_guarantor).
-         */
-        get: operations["ListArenaSettlements"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/arenas/{id}/feed": {
         parameters: {
             query?: never;
@@ -1574,15 +1554,6 @@ export interface components {
             stale_at?: string | null;
             /** @description Number of matches meeting the arena's filter, or linked to the camp (list responses only). */
             matches_count?: number;
-            /** @description Settlement-ledger row count of this arena (ADR-39). Together with settlements_last_date and settlements_last_id it forms the change signal the offline client compares against its stored mirror before re-draining GET /arenas/{id}/settlements. Present in list and detail responses; absent when the row predates the fingerprint columns. */
-            settlements_count?: number;
-            /**
-             * Format: date-time
-             * @description Date column of the arena's newest settlement row (ADR-39); the '-infinity' sentinel when the ledger is empty.
-             */
-            settlements_last_date?: string;
-            /** @description Id of the arena's newest settlement row (ADR-39). Every write inserts fresh ids, so even a recalculation that rewrites identical rows changes the triple; the zero-uuid sentinel when the ledger is empty. */
-            settlements_last_id?: components["schemas"]["Base58ID"];
         };
         /** @description Create/update body. The settings object is validated server-side against the current arena-settings JSON Schema; league parameters live there. Camp arenas (camp: true) take starts_at/ends_at and no filter; every other arena takes a filter. */
         ArenaInput: {
@@ -1675,11 +1646,6 @@ export interface components {
             game_name: string;
             /** Format: date-time */
             date: string;
-            /**
-             * Format: date-time
-             * @description Set at creation and bumped on every change visible through this payload — the row itself, its per-player scores, and its camp / tournament links. The offline replica's incremental cursor key (ADR-39): `?updated_since=` returns only newer rows. Settlement rewrites do not bump it — the settlement ledger carries its own change signal (the arena's settlements fingerprint, ADR-39).
-             */
-            updated_at: string;
             /** @description Map of player_id (string) to player score data. Competitive matches only: a coop match (mode coop) lists its participants here with zero scores — the shared result lives in game_score/game_won. */
             score: {
                 [key: string]: components["schemas"]["MatchPlayer"];
@@ -1929,10 +1895,7 @@ export interface components {
             starting_elo: number;
             /** Format: double */
             win_reward: number;
-            /**
-             * Format: double
-             * @description The league parameters ride along so the offline settlement replay (ADR-38) can resolve them as-of the match date.
-             */
+            /** Format: double */
             newbie_league_earned_min: number;
             /** Format: double */
             newbie_league_earned_max: number;
@@ -2350,36 +2313,6 @@ export interface components {
             image_thumb_url?: string | null;
             /** @description Why nothing was refreshed ("not found on BGG", "no image on BGG", "unchanged") */
             reason?: string | null;
-        };
-        /** @description One arena_settlements ledger row (ADR-38) — a match or market settlement of one player in one arena. Match rows carry match_id; market rows carry market_id and are frozen constants for the offline replay. */
-        ArenaSettlement: {
-            id: components["schemas"]["Base58ID"];
-            player_id: components["schemas"]["Base58ID"];
-            /** Format: date-time */
-            date: string;
-            /** Format: double */
-            rating_after: number;
-            /** Format: double */
-            elo_after: number;
-            /** @enum {string} */
-            discriminator: "match" | "market" | "market_guarantor";
-            match_id?: components["schemas"]["Base58ID"] | null;
-            market_id?: components["schemas"]["Base58ID"] | null;
-            /** Format: double */
-            elo_staked: number;
-            /** Format: double */
-            elo_earned: number;
-            /** Format: double */
-            rating_staked: number;
-            /** Format: double */
-            rating_earned: number;
-            league?: string | null;
-        };
-        ArenaSettlementsPage: {
-            status: string;
-            data: components["schemas"]["ArenaSettlement"][];
-            /** @description Cursor token for the next page; null if no more pages */
-            next?: string | null;
         };
         /**
          * @description The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
@@ -4004,51 +3937,6 @@ export interface operations {
             };
         };
     };
-    ListArenaSettlements: {
-        parameters: {
-            query?: {
-                /** @description Page size (1..5000) */
-                limit?: number;
-                /** @description Cursor token from the previous page's "next" field */
-                next?: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description One ascending page of settlement rows */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArenaSettlementsPage"];
-                };
-            };
-            /** @description Bad request (invalid cursor or limit) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Arena not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     ListArenaFeed: {
         parameters: {
             query?: {
@@ -4380,8 +4268,6 @@ export interface operations {
                 tournament_id?: string;
                 /** @description Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. Continuation requests must pass the same tenant — the cursor token does not carry it. Naming no existing tenant is a 404. */
                 tenant: string;
-                /** @description Incremental offline pull (ADR-39): return only matches whose updated_at is strictly newer than this RFC3339 stamp — the client's stored cursor. Continuation requests must pass the same value (the cursor token does not carry it). Combine freely with the other filters; ordering and cursoring are unchanged. */
-                updated_since?: string;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
                 /** @description Number of matches per page */

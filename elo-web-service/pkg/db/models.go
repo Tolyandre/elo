@@ -202,7 +202,6 @@ type Match struct {
 	Mode                    string             `json:"mode"`
 	GameScore               pgtype.Float8      `json:"game_score"`
 	GameWon                 pgtype.Bool        `json:"game_won"`
-	UpdatedAt               time.Time          `json:"updated_at"`
 }
 
 type MatchFilter struct {

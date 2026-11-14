@@ -17,9 +17,8 @@ func newSettlementID() id.ID {
 }
 
 // WinExpectation and CalculateNewElo delegate to pkg/settlement — the pure
-// settlement core also links into the offline client's wasm build (ADR-38),
-// so the two implementations cannot drift. The wrappers keep the historical
-// in-package signatures.
+// settlement core keeps one implementation of the math; the wrappers keep
+// the historical in-package signatures.
 func WinExpectation(currentElo float64, playersScore map[id.ID]float64, startingElo float64,
 	prevElo map[id.ID]float64, elo_const_d float64) float64 {
 	return settlement.WinExpectation(currentElo, playersScore, startingElo, prevElo, elo_const_d)

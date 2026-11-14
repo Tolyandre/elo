@@ -12,8 +12,8 @@ import (
 )
 
 // EloSettings holds the Elo calculation constants effective at a point in
-// time. The struct lives in pkg/settlement (the offline wasm build links it,
-// ADR-38); the alias keeps the historical name.
+// time. The struct lives in pkg/settlement; the alias keeps the historical
+// name.
 type EloSettings = settlement.EloSettings
 
 // EloSettingsFromDB converts a sqlc-generated row to the domain value object,

@@ -52,14 +52,6 @@ func (s *StrictServer) ListAllSettings(ctx context.Context, _ ListAllSettingsReq
 			EloConstD:     r.EloConstD,
 			StartingElo:   r.StartingElo,
 			WinReward:     r.WinReward,
-			// The league parameters ride along so the offline settlement
-			// replay (ADR-38) can resolve them as-of the match date.
-			NewbieLeagueEarnedMin:     r.NewbieLeagueEarnedMin,
-			NewbieLeagueEarnedMax:     r.NewbieLeagueEarnedMax,
-			NewbieLeagueEarnedTau:     r.NewbieLeagueEarnedTau,
-			NewbieLeagueGoalGap:       r.NewbieLeagueGoalGap,
-			EliteLeagueMatches6months: int(r.EliteLeagueMatches6months),
-			EliteLeagueMatches2months: int(r.EliteLeagueMatches2months),
 		})
 	}
 

@@ -49,31 +49,7 @@ func (s *ArenaService) GetArena(ctx context.Context, arenaID id.ID) (Arena, erro
 	if err != nil {
 		return Arena{}, err
 	}
-	fp, err := s.GetArenaSettlementsFingerprint(ctx, arenaID)
-	if err != nil {
-		return Arena{}, err
-	}
-	a.Settlements = &fp
 	return a, nil
-}
-
-// GetArenaSettlementsFingerprint reads the single-arena settlement-fingerprint
-// triple (ADR-39) — the same columns ListArenas embeds, for the detail
-// response and the by-game/by-tournament list branches. An empty ledger is
-// the deterministic zero triple.
-func (s *ArenaService) GetArenaSettlementsFingerprint(ctx context.Context, arenaID id.ID) (SettlementsFingerprint, error) {
-	rows, err := s.Queries.GetArenaSettlementsFingerprint(ctx, arenaID)
-	if err != nil {
-		return SettlementsFingerprint{}, fmt.Errorf("arena %s settlements fingerprint: %w", arenaID, err)
-	}
-	if len(rows) == 0 {
-		return SettlementsFingerprint{}, nil
-	}
-	return SettlementsFingerprint{
-		Count:    rows[0].SettlementsCount,
-		LastDate: rows[0].SettlementsLastDate.Time,
-		LastID:   rows[0].SettlementsLastID,
-	}, nil
 }
 
 // CountArenaMatches counts the matches meeting the arena's filter — the
@@ -297,23 +273,4 @@ func (s *ArenaService) ListArenaFeedEvents(ctx context.Context, arg db.ListArena
 
 func (s *ArenaService) ListFeedMatchesWithPlayers(ctx context.Context, arg db.ListFeedMatchesWithPlayersParams) ([]db.ListFeedMatchesWithPlayersRow, error) {
 	return s.Queries.ListFeedMatchesWithPlayers(ctx, arg)
-}
-
-// ListArenaSettlements returns one ascending keyset page of the arena's
-// settlement ledger (ADR-38) — the offline client mirrors the chain to replay
-// ratings locally. The cursor is the last row's (date, id); a nil cursor
-// starts from the epoch.
-func (s *ArenaService) ListArenaSettlements(
-	ctx context.Context, arenaID id.ID, cursorDate pgtype.Timestamptz, cursorID *id.ID, limit int,
-) ([]db.ListArenaSettlementsByArenaRow, error) {
-	rows, err := s.Queries.ListArenaSettlementsByArena(ctx, db.ListArenaSettlementsByArenaParams{
-		ArenaID:    arenaID,
-		CursorDate: cursorDate,
-		CursorID:   cursorID,
-		PageLimit:  int32(limit),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list arena settlements: %w", err)
-	}
-	return rows, nil
 }

@@ -537,49 +537,6 @@ func (q *Queries) GetArenaForUpdate(ctx context.Context, argID id.ID) (GetArenaF
 	return i, err
 }
 
-const getArenaSettlementsFingerprint = `-- name: GetArenaSettlementsFingerprint :many
-SELECT COUNT(*) OVER () AS settlements_count,
-       s.date AS settlements_last_date,
-       s.id AS settlements_last_id
-FROM arena_settlements s
-WHERE s.arena_id = $1
-ORDER BY s.date DESC, s.id DESC
-LIMIT 1
-`
-
-type GetArenaSettlementsFingerprintRow struct {
-	SettlementsCount    int64              `json:"settlements_count"`
-	SettlementsLastDate pgtype.Timestamptz `json:"settlements_last_date"`
-	SettlementsLastID   id.ID              `json:"settlements_last_id"`
-}
-
-// The settlement-fingerprint triple of one arena (ADR-39) — the same columns
-// ListArenas appends, for the single-arena detail response. Deliberately not
-// folded into the shared GetArena projection: the 16-column list is asserted
-// field-identical across six row structs (pkg/elo/arena_rows_test.go). The
-// window count rides the same scan as the newest-row read; :many (never
-// more than one row) lets an empty ledger come back as an empty result the
-// caller maps to the empty fingerprint — no NULLs anywhere.
-func (q *Queries) GetArenaSettlementsFingerprint(ctx context.Context, arenaID id.ID) ([]GetArenaSettlementsFingerprintRow, error) {
-	rows, err := q.db.Query(ctx, getArenaSettlementsFingerprint, arenaID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetArenaSettlementsFingerprintRow{}
-	for rows.Next() {
-		var i GetArenaSettlementsFingerprintRow
-		if err := rows.Scan(&i.SettlementsCount, &i.SettlementsLastDate, &i.SettlementsLastID); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const insertArenaStats = `-- name: InsertArenaStats :exec
 INSERT INTO arena_player_stats (arena_id, player_id, matches_count,
                                 first_count, second_count, third_count, fourth_count)
@@ -1133,31 +1090,10 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
       END)
-       ) AS matches_count,
-       -- Settlement-fingerprint columns (ADR-39): the offline client skips a
-       -- ledger re-drain when its stored (count, last_date, last_id) triple
-       -- matches. Every write path inserts fresh UUIDv7 ids, so any append
-       -- or recalculation re-insert changes the triple, and appends with
-       -- older dates (backdated offline matches) change the count. The
-       -- count is a scalar subquery (always a row); the newest row's
-       -- (date, id) come from a LATERAL LIMIT 1 — NULL for an empty ledger,
-       -- which the scan targets tolerate. All reads ride the
-       -- arena_settlements_replay_idx.
-       (
-           SELECT COUNT(*) FROM arena_settlements s WHERE s.arena_id = a.id
-       ) AS settlements_count,
-       fp.settlements_last_date, fp.settlements_last_id
+       ) AS matches_count
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
 LEFT JOIN tenants t ON t.id = a.tenant_id
-LEFT JOIN LATERAL (
-    SELECT s.date AS settlements_last_date,
-           s.id AS settlements_last_id
-    FROM arena_settlements s
-    WHERE s.arena_id = a.id
-    ORDER BY s.date DESC, s.id DESC
-    LIMIT 1
-) fp ON true
 WHERE (
     $1::text IS NULL
     OR ($1::text = 'tournaments' AND a.tournament_id IS NOT NULL)
@@ -1194,9 +1130,6 @@ type ListArenasRow struct {
 	FilterTagIds          []id.ID            `json:"filter_tag_ids"`
 	CampPlayerIds         []id.ID            `json:"camp_player_ids"`
 	MatchesCount          int64              `json:"matches_count"`
-	SettlementsCount      int64              `json:"settlements_count"`
-	SettlementsLastDate   pgtype.Timestamptz `json:"settlements_last_date"`
-	SettlementsLastID     id.ID              `json:"settlements_last_id"`
 }
 
 // kind narrows the list for the /arenas page tabs: 'games' returns every
@@ -1231,9 +1164,6 @@ func (q *Queries) ListArenas(ctx context.Context, kind pgtype.Text) ([]ListArena
 			&i.FilterTagIds,
 			&i.CampPlayerIds,
 			&i.MatchesCount,
-			&i.SettlementsCount,
-			&i.SettlementsLastDate,
-			&i.SettlementsLastID,
 		); err != nil {
 			return nil, err
 		}
@@ -1378,7 +1308,6 @@ const listFeedMatchesWithPlayers = `-- name: ListFeedMatchesWithPlayers :many
 SELECT
     m.id AS match_id,
     m.date,
-    m.updated_at,
     g.id AS game_id,
     g.name AS game_name,
     m.calculator_kind AS calculator_kind,
@@ -1418,7 +1347,6 @@ type ListFeedMatchesWithPlayersParams struct {
 type ListFeedMatchesWithPlayersRow struct {
 	MatchID        id.ID              `json:"match_id"`
 	Date           pgtype.Timestamptz `json:"date"`
-	UpdatedAt      time.Time          `json:"updated_at"`
 	GameID         id.ID              `json:"game_id"`
 	GameName       string             `json:"game_name"`
 	CalculatorKind pgtype.Text        `json:"calculator_kind"`
@@ -1450,7 +1378,6 @@ func (q *Queries) ListFeedMatchesWithPlayers(ctx context.Context, arg ListFeedMa
 		if err := rows.Scan(
 			&i.MatchID,
 			&i.Date,
-			&i.UpdatedAt,
 			&i.GameID,
 			&i.GameName,
 			&i.CalculatorKind,
@@ -1477,7 +1404,7 @@ func (q *Queries) ListFeedMatchesWithPlayers(ctx context.Context, arg ListFeedMa
 }
 
 const listMatchesForArenaReplay = `-- name: ListMatchesForArenaReplay :many
-SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data, m.mode, m.game_score, m.game_won, m.updated_at
+SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data, m.mode, m.game_score, m.game_won
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
 LEFT JOIN tenants t ON t.id = a.tenant_id
@@ -1523,7 +1450,6 @@ func (q *Queries) ListMatchesForArenaReplay(ctx context.Context, arg ListMatches
 			&i.Mode,
 			&i.GameScore,
 			&i.GameWon,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

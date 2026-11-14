@@ -104,20 +104,3 @@ ORDER BY s.date;
 -- market's own arena. Called at the start of RecalculateFrom.
 DELETE FROM arena_settlements
 WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND date >= $1;
-
--- name: ListArenaSettlementsByArena :many
--- Ascending keyset page of one arena's settlement ledger (ADR-38): the
--- offline client mirrors the chain to replay ratings locally. Ordered by the
--- replay index (arena_id, date, id); the cursor is the last row's (date, id),
--- so a page boundary never splits or skips same-date rows.
-SELECT s.id, s.player_id, s.date, s.rating_after, s.elo_after, s.discriminator,
-       s.match_id, s.market_id, s.elo_staked, s.elo_earned,
-       s.rating_staked, s.rating_earned, s.league
-FROM arena_settlements s
-WHERE s.arena_id = sqlc.arg('arena_id')::uuid
-  AND (
-      sqlc.narg('cursor_date')::timestamptz IS NULL
-      OR (s.date, s.id) > (sqlc.narg('cursor_date')::timestamptz, sqlc.narg('cursor_id')::uuid)
-  )
-ORDER BY s.date ASC, s.id ASC
-LIMIT sqlc.arg('page_limit')::int;

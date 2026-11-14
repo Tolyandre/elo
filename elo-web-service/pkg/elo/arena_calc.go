@@ -12,14 +12,13 @@ import (
 )
 
 // ArenaPrevState is the per-player prior state of one match in one arena.
-// The struct lives in pkg/settlement (the offline wasm build links it,
-// ADR-38); the alias keeps the historical name.
+// The struct lives in pkg/settlement; the alias keeps the historical name.
 type ArenaPrevState = settlement.ArenaPrevState
 
 // ---------------------------------------------------------------------------
-// League progression wrappers. The logic lives in pkg/settlement — the
-// offline client's wasm build runs the exact same code (ADR-38) — and the
-// arena-taking signatures below are the historical in-package shape.
+// League progression wrappers. The logic lives in pkg/settlement (one
+// implementation of the math) and the arena-taking signatures below are the
+// historical in-package shape.
 // ---------------------------------------------------------------------------
 
 // arenaLeaguePriority orders leagues for ranking: lower = ranked higher.

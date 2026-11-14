@@ -202,8 +202,6 @@ EloSettingEntry:
     newbie_league_earned_min:
       type: number
       format: double
-      description: The league parameters ride along so the offline settlement
-        replay (ADR-38) can resolve them as-of the match date.
     newbie_league_earned_max:
       type: number
       format: double

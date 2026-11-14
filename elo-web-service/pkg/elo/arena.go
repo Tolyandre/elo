@@ -34,7 +34,7 @@ const (
 var BlueMenArenaID = mustParseID("elo: blue men arena id", blueMenArenaIDUUID)
 
 // League kind names stored in arena settings and settlement rows. Defined in
-// pkg/settlement (the offline wasm build links it, ADR-38).
+// pkg/settlement.
 const (
 	LeagueNewbie  = settlement.LeagueNewbie
 	LeagueAmateur = settlement.LeagueAmateur
@@ -95,22 +95,6 @@ type Arena struct {
 	StaleAt    *time.Time
 
 	Filter MatchFilter
-
-	// Settlement-fingerprint triple (ADR-39): the offline client skips a
-	// settlement-ledger re-drain while its stored triple matches. Nil when
-	// the read did not compute it (most write-path reads don't care).
-	Settlements *SettlementsFingerprint
-}
-
-// SettlementsFingerprint summarizes one arena's arena_settlements ledger:
-// (row count, last settlement date, last settlement id). Every write path
-// inserts fresh UUIDv7 ids, so any append or recalculation re-insert changes
-// the triple; a deterministic empty-ledger triple ('-infinity', zero uuid)
-// keeps the scan non-nullable.
-type SettlementsFingerprint struct {
-	Count    int64
-	LastDate time.Time
-	LastID   id.ID
 }
 
 // HasLeagues reports whether the arena defines any leagues.
@@ -264,9 +248,6 @@ func arenaFromListRow(r db.ListArenasRow) (ArenaWithCount, error) {
 	a, err := arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
 		r.GameID, r.TournamentID, r.TenantID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
-	// An empty ledger surfaces as NULL date (pgtype) / nil-scanned empty id;
-	// normalize to the deterministic zero triple the wire mapping expects.
-	a.Settlements = &SettlementsFingerprint{Count: r.SettlementsCount, LastDate: r.SettlementsLastDate.Time, LastID: r.SettlementsLastID}
 	return ArenaWithCount{Arena: a, MatchesCount: int(r.MatchesCount), CampPlayerIds: r.CampPlayerIds}, err
 }
 

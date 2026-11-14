@@ -1,9 +1,7 @@
 package settlement
 
 // EloSettings holds the Elo calculation constants effective at a point in
-// time. JSON tags shape the wasm boundary (the offline client mirrors the
-// elo_settings history in this shape); the struct is never marshaled to the
-// HTTP API.
+// time; the struct is never marshaled to the HTTP API.
 type EloSettings struct {
 	K           float64 `json:"k"`
 	D           float64 `json:"d"`

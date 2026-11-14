@@ -1,13 +1,11 @@
 // Package settlement holds the pure rating-settlement core: the Elo math,
-// the per-arena dual-track (elo + display rating) settlement, league
-// progression, and a whole-arena replay producing the settlement chain,
-// point-in-time standings and medal stats.
+// the per-arena dual-track (elo + display rating) settlement and league
+// progression.
 //
-// The package is deliberately free of database and network dependencies so it
-// compiles unchanged to WebAssembly for the offline client (ADR-38) — the
-// server-side orchestration over sqlc queries stays in pkg/elo, which links
-// this package for the actual math. pkg/elo keeps thin wrappers with the
-// historical signatures, so call sites and tests do not churn.
+// The package is deliberately free of database and network dependencies —
+// the server-side orchestration over sqlc queries stays in pkg/elo, which
+// links this package for the actual math. pkg/elo keeps thin wrappers with
+// the historical signatures, so call sites and tests do not churn.
 package settlement
 
 import (

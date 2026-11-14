@@ -588,27 +588,6 @@ func (e TournamentPlanElimination) Valid() bool {
 	}
 }
 
-// Defines values for ArenasArenaSettlementDiscriminator.
-const (
-	ArenasArenaSettlementDiscriminatorMarket          ArenasArenaSettlementDiscriminator = "market"
-	ArenasArenaSettlementDiscriminatorMarketGuarantor ArenasArenaSettlementDiscriminator = "market_guarantor"
-	ArenasArenaSettlementDiscriminatorMatch           ArenasArenaSettlementDiscriminator = "match"
-)
-
-// Valid indicates whether the value is a known member of the ArenasArenaSettlementDiscriminator enum.
-func (e ArenasArenaSettlementDiscriminator) Valid() bool {
-	switch e {
-	case ArenasArenaSettlementDiscriminatorMarket:
-		return true
-	case ArenasArenaSettlementDiscriminatorMarketGuarantor:
-		return true
-	case ArenasArenaSettlementDiscriminatorMatch:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for AuditAuditCampLinkDetailsOp.
 const (
 	AuditAuditCampLinkDetailsOpAttach AuditAuditCampLinkDetailsOp = "attach"
@@ -1225,15 +1204,6 @@ type Arena struct {
 	Settings              ArenaSettings `json:"settings"`
 	SettingsSchemaVersion int           `json:"settings_schema_version"`
 
-	// SettlementsCount Settlement-ledger row count of this arena (ADR-39). Together with settlements_last_date and settlements_last_id it forms the change signal the offline client compares against its stored mirror before re-draining GET /arenas/{id}/settlements. Present in list and detail responses; absent when the row predates the fingerprint columns.
-	SettlementsCount *int `json:"settlements_count,omitempty"`
-
-	// SettlementsLastDate Date column of the arena's newest settlement row (ADR-39); the '-infinity' sentinel when the ledger is empty.
-	SettlementsLastDate *time.Time `json:"settlements_last_date,omitempty"`
-
-	// SettlementsLastId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	SettlementsLastId *Base58ID `json:"settlements_last_id,omitempty"`
-
 	// StaleAt Not null while the arena waits for a background recalculation.
 	StaleAt *time.Time `json:"stale_at,omitempty"`
 
@@ -1684,13 +1654,11 @@ type EloSettingEntry struct {
 	EloConstD                 float64 `json:"elo_const_d"`
 	EloConstK                 float64 `json:"elo_const_k"`
 	NewbieLeagueEarnedMax     float64 `json:"newbie_league_earned_max"`
-
-	// NewbieLeagueEarnedMin The league parameters ride along so the offline settlement replay (ADR-38) can resolve them as-of the match date.
-	NewbieLeagueEarnedMin float64 `json:"newbie_league_earned_min"`
-	NewbieLeagueEarnedTau float64 `json:"newbie_league_earned_tau"`
-	NewbieLeagueGoalGap   float64 `json:"newbie_league_goal_gap"`
-	StartingElo           float64 `json:"starting_elo"`
-	WinReward             float64 `json:"win_reward"`
+	NewbieLeagueEarnedMin     float64 `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedTau     float64 `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap       float64 `json:"newbie_league_goal_gap"`
+	StartingElo               float64 `json:"starting_elo"`
+	WinReward                 float64 `json:"win_reward"`
 }
 
 // FavoriteGames defines model for FavoriteGames.
@@ -2091,9 +2059,6 @@ type Match struct {
 
 	// Tournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, by the organizer's attach, or by an explicit edit-time link change (skip_tournament_link on PUT); association-breaking edits (game/roster) are still rejected. The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
 	Tournament *MatchTournament `json:"tournament,omitempty"`
-
-	// UpdatedAt Set at creation and bumped on every change visible through this payload — the row itself, its per-player scores, and its camp / tournament links. The offline replica's incremental cursor key (ADR-39): `?updated_since=` returns only newer rows. Settlement rewrites do not bump it — the settlement ledger carries its own change signal (the arena's settlements fingerprint, ADR-39).
-	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // MatchCamp A camp arena (ADR-27) a match belongs to
@@ -2485,39 +2450,6 @@ type WinStreakParams struct {
 	// TargetPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	TargetPlayerId Base58ID `json:"target_player_id"`
 	WinsRequired   int      `json:"wins_required"`
-}
-
-// ArenasArenaSettlement One arena_settlements ledger row (ADR-38) — a match or market settlement of one player in one arena. Match rows carry match_id; market rows carry market_id and are frozen constants for the offline replay.
-type ArenasArenaSettlement struct {
-	Date          time.Time                          `json:"date"`
-	Discriminator ArenasArenaSettlementDiscriminator `json:"discriminator"`
-	EloAfter      float64                            `json:"elo_after"`
-	EloEarned     float64                            `json:"elo_earned"`
-	EloStaked     float64                            `json:"elo_staked"`
-
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id       Base58ID  `json:"id"`
-	League   *string   `json:"league,omitempty"`
-	MarketId *Base58ID `json:"market_id,omitempty"`
-	MatchId  *Base58ID `json:"match_id,omitempty"`
-
-	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	PlayerId     Base58ID `json:"player_id"`
-	RatingAfter  float64  `json:"rating_after"`
-	RatingEarned float64  `json:"rating_earned"`
-	RatingStaked float64  `json:"rating_staked"`
-}
-
-// ArenasArenaSettlementDiscriminator defines model for ArenasArenaSettlement.Discriminator.
-type ArenasArenaSettlementDiscriminator string
-
-// ArenasArenaSettlementsPage defines model for arenas_ArenaSettlementsPage.
-type ArenasArenaSettlementsPage struct {
-	Data []ArenasArenaSettlement `json:"data"`
-
-	// Next Cursor token for the next page; null if no more pages
-	Next   *string `json:"next,omitempty"`
-	Status string  `json:"status"`
 }
 
 // AuditAuditArenaCampConfigDetails Name and date window of a camp arena (ADR-27) as before → after pairs. Create fills the 'to' side, update both sides (changed fields only), delete the 'from' side. Untouched fields stay null.
@@ -2935,15 +2867,6 @@ type ListArenaFeedParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// ListArenaSettlementsParams defines parameters for ListArenaSettlements.
-type ListArenaSettlementsParams struct {
-	// Limit Page size (1..5000)
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Next Cursor token from the previous page's "next" field
-	Next *string `form:"next,omitempty" json:"next,omitempty"`
-}
-
 // ListAuditEventsParams defines parameters for ListAuditEvents.
 type ListAuditEventsParams struct {
 	// EntityType Filter by entity type(s); repeated for several types
@@ -3123,9 +3046,6 @@ type ListMatchesParams struct {
 
 	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. Continuation requests must pass the same tenant — the cursor token does not carry it. Naming no existing tenant is a 404.
 	Tenant string `form:"tenant" json:"tenant"`
-
-	// UpdatedSince Incremental offline pull (ADR-39): return only matches whose updated_at is strictly newer than this RFC3339 stamp — the client's stored cursor. Continuation requests must pass the same value (the cursor token does not carry it). Combine freely with the other filters; ordering and cursoring are unchanged.
-	UpdatedSince *time.Time `form:"updated_since,omitempty" json:"updated_since,omitempty"`
 
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
@@ -4506,9 +4426,6 @@ type ServerInterface interface {
 	// GetArenaPlayers Arena players ranked, with precalculated match and medal stats
 	// (GET /arenas/{id}/players)
 	GetArenaPlayers(c *gin.Context, id string)
-	// ListArenaSettlements One arena's settlement ledger, ascending, cursor-paginated (ADR-38)
-	// (GET /arenas/{id}/settlements)
-	ListArenaSettlements(c *gin.Context, id string, params ListArenaSettlementsParams)
 	// ListAuditEvents List audit events (who did what and when) with cursor-based pagination
 	// (GET /audit)
 	ListAuditEvents(c *gin.Context, params ListAuditEventsParams)
@@ -5021,50 +4938,6 @@ func (siw *ServerInterfaceWrapper) GetArenaPlayers(c *gin.Context) {
 	}
 
 	siw.Handler.GetArenaPlayers(c, id)
-}
-
-// ListArenaSettlements operation middleware
-func (siw *ServerInterfaceWrapper) ListArenaSettlements(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListArenaSettlementsParams
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "next" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", c.Request.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter next: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListArenaSettlements(c, id, params)
 }
 
 // ListAuditEvents operation middleware
@@ -5913,14 +5786,6 @@ func (siw *ServerInterfaceWrapper) ListMatches(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "updated_since" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "updated_since", c.Request.URL.Query(), &params.UpdatedSince, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter updated_since: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -7369,7 +7234,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PATCH(options.BaseURL+"/arenas/:id", wrapper.UpdateArena)
 	router.GET(options.BaseURL+"/arenas/:id/feed", wrapper.ListArenaFeed)
 	router.GET(options.BaseURL+"/arenas/:id/players", wrapper.GetArenaPlayers)
-	router.GET(options.BaseURL+"/arenas/:id/settlements", wrapper.ListArenaSettlements)
 	router.GET(options.BaseURL+"/audit", wrapper.ListAuditEvents)
 	router.GET(options.BaseURL+"/auth/login", wrapper.AuthLogin)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.AuthLogout)
@@ -7890,57 +7754,6 @@ func (response GetArenaPlayers400JSONResponse) VisitGetArenaPlayersResponse(w ht
 type GetArenaPlayers404JSONResponse ApiError
 
 func (response GetArenaPlayers404JSONResponse) VisitGetArenaPlayersResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListArenaSettlementsRequestObject struct {
-	Id     string `json:"id"`
-	Params ListArenaSettlementsParams
-}
-
-type ListArenaSettlementsResponseObject interface {
-	VisitListArenaSettlementsResponse(w http.ResponseWriter) error
-}
-
-type ListArenaSettlements200JSONResponse ArenasArenaSettlementsPage
-
-func (response ListArenaSettlements200JSONResponse) VisitListArenaSettlementsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListArenaSettlements400JSONResponse ApiError
-
-func (response ListArenaSettlements400JSONResponse) VisitListArenaSettlementsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListArenaSettlements404JSONResponse ApiError
-
-func (response ListArenaSettlements404JSONResponse) VisitListArenaSettlementsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -13553,9 +13366,6 @@ type StrictServerInterface interface {
 	// GetArenaPlayers Arena players ranked, with precalculated match and medal stats
 	// (GET /arenas/{id}/players)
 	GetArenaPlayers(ctx context.Context, request GetArenaPlayersRequestObject) (GetArenaPlayersResponseObject, error)
-	// ListArenaSettlements One arena's settlement ledger, ascending, cursor-paginated (ADR-38)
-	// (GET /arenas/{id}/settlements)
-	ListArenaSettlements(ctx context.Context, request ListArenaSettlementsRequestObject) (ListArenaSettlementsResponseObject, error)
 	// ListAuditEvents List audit events (who did what and when) with cursor-based pagination
 	// (GET /audit)
 	ListAuditEvents(ctx context.Context, request ListAuditEventsRequestObject) (ListAuditEventsResponseObject, error)
@@ -14085,33 +13895,6 @@ func (sh *strictHandler) GetArenaPlayers(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(GetArenaPlayersResponseObject); ok {
 		if err := validResponse.VisitGetArenaPlayersResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListArenaSettlements operation middleware
-func (sh *strictHandler) ListArenaSettlements(ctx *gin.Context, id string, params ListArenaSettlementsParams) {
-	var request ListArenaSettlementsRequestObject
-
-	request.Id = id
-	request.Params = params
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ListArenaSettlements(ctx, request.(ListArenaSettlementsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListArenaSettlements")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ListArenaSettlementsResponseObject); ok {
-		if err := validResponse.VisitListArenaSettlementsResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
